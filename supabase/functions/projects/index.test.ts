@@ -594,6 +594,47 @@ Deno.test(
     // Someone who works in a project may use the selection lists.
     const options = await member({ type: "options" });
     assert(Array.isArray(options.people));
+    // The directory search marks people who have no account yet.
+    db.rows("tenant_entra_directory_people").push(
+      {
+        tenant_id: TENANT,
+        entra_object_id: "40000000-0000-4000-8000-000000000001",
+        display_name: "Nora Neu",
+        email: "nora.neu@example.org",
+        job_title: "Hauswartin",
+        local_user_id: null,
+        account_enabled: true,
+        inactive_at: null,
+      },
+      {
+        tenant_id: TENANT,
+        entra_object_id: "40000000-0000-4000-8000-000000000002",
+        display_name: "Mia Mitarbeit",
+        email: "mia@example.org",
+        job_title: null,
+        local_user_id: MEMBER,
+        account_enabled: true,
+        inactive_at: null,
+      },
+    );
+    assertEquals(
+      (await lead({ type: "searchPeople", query: "m" })).results,
+      [],
+    );
+    assertEquals((await lead({ type: "searchPeople", query: "mi" })).results, [
+      {
+        id: MEMBER,
+        name: "Mia Mitarbeit",
+        detail: "mia@example.org",
+        hasAccount: true,
+      },
+      {
+        id: "entra:40000000-0000-4000-8000-000000000001",
+        name: "Nora Neu",
+        detail: "Hauswartin",
+        hasAccount: false,
+      },
+    ]);
     // Nobody in this tenant works on tickets, so nobody can be made lead.
     assertEquals(options.agents, []);
     await assertRejects(
@@ -705,6 +746,7 @@ Deno.test(
       },
       { type: "workload" },
       { type: "options" },
+      { type: "searchPeople", query: "mia" },
       { type: "searchLinkable", targetKind: "ticket", query: "" },
       { type: "projectsForRecord", targetKind: "ticket", targetId: TICKET },
       { type: "createProject", title: "Eigenes" },

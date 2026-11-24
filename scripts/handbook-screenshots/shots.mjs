@@ -249,6 +249,8 @@ export const SHOTS = [
     async run(h) {
       await openDemoProject(h, "Team & Gäste");
       await h.waitText("Externen Gast einladen");
+      await h.page.getByLabel("Person suchen").fill("ke");
+      await h.waitText("Sabine Keller");
     },
   },
   {

@@ -778,6 +778,13 @@ function LinksTab({
   );
 }
 
+type PersonMatch = {
+  id: string;
+  name: string;
+  detail: string;
+  hasAccount: boolean;
+};
+
 const MEMBER_ROLES: ProjectRole[] = [
   "manager",
   "member",
@@ -789,24 +796,83 @@ function TeamTab({
   data,
   options,
   run,
+  tenantId,
 }: {
   data: ProjectDetailData;
   options: ProjectOptions | null;
   run: Run;
+  tenantId: string;
 }) {
   const { access, project } = data;
-  const [userId, setUserId] = useState("");
+  const [personQuery, setPersonQuery] = useState("");
+  const [directory, setDirectory] = useState<PersonMatch[] | null>(null);
+  const [adding, setAdding] = useState<string | null>(null);
+  const searchVersion = useRef(0);
   const [role, setRole] = useState<ProjectRole>("member");
   const [email, setEmail] = useState("");
   const [guestRole, setGuestRole] = useState("guest_read");
   const [notice, setNotice] = useState("");
   const present = new Set(data.members.map((member) => member.userId));
 
-  const add = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!userId) return;
-    await run({ type: "setMember", projectId: project.id, userId, role });
-    setUserId("");
+  const needle = personQuery.trim().toLocaleLowerCase("de-CH");
+  useEffect(() => {
+    const current = ++searchVersion.current;
+    setDirectory(null);
+    if (needle.length < 2) return;
+    const timer = window.setTimeout(() => {
+      projectsCall<{ results: PersonMatch[] }>({
+        type: "searchPeople",
+        tenantId,
+        query: needle,
+      })
+        .then((result) => {
+          if (searchVersion.current === current) setDirectory(result.results);
+        })
+        .catch(() => {
+          // Members of the tenant are still found without the directory.
+          if (searchVersion.current === current) setDirectory([]);
+        });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [needle, tenantId]);
+
+  // Directory people plus members who are not in the directory.
+  const matches = useMemo(() => {
+    if (needle.length < 2 || directory === null) return null;
+    const seen = new Set(directory.map((person) => person.id));
+    const local = (options?.people ?? [])
+      .filter(
+        (person) =>
+          !seen.has(person.id) &&
+          person.name.toLocaleLowerCase("de-CH").includes(needle),
+      )
+      .map((person) => ({
+        id: person.id,
+        name: person.name,
+        detail: "",
+        hasAccount: true,
+      }));
+    return [...directory, ...local]
+      .filter((person) => !present.has(person.id))
+      .sort((a, b) => a.name.localeCompare(b.name, "de"))
+      .slice(0, 20);
+    // `present` is derived from data.members.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.members, directory, needle, options]);
+
+  const add = async (userId: string) => {
+    setAdding(userId);
+    try {
+      const result = (await run({
+        type: "setMember",
+        projectId: project.id,
+        userId,
+        role,
+      })) as { saved?: boolean } | undefined;
+      if (result?.saved) setPersonQuery("");
+    } finally {
+      setAdding(null);
+    }
   };
   const invite = async (event: FormEvent) => {
     event.preventDefault();
@@ -914,24 +980,14 @@ function TeamTab({
         <div className="pj-stack">
           <section className="pj-card">
             <h3>Person aus dem Mandanten hinzufügen</h3>
-            <form
-              className="pj-inline pj-inline--wrap"
-              onSubmit={(event) => void add(event)}
-            >
-              <select
-                aria-label="Person"
-                onChange={(event) => setUserId(event.target.value)}
-                value={userId}
-              >
-                <option value="">Person wählen …</option>
-                {(options?.people ?? [])
-                  .filter((person) => !present.has(person.id))
-                  .map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {person.name}
-                    </option>
-                  ))}
-              </select>
+            <div className="pj-inline pj-inline--wrap">
+              <input
+                aria-label="Person suchen"
+                onChange={(event) => setPersonQuery(event.target.value)}
+                placeholder="Name, Funktion oder E-Mail suchen"
+                type="search"
+                value={personQuery}
+              />
               <select
                 aria-label="Rolle"
                 onChange={(event) => setRole(event.target.value as ProjectRole)}
@@ -943,14 +999,43 @@ function TeamTab({
                   </option>
                 ))}
               </select>
-              <button
-                className="pj-button pj-button--primary"
-                disabled={!userId}
-                type="submit"
-              >
-                Hinzufügen
-              </button>
-            </form>
+            </div>
+            {personQuery.trim().length < 2 ? (
+              <p className="pj-hint pj-hint--below">
+                Gesucht wird im ganzen Mandanten, auch unter Personen aus dem
+                Verzeichnis, die sich noch nie angemeldet haben.
+              </p>
+            ) : matches === null ? (
+              <p className="pj-hint pj-hint--below">Sucht …</p>
+            ) : matches.length === 0 ? (
+              <p className="pj-hint pj-hint--below">Keine Person gefunden.</p>
+            ) : (
+              <ul className="pj-rows pj-rows--compact">
+                {matches.map((person) => (
+                  <li key={person.id}>
+                    <span className="pj-two-line">
+                      <strong>{person.name}</strong>
+                      <small>
+                        {[
+                          person.detail,
+                          person.hasAccount ? null : "noch nie angemeldet",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
+                    </span>
+                    <button
+                      className="pj-button pj-button--primary"
+                      disabled={adding !== null}
+                      onClick={() => void add(person.id)}
+                      type="button"
+                    >
+                      {adding === person.id ? "Fügt hinzu …" : "Hinzufügen"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
           <section className="pj-card">
             <h3>Externen Gast einladen</h3>
@@ -1409,7 +1494,7 @@ export function ProjectDetail({
           tenantId={tenantId}
         />
       ) : (
-        <TeamTab data={data} options={options} run={run} />
+        <TeamTab data={data} options={options} run={run} tenantId={tenantId} />
       )}
 
       {openTask ? (

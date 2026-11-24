@@ -7,6 +7,11 @@ import {
   parseJsonObject,
 } from "../_shared/http.ts";
 import { listAssignableTenantSupportAgents } from "../_shared/assignable-agents.ts";
+import {
+  ensureEntraPersonAccount,
+  ENTRA_PERSON_PREFIX,
+  EntraPersonAccountError,
+} from "../_shared/entra-person-account.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
   addCalendarDays,
@@ -2871,14 +2876,81 @@ const MEMBER_ROLES = new Set([
 ]);
 const GUEST_ROLES = new Set(["guest_read", "guest_comment"]);
 
+/**
+ * People of the tenant's Entra directory, with or without an account yet.
+ * Someone without an account gets the id «entra:<object id>»; the account is
+ * prepared when the person is added to a project.
+ */
+async function searchPeople(ctx: Ctx, body: Row) {
+  await assertInternal(ctx);
+  const needle = (typeof body.query === "string" ? body.query : "")
+    .replace(/[%_,()\\*]/g, " ")
+    .trim()
+    .slice(0, 80);
+  if (needle.length < 2) return { results: [] };
+  const { data, error } = await ctx.admin
+    .from("tenant_entra_directory_people")
+    .select("entra_object_id, display_name, email, job_title, local_user_id")
+    .eq("tenant_id", ctx.tenantId)
+    .eq("account_enabled", true)
+    .is("inactive_at", null)
+    .or(
+      `display_name.ilike.%${needle}%,email.ilike.%${needle}%,job_title.ilike.%${needle}%`,
+    )
+    .order("display_name")
+    .limit(25);
+  if (error) throw failed();
+  return {
+    results: ((data ?? []) as Row[]).map((row) => ({
+      id:
+        typeof row.local_user_id === "string"
+          ? row.local_user_id
+          : ENTRA_PERSON_PREFIX + String(row.entra_object_id),
+      name: String(row.display_name),
+      detail:
+        (typeof row.job_title === "string" && row.job_title) ||
+        String(row.email ?? ""),
+      hasAccount: typeof row.local_user_id === "string",
+    })),
+  };
+}
+
+/** A member id, preparing the account of an Entra person who has none yet. */
+async function memberUserId(ctx: Ctx, value: unknown): Promise<string> {
+  if (typeof value === "string" && value.startsWith(ENTRA_PERSON_PREFIX)) {
+    const objectId = value.slice(ENTRA_PERSON_PREFIX.length);
+    if (!isUuid(objectId)) throw invalid("Die Auswahl ist ungültig.");
+    try {
+      return await ensureEntraPersonAccount(
+        ctx.admin,
+        ctx.tenantId,
+        objectId.toLowerCase(),
+        ctx.actorId,
+      );
+    } catch (error) {
+      if (error instanceof EntraPersonAccountError) {
+        throw new HttpError(
+          422,
+          error.code,
+          error.code === "entra_person_not_active"
+            ? "Die Person ist im Verzeichnis nicht mehr aktiv."
+            : "Für die Person konnte kein Konto vorbereitet werden.",
+        );
+      }
+      throw error;
+    }
+  }
+  return requiredUuid(value);
+}
+
 async function memberAction(ctx: Ctx, body: Row) {
   const { project, access } = await loadProject(ctx, body.projectId);
   requireAdmin(access);
   const projectId = project.id as string;
 
   if (body.type === "setMember") {
-    const userId = requiredUuid(body.userId);
     const role = oneOf<string>(body.role, MEMBER_ROLES, "Die Rolle");
+    const userId = await memberUserId(ctx, body.userId);
     await assertTenantMember(ctx, userId);
     const { error } = await ctx.admin.from("project_members").upsert(
       {
@@ -3226,6 +3298,8 @@ export async function dispatch(ctx: Ctx, body: Row): Promise<Row> {
     case "inviteGuest":
     case "revokeInvitation":
       return await memberAction(ctx, body);
+    case "searchPeople":
+      return await searchPeople(ctx, body);
     case "workload":
       return await workload(ctx, body);
     case "updateSettings":

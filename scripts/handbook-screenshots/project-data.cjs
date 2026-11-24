@@ -786,6 +786,23 @@ function handler(body, { persona }) {
               ]
             : [],
       });
+    case "searchPeople":
+      return ok({
+        results: [
+          {
+            id: "entra:" + D.uid("7a7b7c7d", 1),
+            name: "Sabine Keller",
+            detail: "Leiterin Hauswirtschaft",
+            hasAccount: false,
+          },
+          {
+            id: D.uid("11111111", 92),
+            name: "Urs Kessler",
+            detail: "Technischer Dienst",
+            hasAccount: true,
+          },
+        ],
+      });
     case "searchLinkable":
       return ok({
         results: D.TICKETS.slice(0, 5).map((item) => ({

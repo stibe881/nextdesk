@@ -2228,6 +2228,15 @@ Mehr dazu unter «Projekte».
 
 Mehr dazu unter «Projekte».
 
+### Wie füge ich eine Person aus dem Mandanten zu einem Projekt hinzu?
+
+1. Öffnen Sie das Projekt und das Register **Team & Gäste**.
+2. Tippen Sie unter **Person aus dem Mandanten hinzufügen** mindestens zwei Buchstaben des Namens, der Funktion oder der E-Mail-Adresse.
+3. Wählen Sie daneben die Rolle (in der Regel «Mitarbeit»).
+4. Klicken Sie bei der Person auf **Hinzufügen**.
+
+Die Suche findet alle Personen des Mandanten, auch solche aus dem Entra-Verzeichnis, die sich noch nie angemeldet haben. Mehr dazu unter «Projekte».
+
 ### Wie lade ich einen externen Gast in ein Projekt ein?
 
 1. Öffnen Sie das Projekt und das Register **Team & Gäste**.
@@ -3499,6 +3508,12 @@ Unter **Team & Gäste** legt die Projektleitung fest, wer mitarbeitet:
 | Mitarbeit            | Plan, Zeiten, Dokumente, Verknüpfungen und Kommentare bearbeiten |
 | Gast (kommentierend) | Plan und Freigegebenes lesen, für Gäste sichtbar kommentieren    |
 | Gast (lesend)        | Plan und Freigegebenes lesen                                     |
+
+Mit der Suche unter **Person aus dem Mandanten hinzufügen** finden Sie alle
+Personen des Mandanten nach Name, Funktion oder E-Mail-Adresse, auch solche
+aus dem Entra-Verzeichnis, die sich noch nie angemeldet haben. Für sie wird
+beim Hinzufügen ein Konto vorbereitet; mit der ersten Microsoft-Anmeldung
+sehen sie das Projekt.
 
 **Externe Gäste** (Dienstleister, Kunden) laden Sie mit ihrer E-Mail-Adresse
 ein. Gäste sehen ausschliesslich dieses Projekt: Überblick, Zeitplan, Board,
