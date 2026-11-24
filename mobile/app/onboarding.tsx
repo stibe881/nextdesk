@@ -100,13 +100,18 @@ export default function OnboardingScreen() {
     }
   }, [focusEntryId]);
 
-  async function assign(entry: OnboardingEntry, agent: OnboardingAgent) {
+  async function assign(entry: OnboardingEntry, agent: OnboardingAgent | null) {
     setAssignTarget(null);
-    if (agent.id === entry.ictResponsibleUserId) return;
+    if ((agent?.id ?? null) === entry.ictResponsibleUserId) return;
     setError("");
     setNotice("");
     try {
-      const result = await assignOnboardingEntry(entry.id, agent.id);
+      const result = await assignOnboardingEntry(entry.id, agent?.id ?? null);
+      if (!agent) {
+        setNotice("Nicht mehr zugewiesen.");
+        await load();
+        return;
+      }
       setNotice(
         result.redirected && result.assignedName
           ? `${result.requestedName ?? agent.displayName} ist abwesend. Der Eintritt ging an die Stellvertretung ${result.assignedName}.`
@@ -328,7 +333,9 @@ export default function OnboardingScreen() {
                   <View style={styles.body}>
                     <Text style={styles.muted}>
                       Führung: {entry.managerName || "–"} · ICT:{" "}
-                      {entry.ictResponsibleName || "–"}
+                      {entry.ictResponsibleUserId
+                        ? entry.ictResponsibleName || "–"
+                        : "Nicht zugewiesen"}
                     </Text>
                     {entry.canAssign && agents.length > 0 ? (
                       <Pressable
@@ -457,29 +464,53 @@ export default function OnboardingScreen() {
           <Pressable style={styles.sheet}>
             <Text style={styles.sheetTitle}>ICT-Verantwortung wählen</Text>
             <ScrollView style={styles.sheetList}>
-              {agents.map((agent) => {
-                const current = agent.id === assignTarget?.ictResponsibleUserId;
-                return (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: current }}
-                    key={agent.id}
-                    onPress={() =>
-                      assignTarget ? void assign(assignTarget, agent) : null
-                    }
-                    style={styles.sheetRow}
-                  >
-                    <Text style={styles.sheetRowText}>{agent.displayName}</Text>
-                    {current ? (
-                      <Ionicons
-                        color={colors.primary}
-                        name="checkmark"
-                        size={18}
-                      />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{
+                  selected: !assignTarget?.ictResponsibleUserId,
+                }}
+                onPress={() =>
+                  assignTarget ? void assign(assignTarget, null) : null
+                }
+                style={styles.sheetRow}
+              >
+                <Text style={styles.sheetRowText}>Nicht zugewiesen</Text>
+                {!assignTarget?.ictResponsibleUserId ? (
+                  <Ionicons color={colors.primary} name="checkmark" size={18} />
+                ) : null}
+              </Pressable>
+              {agents
+                .filter(
+                  (agent) =>
+                    !assignTarget?.assignableAgentIds ||
+                    assignTarget.assignableAgentIds.includes(agent.id),
+                )
+                .map((agent) => {
+                  const current =
+                    agent.id === assignTarget?.ictResponsibleUserId;
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: current }}
+                      key={agent.id}
+                      onPress={() =>
+                        assignTarget ? void assign(assignTarget, agent) : null
+                      }
+                      style={styles.sheetRow}
+                    >
+                      <Text style={styles.sheetRowText}>
+                        {agent.displayName}
+                      </Text>
+                      {current ? (
+                        <Ionicons
+                          color={colors.primary}
+                          name="checkmark"
+                          size={18}
+                        />
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
             </ScrollView>
           </Pressable>
         </Pressable>

@@ -141,19 +141,19 @@ describe("Eintritte filtern und suchen", () => {
 });
 
 describe("Eintritte zuweisen", () => {
-  it("zeigt die Agenten und immer die aktuelle Person", () => {
-    const agents = [
-      { id: "a", displayName: "Anna" },
-      { id: "b", displayName: "Ben" },
-    ];
-    expect(assignOptions(agents, "a", "Anna").map((p) => p.id)).toEqual([
-      "a",
-      "b",
-    ]);
-    expect(assignOptions(agents, "x", "Xaver").map((p) => p.id)).toEqual([
-      "x",
-      "a",
-      "b",
-    ]);
+  const agents = [
+    { id: "a", displayName: "Anna" },
+    { id: "b", displayName: "Ben" },
+    { id: "c", displayName: "Cem" },
+  ];
+  it("zeigt «Nicht zugewiesen» und nur die Agenten der Abteilung", () => {
+    expect(
+      assignOptions(agents, ["a", "b"], null, "").map((p) => p.id),
+    ).toEqual(["", "a", "b"]);
+  });
+  it("behält eine bisherige Person ausserhalb der Abteilung", () => {
+    expect(
+      assignOptions(agents, ["a"], "x", "Xaver").map((p) => p.displayName),
+    ).toEqual(["Nicht zugewiesen", "Xaver", "Anna"]);
   });
 });

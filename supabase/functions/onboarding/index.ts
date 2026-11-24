@@ -78,7 +78,8 @@ type Action =
       organisationUnit: string | null;
       location: string | null;
       managerUserId: string;
-      ictResponsibleUserId: string;
+      ictResponsibleUserId: string | null;
+      departmentId: string | null;
       templateId: string | null;
       kind: EntryKind;
       changeTypes?: ChangeType[];
@@ -97,7 +98,7 @@ type Action =
     }
   | { type: "deleteDepartmentTask"; tenantId: string; id: string }
   | { type: "deleteEntry"; tenantId: string; entryId: string }
-  | { type: "assignEntry"; tenantId: string; entryId: string; userId: string }
+  | { type: "assignEntry"; tenantId: string; entryId: string; userId: string | null }
   | {
       type: "updateTaskStatus";
       tenantId: string;
@@ -318,7 +319,12 @@ export function parseAction(value: unknown): Action | null {
       organisationUnit !== null &&
       location !== null &&
       isUuid(value.managerUserId) &&
-      isUuid(value.ictResponsibleUserId) &&
+      (value.ictResponsibleUserId === undefined ||
+        value.ictResponsibleUserId === null ||
+        isUuid(value.ictResponsibleUserId)) &&
+      (value.departmentId === undefined ||
+        value.departmentId === null ||
+        isUuid(value.departmentId)) &&
       (isChange
         ? change !== null &&
           (value.templateId === undefined || value.templateId === null)
@@ -334,6 +340,7 @@ export function parseAction(value: unknown): Action | null {
         "location",
         "managerUserId",
         "ictResponsibleUserId",
+        "departmentId",
         "templateId",
         "kind",
         "changeTypes",
@@ -351,7 +358,12 @@ export function parseAction(value: unknown): Action | null {
           organisationUnit,
           location,
           managerUserId: value.managerUserId.toLowerCase(),
-          ictResponsibleUserId: value.ictResponsibleUserId.toLowerCase(),
+          ictResponsibleUserId: isUuid(value.ictResponsibleUserId)
+            ? value.ictResponsibleUserId.toLowerCase()
+            : null,
+          departmentId: isUuid(value.departmentId)
+            ? value.departmentId.toLowerCase()
+            : null,
           templateId: isChange ? null : String(value.templateId).toLowerCase(),
           kind: isChange
             ? "change"
@@ -416,13 +428,13 @@ export function parseAction(value: unknown): Action | null {
   if (value.type === "assignEntry") {
     return isUuid(value.tenantId) &&
       isUuid(value.entryId) &&
-      isUuid(value.userId) &&
+      (value.userId === null || isUuid(value.userId)) &&
       onlyKeys(value, ["type", "tenantId", "entryId", "userId"])
       ? {
           type: value.type,
           tenantId: value.tenantId.toLowerCase(),
           entryId: value.entryId.toLowerCase(),
-          userId: value.userId.toLowerCase(),
+          userId: value.userId === null ? null : String(value.userId).toLowerCase(),
         }
       : null;
   }
@@ -778,31 +790,29 @@ async function navigationSummary(
   if (!(await hasPermission(client, tenantId, "onboarding.manage"))) {
     return { attentionCount: 0, canAccess: false };
   }
-  const today = new Date().toISOString().slice(0, 10);
+  // Badge: nicht zugewiesene Einträge, die noch nicht erledigt sind.
   const { data: entries, error } = await admin
     .from("onboarding_entries")
     .select("id")
     .eq("tenant_id", tenantId)
-    .gte("starts_on", today)
+    .is("ict_responsible_user_id", null)
     .limit(500);
   if (error) databaseFailure(error);
   const ids = (entries ?? [])
     .map((row: Row) => row.id)
     .filter((id): id is string => typeof id === "string");
   if (ids.length === 0) return { attentionCount: 0, canAccess: true };
-  const { data: started, error: tasksError } = await admin
+  const { data: open, error: tasksError } = await admin
     .from("onboarding_tasks")
     .select("entry_id")
     .eq("tenant_id", tenantId)
     .in("entry_id", ids)
-    .neq("status", "open")
+    .neq("status", "completed")
     .limit(5000);
   if (tasksError) databaseFailure(tasksError);
-  const startedIds = new Set(
-    (started ?? []).map((row: Row) => String(row.entry_id)),
-  );
+  const openIds = new Set((open ?? []).map((row: Row) => String(row.entry_id)));
   return {
-    attentionCount: ids.filter((id) => !startedIds.has(id)).length,
+    attentionCount: ids.filter((id) => openIds.has(id)).length,
     canAccess: true,
   };
 }
@@ -823,6 +833,51 @@ async function actorDepartmentIds(
   return (data ?? [])
     .map((row: Row) => row.department_id)
     .filter((id): id is string => typeof id === "string");
+}
+/** Abteilungen der aktiven Teams, denen die Person angehört. */
+async function actorTeamDepartmentIds(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from("team_memberships")
+    .select("team:teams!inner(department_id, active)")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", actorId)
+    .limit(100);
+  if (error) databaseFailure(error);
+  return [
+    ...new Set(
+      (data ?? []).flatMap((row: Row) => {
+        const team = (Array.isArray(row.team) ? row.team[0] : row.team) as Row | null;
+        return team && team.active !== false && typeof team.department_id === "string"
+          ? [team.department_id]
+          : [];
+      }),
+    ),
+  ];
+}
+/** Zuweisbare Agenten pro Abteilung (Mitglieder der Teams der Abteilung). */
+async function departmentAgents(
+  admin: Admin,
+  tenantId: string,
+  departmentIds: string[],
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  await Promise.all(
+    departmentIds.map(async (departmentId) => {
+      const { data } = await admin.rpc("onboarding_department_agent_ids", {
+        p_tenant_id: tenantId,
+        p_department_id: departmentId,
+      });
+      result.set(
+        departmentId,
+        Array.isArray(data) ? data.filter((id): id is string => typeof id === "string") : [],
+      );
+    }),
+  );
+  return result;
 }
 async function entryIdsForDepartments(
   admin: Admin,
@@ -1064,7 +1119,7 @@ async function assignEntry(
   ]);
   const { data: entry, error: entryError } = await admin
     .from("onboarding_entries")
-    .select("id, employee_name, kind, starts_on, ict_responsible_user_id")
+    .select("id, employee_name, kind, starts_on, ict_responsible_user_id, department_id, created_by")
     .eq("tenant_id", action.tenantId)
     .eq("id", action.entryId)
     .maybeSingle();
@@ -1075,8 +1130,16 @@ async function assignEntry(
       "onboarding_entry_not_found",
       "Der Eintritt ist nicht mehr verfügbar.",
     );
-  const current = String(entry.ict_responsible_user_id);
-  if (!canManage && current !== actorId && !delegators.includes(current))
+  const current = typeof entry.ict_responsible_user_id === "string"
+    ? entry.ict_responsible_user_id
+    : null;
+  const teamDepartments = await actorTeamDepartmentIds(admin, action.tenantId, actorId);
+  if (
+    !canManage &&
+    entry.created_by !== actorId &&
+    (current === null || (current !== actorId && !delegators.includes(current))) &&
+    !(typeof entry.department_id === "string" && teamDepartments.includes(entry.department_id))
+  )
     throw new HttpError(
       403,
       "onboarding_permission_denied",
@@ -1096,14 +1159,17 @@ async function assignEntry(
       throw new HttpError(
         422,
         "onboarding_assignee_invalid",
-        "Eintritte lassen sich nur Agenten zuweisen.",
+        msg(
+          "Zuweisen kannst du nur Agenten aus den Teams der Abteilung, über die der Eintritt gemeldet wurde.",
+          "Zuweisen können Sie nur Agenten aus den Teams der Abteilung, über die der Eintritt gemeldet wurde.",
+        ),
       );
     databaseFailure(error);
   }
   const result = (data ?? {}) as Row;
-  const assignedTo = typeof result.assignedTo === "string" ? result.assignedTo : action.userId;
+  const assignedTo = typeof result.assignedTo === "string" ? result.assignedTo : null;
   const people = await peopleForTenant(admin, action.tenantId);
-  if (result.changed === true && assignedTo !== actorId) {
+  if (result.changed === true && assignedTo && assignedTo !== actorId) {
     try {
       await admin.from("ticket_notifications").insert({
         tenant_id: action.tenantId,
@@ -1116,7 +1182,7 @@ async function assignEntry(
           entryKind: entryKindOf(entry.kind),
           startsOn: String(entry.starts_on),
           actorName: people.names.get(actorId) ?? null,
-          ...(result.redirected === true
+          ...(result.redirected === true && action.userId
             ? { delegatedFor: people.names.get(action.userId) ?? null }
             : {}),
         },
@@ -1127,9 +1193,9 @@ async function assignEntry(
   }
   return {
     assignedTo,
-    assignedName: people.names.get(assignedTo) ?? null,
-    redirected: result.redirected === true,
-    requestedName: people.names.get(action.userId) ?? null,
+    assignedName: assignedTo ? (people.names.get(assignedTo) ?? null) : null,
+    redirected: result.redirected === true && action.userId !== null,
+    requestedName: action.userId ? (people.names.get(action.userId) ?? null) : null,
   };
 }
 
@@ -1258,13 +1324,16 @@ async function listWorkspace(
   let entriesQuery = admin
     .from("onboarding_entries")
     .select(
-      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind, created_at, change_types",
+      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind, created_at, change_types, department_id",
     )
     .eq("tenant_id", tenantId)
     .order("starts_on")
     .order("created_at", { ascending: false })
     .limit(250);
-  const myDepartments = await actorDepartmentIds(admin, tenantId, actorId);
+  const [myDepartments, myTeamDepartments] = await Promise.all([
+    actorDepartmentIds(admin, tenantId, actorId),
+    actorTeamDepartmentIds(admin, tenantId, actorId),
+  ]);
   if (!canManage) {
     // Entries with a sub-task of one of the person's departments are visible
     // to that department too.
@@ -1280,6 +1349,12 @@ async function listWorkspace(
         `created_by.eq.${actorId}`,
         `manager_user_id.eq.${actorId}`,
         `ict_responsible_user_id.eq.${actorId}`,
+        // Nicht zugewiesene Einträge der eigenen Team-Abteilungen.
+        ...(myTeamDepartments.length
+          ? [
+            `and(ict_responsible_user_id.is.null,department_id.in.(${myTeamDepartments.join(",")}))`,
+          ]
+          : []),
         ...(delegators.length
           ? [`ict_responsible_user_id.in.(${delegators.join(",")})`]
           : []),
@@ -1302,7 +1377,7 @@ async function listWorkspace(
     const { data: focusedEntry, error: focusedEntryError } = await admin
       .from("onboarding_entries")
       .select(
-        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind, created_at, change_types",
+        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind, created_at, change_types, department_id",
       )
       .eq("tenant_id", tenantId)
       .eq("id", focusEntryId)
@@ -1325,6 +1400,26 @@ async function listWorkspace(
     peopleResult = await peopleForTenant(admin, tenantId);
   }
   const entryIds = entries.map((row) => String(row.id));
+  // Abteilungen mit Teams: Auswahl beim Erfassen und zuweisbare Agenten.
+  const { data: teamRows } = await admin
+    .from("teams")
+    .select("department_id")
+    .eq("tenant_id", tenantId)
+    .eq("active", true)
+    .not("department_id", "is", null)
+    .limit(200);
+  const teamDepartmentIds = [
+    ...new Set(
+      (teamRows ?? [])
+        .map((row: Row) => row.department_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  ];
+  const agentsByDepartment = await departmentAgents(
+    admin,
+    tenantId,
+    teamDepartmentIds,
+  );
   const [tasksResult, exceptionsResult] = entryIds.length
     ? await Promise.all([
         admin
@@ -1400,6 +1495,13 @@ async function listWorkspace(
     permissions: { canRequest, canManage },
     people: peopleResult.people,
     agents: peopleResult.people.filter((person) => agentIds.has(person.id)),
+    departments: teamDepartmentIds
+      .map((id) => ({
+        id,
+        name: departmentNames.get(id) ?? "Abteilung",
+        agentIds: agentsByDepartment.get(id) ?? [],
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "de-CH")),
     templates: (templatesResult.data ?? []).map((row: Row) => ({
       id: String(row.id),
       key: String(row.template_key),
@@ -1419,11 +1521,27 @@ async function listWorkspace(
         peopleResult.names.get(String(entry.manager_user_id)) ??
         "Führungsperson",
       ictResponsibleName:
-        peopleResult.names.get(String(entry.ict_responsible_user_id)) ??
-        "ICT-Verantwortung",
+        typeof entry.ict_responsible_user_id === "string"
+          ? (peopleResult.names.get(entry.ict_responsible_user_id) ??
+            "ICT-Verantwortung")
+          : "Nicht zugewiesen",
       templateId: String(entry.template_id),
       kind: entryKindOf(entry.kind),
-      ictResponsibleUserId: String(entry.ict_responsible_user_id),
+      ictResponsibleUserId:
+        typeof entry.ict_responsible_user_id === "string"
+          ? entry.ict_responsible_user_id
+          : null,
+      departmentId:
+        typeof entry.department_id === "string" ? entry.department_id : null,
+      departmentName:
+        typeof entry.department_id === "string"
+          ? (departmentNames.get(entry.department_id) ?? null)
+          : null,
+      // Zuweisbar sind die Agenten der Teams dieser Abteilung.
+      assignableAgentIds:
+        typeof entry.department_id === "string"
+          ? (agentsByDepartment.get(entry.department_id) ?? [])
+          : [...agentIds],
       changeTypes: Array.isArray(entry.change_types)
         ? entry.change_types.filter((type: unknown) =>
           (CHANGE_TYPES as readonly string[]).includes(String(type))
@@ -1439,8 +1557,11 @@ async function listWorkspace(
         delegators.includes(String(entry.ict_responsible_user_id)),
       canAssign:
         canManage ||
+        entry.created_by === actorId ||
         entry.ict_responsible_user_id === actorId ||
-        delegators.includes(String(entry.ict_responsible_user_id)),
+        delegators.includes(String(entry.ict_responsible_user_id)) ||
+        (typeof entry.department_id === "string" &&
+          myTeamDepartments.includes(entry.department_id)),
       // Sichtbar, weil die angemeldete Person die ICT-Verantwortung oder eine
       // zuständige Person gerade vertritt.
       delegatedFor: delegatedForName(
@@ -1469,8 +1590,10 @@ async function listWorkspace(
         responsibleName:
           typeof task.department_id === "string" && !task.responsible_user_id
             ? (departmentNames.get(task.department_id) ?? "Abteilung")
-            : (peopleResult.names.get(String(task.responsible_user_id)) ??
-              "Verantwortliche Person"),
+            : !task.responsible_user_id
+              ? "Nicht zugewiesen"
+              : (peopleResult.names.get(String(task.responsible_user_id)) ??
+                "Verantwortliche Person"),
         departmentId:
           typeof task.department_id === "string" ? task.department_id : null,
         departmentName:
@@ -1483,7 +1606,12 @@ async function listWorkspace(
           task.responsible_user_id === actorId ||
           delegators.includes(String(task.responsible_user_id)) ||
           (typeof task.department_id === "string" &&
-            myDepartments.includes(task.department_id)),
+            myDepartments.includes(task.department_id)) ||
+          // Nicht zugewiesene ICT-Aufgabe: das Team der Abteilung.
+          (!task.responsible_user_id &&
+            typeof task.department_id !== "string" &&
+            typeof entry.department_id === "string" &&
+            myTeamDepartments.includes(entry.department_id)),
         exception: exceptionsByTask.get(String(task.id)) ?? null,
       })),
     })),
@@ -1496,16 +1624,10 @@ async function createEntry(
   action: Extract<Action, { type: "createEntry" }>,
 ) {
   await requirePermission(client, action.tenantId, "onboarding.request");
-  // Ist die gewählte ICT-Verantwortung gerade abwesend, geht der Eintritt wie
-  // ein Ticket direkt an ihre Stellvertretung.
-  const { data: delegate } = await admin.rpc("active_delegate_for", {
-    p_tenant_id: action.tenantId,
-    p_agent_id: action.ictResponsibleUserId,
-  });
-  const ictResponsibleUserId =
-    typeof delegate === "string" && isUuid(delegate)
-      ? delegate
-      : action.ictResponsibleUserId;
+  // Neu erfasste Einträge sind zuerst nicht zugewiesen; eine gewählte
+  // ICT-Verantwortung wird danach wie «Zuweisen» gesetzt (Abteilung,
+  // Stellvertretung und Mitteilung).
+  const ictResponsibleUserId = null;
   const { data, error } = action.kind === "change"
     ? await admin.rpc("create_onboarding_change", {
       p_tenant_id: action.tenantId,
@@ -1538,6 +1660,22 @@ async function createEntry(
       "onboarding_operation_failed",
       "Der Eintritt konnte nicht vollständig erstellt werden.",
     );
+  if (action.departmentId) {
+    const { error: departmentError } = await admin
+      .from("onboarding_entries")
+      .update({ department_id: action.departmentId })
+      .eq("tenant_id", action.tenantId)
+      .eq("id", data);
+    if (departmentError) databaseFailure(departmentError);
+  }
+  if (action.ictResponsibleUserId) {
+    await assignEntry(client, admin, actorId, {
+      type: "assignEntry",
+      tenantId: action.tenantId,
+      entryId: data,
+      userId: action.ictResponsibleUserId,
+    });
+  }
   return { entryId: data };
 }
 async function updateTaskStatus(
@@ -1577,11 +1715,33 @@ async function updateTaskStatus(
     (await delegatorsFor(admin, action.tenantId, actorId)).includes(
       String(task.responsible_user_id),
     );
+  // Nicht zugewiesene ICT-Aufgabe: Mitglieder der Teams der Abteilung.
+  let teamMember = false;
+  if (
+    !canManage &&
+    !departmentMember &&
+    !delegate &&
+    !task.responsible_user_id &&
+    typeof task.department_id !== "string"
+  ) {
+    const { data: entry } = await admin
+      .from("onboarding_entries")
+      .select("department_id")
+      .eq("tenant_id", action.tenantId)
+      .eq("id", task.entry_id)
+      .maybeSingle();
+    teamMember =
+      typeof entry?.department_id === "string" &&
+      (await actorTeamDepartmentIds(admin, action.tenantId, actorId)).includes(
+        entry.department_id,
+      );
+  }
   if (
     !canManage &&
     task.responsible_user_id !== actorId &&
     !departmentMember &&
-    !delegate
+    !delegate &&
+    !teamMember
   )
     throw new HttpError(
       403,
@@ -1627,7 +1787,7 @@ async function linkExceptionTicket(
   );
   const { data: entry, error: entryError } = await admin
     .from("onboarding_entries")
-    .select("id, created_by, manager_user_id, ict_responsible_user_id")
+    .select("id, created_by, manager_user_id, ict_responsible_user_id, department_id")
     .eq("tenant_id", action.tenantId)
     .eq("id", action.entryId)
     .maybeSingle();
@@ -1647,6 +1807,13 @@ async function linkExceptionTicket(
     ].includes(actorId) &&
     !(await delegatorsFor(admin, action.tenantId, actorId)).includes(
       String(entry.ict_responsible_user_id),
+    ) &&
+    !(
+      !entry.ict_responsible_user_id &&
+      typeof entry.department_id === "string" &&
+      (await actorTeamDepartmentIds(admin, action.tenantId, actorId)).includes(
+        entry.department_id,
+      )
     )
   )
     throw new HttpError(
@@ -1710,7 +1877,7 @@ type ReturnEntry = {
   id: string;
   employeeName: string;
   startsOn: string;
-  ictResponsibleUserId: string;
+  ictResponsibleUserId: string | null;
 };
 /**
  * Device returns belong to an offboarding entry. Like the other entry-level
@@ -1767,7 +1934,10 @@ async function requireOffboardingEntry(
     id: String(entry.id),
     employeeName: String(entry.employee_name),
     startsOn: String(entry.starts_on),
-    ictResponsibleUserId: String(entry.ict_responsible_user_id),
+    ictResponsibleUserId:
+      typeof entry.ict_responsible_user_id === "string"
+        ? entry.ict_responsible_user_id
+        : null,
   };
 }
 function escapeLike(value: string) {

@@ -24,6 +24,8 @@ export type OnboardingEntry = {
   ictResponsibleName: string;
   /** ICT-Verantwortung (Agent); änderbar, wenn «canAssign». */
   ictResponsibleUserId: string | null;
+  /** Agenten der Teams der Abteilung, über die der Eintritt gemeldet wurde. */
+  assignableAgentIds: string[] | null;
   canAssign: boolean;
   /** Sichtbar als Stellvertretung für diese Person. */
   delegatedFor: string | null;
@@ -106,6 +108,11 @@ function entry(value: unknown): OnboardingEntry | null {
       typeof item.ictResponsibleUserId === "string"
         ? item.ictResponsibleUserId
         : null,
+    assignableAgentIds: Array.isArray(item.assignableAgentIds)
+      ? item.assignableAgentIds.filter(
+          (id): id is string => typeof id === "string",
+        )
+      : null,
     canAssign: item.canAssign === true,
     delegatedFor:
       typeof item.delegatedFor === "string" && item.delegatedFor.trim()
@@ -176,7 +183,7 @@ export async function loadOnboardingWorkspace(): Promise<{
  */
 export async function assignOnboardingEntry(
   entryId: string,
-  userId: string,
+  userId: string | null,
 ): Promise<{
   assignedName: string | null;
   redirected: boolean;

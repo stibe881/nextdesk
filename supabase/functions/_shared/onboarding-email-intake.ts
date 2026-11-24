@@ -203,6 +203,25 @@ export async function processOnboardingEmailTicketIntake(
     const row = Array.isArray(rows) ? rows[0] : null;
     if (error || !row) return "failed";
     if (row.created !== true) return "duplicate";
+    // Der Eintritt gehört zur Abteilung des Mail-Tickets; zuweisen lässt er
+    // sich an die Agenten ihrer Teams.
+    try {
+      const { data: ticket } = await admin
+        .from("tickets")
+        .select("department_id")
+        .eq("id", input.ticketId)
+        .eq("tenant_id", input.tenantId)
+        .maybeSingle();
+      if (typeof ticket?.department_id === "string") {
+        await admin
+          .from("onboarding_entries")
+          .update({ department_id: ticket.department_id })
+          .eq("id", String(row.entry_id))
+          .eq("tenant_id", input.tenantId);
+      }
+    } catch {
+      // Ohne Abteilung bleiben alle Agenten zuweisbar.
+    }
     // Die Eintrittsmeldung bleibt beim Eintritt; das Ticket (mit Anhang) entfällt.
     await storeSourceDocument(admin, input.tenantId, String(row.entry_id), pdf);
     await removeSourceTicket(admin, input.tenantId, input.ticketId);

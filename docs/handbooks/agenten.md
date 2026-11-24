@@ -1569,7 +1569,7 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 1. Öffne unter **Planung und Betrieb** die **Eintritte** und klicke auf **Eintritt, Austritt oder Mutation planen**.
 2. Wähle bei **Art** die **Mutation**, trage den bisherigen Namen und den Stichtag (**Gültig ab**) ein.
 3. Wähle eine oder mehrere Mutationsarten: **Namensänderung**, **Abteilung/Angebot**, **Funktion/Rolle** oder **Standort/Pensum**, und fülle jeweils die neue Angabe aus (bei Wechseln auch die bisherige).
-4. Ergänze den aktuellen Einsatz, die Führungsperson und die ICT-Verantwortung und klicke auf **Mutation planen**.
+4. Ergänze den aktuellen Einsatz, die Führungsperson und die zuständige Abteilung (die ICT-Verantwortung ist optional) und klicke auf **Mutation planen**.
 5. Die Aufgaben entstehen aus der Vorlage pro Mutationsart (z. B. Konto umbenennen, Mail-Alias, Signatur) und aus den Abteilungsaufgaben der Art «Mutation»; sie sind relativ zum Stichtag terminiert.
 
 Mehr dazu unter «Eintritte und Austritte».
@@ -1587,10 +1587,10 @@ Mehr dazu unter «Eintritte und Austritte».
 
 1. Öffne unter **Planung und Betrieb** die **Eintritte** (in der App über die Kachel **Eintritte**).
 2. Klappe den Eintritt bzw. Austritt auf.
-3. Wähle unten unter **ICT-Verantwortung** einen anderen Agenten (in der App: **Zuweisen an …**).
+3. Wähle unten unter **ICT-Verantwortung** einen Agenten (in der App: **Zuweisen an …**). Zur Auswahl stehen nur die Agenten aus den Teams der Abteilung, über die der Eintritt gemeldet wurde (bei einer Eintrittsmeldung per Mail die Abteilung des Mail-Tickets). Mit **Nicht zugewiesen** hebst du die Zuweisung auf.
 4. Die ICT-Aufgaben gehen mit, Aufgaben der Führung und der Abteilungen bleiben. Die neue Person erhält eine Mitteilung. Ist sie gerade abwesend, geht der Eintritt an ihre Stellvertretung.
 
-Zuweisen kann, wer Eintritte verwaltet, die bisherige ICT-Verantwortung und ihre Stellvertretung.
+Neue Eintritte, Austritte und Mutationen sind zuerst nicht zugewiesen; die Zahl beim Menüpunkt **Eintritte** zeigt, wie viele es sind. Zuweisen kann, wer Eintritte verwaltet, wer den Eintritt erfasst hat, die bisherige ICT-Verantwortung mit ihrer Stellvertretung und jedes Mitglied der Teams der Abteilung.
 
 Mehr dazu unter «Eintritte und Austritte».
 
