@@ -558,6 +558,7 @@ const ATTACHMENTS = [
 ];
 
 const OPTIONS = () => ({
+  agents: D.AGENTS.map((user) => ({ id: user.id, name: user.name })),
   people: D.USERS.map((user) => ({ id: user.id, name: user.name })).sort(
     (a, b) => a.name.localeCompare(b.name, "de"),
   ),

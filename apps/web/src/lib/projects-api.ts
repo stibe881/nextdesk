@@ -243,6 +243,8 @@ export type ProjectSettings = {
 
 export type ProjectOptions = {
   people: Named[];
+  /** Personen, die Tickets bearbeiten; nur sie leiten Projekte. */
+  agents: Named[];
   teams: Named[];
   customers: Named[];
   locations: Named[];

@@ -339,7 +339,7 @@ export type HealthSuggestion = { health: ProjectHealth; reasons: string[] };
 
 /** What the figures say about the traffic light; the person decides. */
 export function suggestHealth(
-  project: Pick<ProjectSummary, "budgetMinutes" | "endsOn" | "stats">,
+  project: Pick<ProjectSummary, "endsOn" | "stats">,
 ): HealthSuggestion {
   const { stats } = project;
   const red: string[] = [];
@@ -351,11 +351,11 @@ export function suggestHealth(
         : `${stats.overdueMilestones} Meilensteine sind überfällig`,
     );
   }
-  if (project.budgetMinutes) {
-    const used = stats.bookedMinutes / project.budgetMinutes;
-    if (used > 1) red.push("Das Stundenbudget ist überschritten");
+  if (stats.estimatedMinutes > 0) {
+    const used = stats.bookedMinutes / stats.estimatedMinutes;
+    if (used > 1) red.push("Die geplanten Stunden sind überschritten");
     else if (used >= 0.8 && stats.progressPercent < 80) {
-      yellow.push("Über 80 % des Stundenbudgets sind verbraucht");
+      yellow.push("Über 80 % der geplanten Stunden sind verbraucht");
     }
   }
   if (stats.overdueTasks > 0) {
@@ -377,10 +377,11 @@ export function suggestHealth(
   return { health: "green", reasons: [] };
 }
 
-export function budgetPercent(project: ProjectSummary): number | null {
-  if (!project.budgetMinutes) return null;
+/** Booked time as a share of the planned time (sum of the estimates). */
+export function plannedHoursPercent(project: ProjectSummary): number | null {
+  if (!project.stats.estimatedMinutes) return null;
   return Math.round(
-    (project.stats.bookedMinutes / project.budgetMinutes) * 100,
+    (project.stats.bookedMinutes / project.stats.estimatedMinutes) * 100,
   );
 }
 
