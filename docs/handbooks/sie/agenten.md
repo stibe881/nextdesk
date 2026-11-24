@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # Handbuch für Agenten
@@ -2077,7 +2077,7 @@ Mehr dazu unter «Persönliche Einstellungen».
 
 1. Öffnen Sie in der Navigation **Projekte**.
 2. Klicken Sie auf **Neues Projekt**.
-3. Tragen Sie den Titel ein und wählen Sie bei Bedarf Projektleitung, Kunde, Standort, Start, Ende, Stundenbudget, Budget und Stundensatz.
+3. Tragen Sie den Titel ein und wählen Sie bei Bedarf Projektleitung, Abteilung, Start, Ende und Budget. Als Projektleitung stehen nur Agenten zur Wahl.
 4. Klicken Sie auf **Projekt anlegen**. Das Projekt öffnet sich und erhält eine Nummer wie «P-2026-0001».
 
 Mehr dazu unter «Projekte».
@@ -2154,7 +2154,7 @@ Mehr dazu unter «Projekte».
 ### Wie vergleiche ich Soll und Ist eines Projekts?
 
 1. Öffnen Sie das Projekt und das Register **Zeiten & Budget**.
-2. Oben sehen Sie gebuchte Stunden, geplante Stunden, Ist-Kosten und Fortschritt.
+2. Oben sehen Sie gebuchte Stunden, geplante Stunden, Budget und Fortschritt.
 3. Die Tabelle zeigt je Phase und Aufgabe Soll, Ist, Abweichung und Verbrauch; verknüpfte Tickets zählen mit ihrer gebuchten Zeit mit.
 
 Mehr dazu unter «Projekte».
@@ -3340,10 +3340,10 @@ Netze und Geräte hängen Sie an ein Projekt, statt sie zu kopieren.
 ### Übersicht aller Projekte
 
 Die **Übersicht** zeigt alle Projekte, die Sie sehen dürfen, mit Ampel,
-Status, Leitung, Fortschritt, Budgetverbrauch, nächstem Meilenstein und Ende.
+Status, Leitung, Fortschritt, gebuchter Zeit, nächstem Meilenstein und Ende.
 Projekte mit roter Ampel stehen zuoberst. Die Kacheln darüber zählen laufende
 Projekte, überfällige Meilensteine, Projekte mit gelber oder roter Ampel und
-die gebuchten Stunden gegenüber dem Budget. Mit **Laufend**, **Abgeschlossen**
+die gebuchten Stunden gegenüber den geplanten. Mit **Laufend**, **Abgeschlossen**
 und **Alle** sowie dem Suchfeld grenzen Sie die Liste ein; **Archiv anzeigen**
 blendet archivierte Projekte ein.
 
@@ -3365,8 +3365,8 @@ Mit **Wochen**, **Monate** und **Quartale** wählen Sie den Massstab; ein Klick
 ### Ein Projekt anlegen
 
 **Neues Projekt** öffnet das Formular mit Titel, Beschreibung, Projektleitung,
-Abteilung, Kunde, Standort, Start, Ende, Stundenbudget, Budget in CHF und
-Stundensatz. Mit einer **Vorlage** entsteht das Projekt samt Phasen, Aufgaben,
+Abteilung, Start, Ende und Budget in CHF. Als Projektleitung stehen nur
+Agenten zur Wahl. Mit einer **Vorlage** entsteht das Projekt samt Phasen, Aufgaben,
 Checklisten, Abhängigkeiten und Terminen ab dem Startdatum.
 
 Die **Terminplanung** legt fest, was bei Verzögerungen geschieht:
@@ -3380,9 +3380,9 @@ Die **Terminplanung** legt fest, was bei Verzögerungen geschieht:
 
 ### Überblick eines Projekts
 
-Der Kopf zeigt Nummer, Kunde, Titel, Ampel und Fortschritt. Rechts setzen Sie
+Der Kopf zeigt Nummer, Titel, Ampel und Fortschritt. Rechts setzen Sie
 **Status** (Planung, Aktiv, Pausiert, Abgeschlossen) und **Ampel**. Sprechen
-überfällige Meilensteine, überfällige Aufgaben oder der Budgetverbrauch für
+überfällige Meilensteine, überfällige Aufgaben oder die gebuchte Zeit für
 eine andere Farbe, schlägt nextDesk sie mit Begründung vor. Unter **Mehr**
 finden Sie «Projekt bearbeiten», «Termine prüfen», «Als Vorlage speichern»,
 «Archivieren» und «Projekt löschen».
@@ -3453,9 +3453,9 @@ Unterelemente und die darauf gebuchten Zeiten.
 
 **Zeiten & Budget** stellt Soll und Ist gegenüber: je Aufgabe, je Phase und für
 das ganze Projekt. Soll ist die Summe der Schätzungen. Ist ist die gebuchte
-Zeit des Elements, seiner Unterelemente und der daran verknüpften Tickets. Die
-Ist-Kosten ergeben sich aus den gebuchten Stunden und dem Stundensatz des
-Projekts.
+Zeit des Elements, seiner Unterelemente und der daran verknüpften Tickets. Der
+Verbrauch zeigt die gebuchte Zeit im Verhältnis zur geplanten; das Budget in
+CHF steht als Richtwert daneben.
 
 ![Soll-Ist-Vergleich eines Projekts](images/ag-projekt-budget.jpg)
 

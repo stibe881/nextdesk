@@ -5,12 +5,7 @@ import {
   type ProjectSummary,
   projectsCall,
 } from "./lib/projects-api";
-import {
-  HEALTH_LABELS,
-  hoursInput,
-  localToday,
-  parseHours,
-} from "./lib/projects-model";
+import { HEALTH_LABELS, localToday } from "./lib/projects-model";
 
 /** Projektformular sowie Ampel und Balken, die mehrere Ansichten teilen. */
 
@@ -92,23 +87,13 @@ export function ProjectForm({
   const [title, setTitle] = useState(project?.title ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
   const [managerId, setManagerId] = useState(project?.managerId ?? "");
-  const [customerId, setCustomerId] = useState(
-    project?.customerOrganizationId ?? "",
-  );
-  const [locationId, setLocationId] = useState(project?.locationId ?? "");
   const [departmentId, setDepartmentId] = useState(project?.departmentId ?? "");
   const [startsOn, setStartsOn] = useState(
     project ? (project.startsOn ?? "") : localToday(),
   );
   const [endsOn, setEndsOn] = useState(project?.endsOn ?? "");
-  const [budgetHours, setBudgetHours] = useState(
-    hoursInput(project?.budgetMinutes ?? null),
-  );
   const [budgetAmount, setBudgetAmount] = useState(
     amountInput(project?.budgetAmountCents ?? null),
-  );
-  const [hourlyRate, setHourlyRate] = useState(
-    amountInput(project?.hourlyRateCents ?? null),
   );
   const [scheduleMode, setScheduleMode] = useState(
     project?.scheduleMode ?? "auto",
@@ -117,17 +102,24 @@ export function ProjectForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Only agents lead projects. A lead chosen earlier stays selectable.
+  const managers =
+    project?.managerId &&
+    !options.agents.some((agent) => agent.id === project.managerId)
+      ? [
+          ...options.agents,
+          {
+            id: project.managerId,
+            name: project.managerName ?? "Bisherige Projektleitung",
+          },
+        ]
+      : options.agents;
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const budgetMinutes = budgetHours.trim() ? parseHours(budgetHours) : null;
     const amount = parseAmount(budgetAmount);
-    const rate = parseAmount(hourlyRate);
-    if (budgetHours.trim() && budgetMinutes === null) {
-      setError("Das Stundenbudget ist keine gültige Zahl.");
-      return;
-    }
-    if (amount === undefined || rate === undefined) {
-      setError("Budget und Stundensatz müssen Zahlen sein.");
+    if (amount === undefined) {
+      setError("Das Budget muss eine Zahl sein.");
       return;
     }
     if (startsOn && endsOn && endsOn < startsOn) {
@@ -141,14 +133,10 @@ export function ProjectForm({
       title,
       description,
       managerId: managerId || null,
-      customerOrganizationId: customerId || null,
-      locationId: locationId || null,
       departmentId: departmentId || null,
       startsOn: startsOn || null,
       endsOn: endsOn || null,
-      budgetMinutes,
       budgetAmountCents: amount,
-      hourlyRateCents: rate,
       scheduleMode,
     };
     try {
@@ -241,7 +229,7 @@ export function ProjectForm({
       <FormCard title="Zuständigkeit">
         <FormGrid cols={2}>
           <FormField label="Projektleitung">
-            {select(managerId, setManagerId, options.people, "Ich selbst")}
+            {select(managerId, setManagerId, managers, "Ich selbst")}
           </FormField>
           <FormField label="Abteilung" optional>
             {select(
@@ -249,17 +237,6 @@ export function ProjectForm({
               setDepartmentId,
               options.departments,
               "Keine",
-            )}
-          </FormField>
-          <FormField label="Kunde" optional>
-            {select(customerId, setCustomerId, options.customers, "Kein Kunde")}
-          </FormField>
-          <FormField label="Standort" optional>
-            {select(
-              locationId,
-              setLocationId,
-              options.locations,
-              "Kein Standort",
             )}
           </FormField>
         </FormGrid>
@@ -281,32 +258,12 @@ export function ProjectForm({
               value={endsOn}
             />
           </FormField>
-          <FormField label="Stundenbudget" optional>
-            <input
-              inputMode="decimal"
-              onChange={(event) => setBudgetHours(event.target.value)}
-              placeholder="z. B. 120"
-              value={budgetHours}
-            />
-          </FormField>
           <FormField label="Budget in CHF" optional>
             <input
               inputMode="decimal"
               onChange={(event) => setBudgetAmount(event.target.value)}
               placeholder="z. B. 18000"
               value={budgetAmount}
-            />
-          </FormField>
-          <FormField
-            hint="Ist-Kosten = gebuchte Stunden × Stundensatz."
-            label="Stundensatz in CHF"
-            optional
-          >
-            <input
-              inputMode="decimal"
-              onChange={(event) => setHourlyRate(event.target.value)}
-              placeholder="z. B. 150"
-              value={hourlyRate}
             />
           </FormField>
           <FormField

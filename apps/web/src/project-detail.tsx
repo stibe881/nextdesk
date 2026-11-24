@@ -147,8 +147,6 @@ function OverviewTab({
   );
   const facts: [string, string][] = [
     ["Projektleitung", project.managerName ?? "–"],
-    ["Kunde", project.customerName ?? "–"],
-    ["Standort", project.locationName ?? "–"],
     [
       "Zeitraum",
       `${dateLabel(project.startsOn)} – ${dateLabel(project.endsOn)}`,
@@ -316,20 +314,7 @@ function BudgetTab({
   const booked = project.stats.bookedMinutes;
   const tickets = data.links.filter((link) => link.targetKind === "ticket");
   const projectTickets = tickets.filter((link) => !link.taskId);
-  const rate = project.hourlyRateCents;
-  const cost = (minutes: number) =>
-    rate === null
-      ? "–"
-      : moneyLabel(Math.round((minutes * rate) / 60), project.currency);
-  const used = project.budgetMinutes
-    ? Math.round((booked / project.budgetMinutes) * 100)
-    : null;
-  const amountUsed =
-    project.budgetAmountCents && project.stats.actualAmountCents !== null
-      ? Math.round(
-          (project.stats.actualAmountCents / project.budgetAmountCents) * 100,
-        )
-      : null;
+  const used = estimated ? Math.round((booked / estimated) * 100) : null;
   const tone = (percent: number | null) =>
     percent === null || percent < 80 ? "good" : percent <= 100 ? "warn" : "bad";
 
@@ -340,35 +325,31 @@ function BudgetTab({
           <p>Gebucht</p>
           <strong>{hoursLabel(booked)}</strong>
           <small>
-            {project.budgetMinutes
-              ? `${used} % von ${hoursLabel(project.budgetMinutes)} Budget`
-              : "kein Stundenbudget"}
+            {used !== null
+              ? `${used} % der geplanten Zeit`
+              : "noch keine Schätzungen"}
           </small>
         </article>
         <article className="pj-card pj-kpi">
           <p>Geplant (Schätzungen)</p>
           <strong>{hoursLabel(estimated)}</strong>
           <small>
-            {project.budgetMinutes
-              ? estimated > project.budgetMinutes
-                ? `${hoursLabel(estimated - project.budgetMinutes)} über dem Budget`
-                : `${hoursLabel(project.budgetMinutes - estimated)} Reserve`
-              : ""}
+            {estimated > booked
+              ? `${hoursLabel(estimated - booked)} noch offen`
+              : estimated
+                ? "vollständig gebucht"
+                : ""}
           </small>
         </article>
-        <article className={`pj-card pj-kpi pj-kpi--${tone(amountUsed)}`}>
-          <p>Ist-Kosten</p>
+        <article className="pj-card pj-kpi">
+          <p>Budget</p>
           <strong>
-            {project.stats.actualAmountCents === null
+            {project.budgetAmountCents === null
               ? "–"
-              : moneyLabel(project.stats.actualAmountCents, project.currency)}
+              : moneyLabel(project.budgetAmountCents, project.currency)}
           </strong>
           <small>
-            {project.budgetAmountCents !== null
-              ? `von ${moneyLabel(project.budgetAmountCents, project.currency)}${amountUsed !== null ? ` (${amountUsed} %)` : ""}`
-              : rate === null
-                ? "kein Stundensatz erfasst"
-                : "kein Budget erfasst"}
+            {project.budgetAmountCents === null ? "kein Budget erfasst" : ""}
           </small>
         </article>
         <article className="pj-card pj-kpi">
@@ -394,7 +375,6 @@ function BudgetTab({
                 <th>Ist</th>
                 <th>Abweichung</th>
                 <th>Verbrauch</th>
-                <th>Ist-Kosten</th>
               </tr>
             </thead>
             <tbody>
@@ -436,7 +416,6 @@ function BudgetTab({
                         </div>
                       )}
                     </td>
-                    <td>{ist ? cost(ist) : "–"}</td>
                   </tr>
                 );
               })}
@@ -459,7 +438,6 @@ function BudgetTab({
                   </td>
                   <td>–</td>
                   <td>–</td>
-                  <td>{link.bookedMinutes ? cost(link.bookedMinutes) : "–"}</td>
                 </tr>
               ))}
             </tbody>
@@ -481,7 +459,6 @@ function BudgetTab({
                     ? `${Math.round((booked / estimated) * 100)} %`
                     : "–"}
                 </td>
-                <td>{cost(booked)}</td>
               </tr>
             </tfoot>
           </table>
@@ -1221,7 +1198,6 @@ export function ProjectDetail({
         <div className="pj-hero__title">
           <p className="pj-eyebrow">
             {project.number}
-            {project.customerName ? ` · ${project.customerName}` : ""}
             {project.archivedAt ? " · archiviert" : ""}
           </p>
           <h2>

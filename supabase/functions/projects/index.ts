@@ -6,6 +6,7 @@ import {
   noContent,
   parseJsonObject,
 } from "../_shared/http.ts";
+import { listAssignableTenantSupportAgents } from "../_shared/assignable-agents.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
   addCalendarDays,
@@ -684,6 +685,16 @@ async function overview(ctx: Ctx, body: Row) {
   };
 }
 
+/** Only people who work on tickets lead projects. */
+async function projectLeads(ctx: Ctx): Promise<{ id: string; name: string }[]> {
+  const { agents, error } = await listAssignableTenantSupportAgents(
+    ctx.admin,
+    ctx.tenantId,
+  );
+  if (error) throw failed();
+  return agents.map((agent) => ({ id: agent.id, name: agent.displayName }));
+}
+
 async function options(ctx: Ctx) {
   await assertInternal(ctx);
   const [
@@ -742,6 +753,7 @@ async function options(ctx: Ctx) {
     people: [...people]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name, "de")),
+    agents: await projectLeads(ctx),
     teams: pick(teams.data),
     customers: pick(customers.data),
     locations: pick(locations.data),
@@ -1178,7 +1190,22 @@ function projectFields(body: Row, partial: boolean): Row {
   return fields;
 }
 
-async function validateProjectReferences(ctx: Ctx, fields: Row) {
+async function validateProjectReferences(
+  ctx: Ctx,
+  fields: Row,
+  currentManagerId: string | null = null,
+) {
+  const managerId = (fields.manager_id as string | null) ?? null;
+  // Someone else can only be made lead if they are an agent; the person
+  // creating a project and a lead who is already set stay allowed.
+  if (
+    managerId &&
+    managerId !== ctx.actorId &&
+    managerId !== currentManagerId &&
+    !(await projectLeads(ctx)).some((agent) => agent.id === managerId)
+  ) {
+    throw invalid("Die Projektleitung muss ein Agent sein.");
+  }
   await Promise.all([
     assertTenantMember(ctx, (fields.manager_id as string | null) ?? null),
     assertTenantRow(
@@ -1387,7 +1414,11 @@ async function updateProject(ctx: Ctx, body: Row) {
   requireAdmin(access);
   const fields = projectFields(body, true);
   if (!Object.keys(fields).length) return { updated: false };
-  await validateProjectReferences(ctx, fields);
+  await validateProjectReferences(
+    ctx,
+    fields,
+    (project.manager_id as string | null) ?? null,
+  );
   assertDateOrder(
     fields.starts_on ?? project.starts_on,
     fields.ends_on ?? project.ends_on,

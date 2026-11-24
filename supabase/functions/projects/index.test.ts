@@ -217,6 +217,13 @@ class Query implements PromiseLike<Result> {
   or(_expression: string) {
     return this;
   }
+  // Date bounds of role assignments; the test tenant has none.
+  lte(_column: string, _value: unknown) {
+    return this;
+  }
+  gt(_column: string, _value: unknown) {
+    return this;
+  }
   order(column: string, options?: { ascending?: boolean }) {
     this.sorts.push({ column, ascending: options?.ascending !== false });
     return this;
@@ -585,7 +592,26 @@ Deno.test(
       Error,
     );
     // Someone who works in a project may use the selection lists.
-    assert(Array.isArray((await member({ type: "options" })).people));
+    const options = await member({ type: "options" });
+    assert(Array.isArray(options.people));
+    // Nobody in this tenant works on tickets, so nobody can be made lead.
+    assertEquals(options.agents, []);
+    await assertRejects(
+      () =>
+        lead({
+          type: "updateProject",
+          projectId: ids.projectId,
+          managerId: MEMBER,
+        }),
+      Error,
+      "Agent",
+    );
+    // The current lead and the person saving stay allowed.
+    await lead({
+      type: "updateProject",
+      projectId: ids.projectId,
+      managerId: LEAD,
+    });
   },
 );
 

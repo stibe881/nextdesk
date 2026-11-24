@@ -116,14 +116,11 @@ describe("traffic light suggestion", () => {
     actualAmountCents: null,
   };
   it("is green without findings", () => {
-    expect(
-      suggestHealth({ budgetMinutes: 600, endsOn: null, stats }).health,
-    ).toBe("green");
+    expect(suggestHealth({ endsOn: null, stats }).health).toBe("green");
   });
   it("turns yellow for late tasks or a plan beyond the end", () => {
     expect(
       suggestHealth({
-        budgetMinutes: null,
         endsOn: "2026-12-31",
         stats: { ...stats, overdueTasks: 2, latestDueOn: "2027-01-15" },
       }),
@@ -135,16 +132,15 @@ describe("traffic light suggestion", () => {
       ],
     });
   });
-  it("turns red for a late milestone or a blown budget", () => {
+  it("turns red for a late milestone or more time booked than planned", () => {
     expect(
       suggestHealth({
-        budgetMinutes: 60,
         endsOn: null,
-        stats: { ...stats, overdueMilestones: 1 },
+        stats: { ...stats, estimatedMinutes: 60, overdueMilestones: 1 },
       }).reasons,
     ).toEqual([
       "1 Meilenstein ist überfällig",
-      "Das Stundenbudget ist überschritten",
+      "Die geplanten Stunden sind überschritten",
     ]);
   });
 });

@@ -10,7 +10,7 @@ import {
   projectsCall,
 } from "./lib/projects-api";
 import {
-  budgetPercent,
+  plannedHoursPercent,
   dateLabel,
   hoursLabel,
   localToday,
@@ -62,8 +62,8 @@ function Dashboard({
     (sum, project) => sum + project.stats.bookedMinutes,
     0,
   );
-  const budget = running.reduce(
-    (sum, project) => sum + (project.budgetMinutes ?? 0),
+  const planned = running.reduce(
+    (sum, project) => sum + project.stats.estimatedMinutes,
     0,
   );
 
@@ -80,7 +80,7 @@ function Dashboard({
       .filter(
         (project) =>
           !needle ||
-          `${project.number} ${project.title} ${project.customerName ?? ""} ${project.managerName ?? ""}`
+          `${project.number} ${project.title} ${project.managerName ?? ""}`
             .toLowerCase()
             .includes(needle),
       )
@@ -121,12 +121,12 @@ function Dashboard({
         </article>
         {guest ? null : (
           <article className="pj-card pj-kpi">
-            <p>Stundenbudget</p>
+            <p>Gebuchte Stunden</p>
             <strong>{hoursLabel(booked)}</strong>
             <small>
-              {budget
-                ? `von ${hoursLabel(budget)} gebucht`
-                : "kein Budget erfasst"}
+              {planned
+                ? `von ${hoursLabel(planned)} geplant`
+                : "noch keine Schätzungen"}
             </small>
           </article>
         )}
@@ -156,7 +156,7 @@ function Dashboard({
           <input
             aria-label="Projekte durchsuchen"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Nummer, Titel, Kunde, Leitung"
+            placeholder="Nummer, Titel, Leitung"
             type="search"
             value={query}
           />
@@ -179,14 +179,14 @@ function Dashboard({
                   <th>Status</th>
                   <th>Leitung</th>
                   <th>Fortschritt</th>
-                  {guest ? null : <th>Budget</th>}
+                  {guest ? null : <th>Zeit</th>}
                   <th>Nächster Meilenstein</th>
                   <th>Ende</th>
                 </tr>
               </thead>
               <tbody>
                 {visible.map((project) => {
-                  const used = budgetPercent(project);
+                  const used = plannedHoursPercent(project);
                   const late =
                     project.endsOn &&
                     project.endsOn < today &&
@@ -204,9 +204,6 @@ function Dashboard({
                             <strong>{project.title}</strong>
                             <small>
                               {project.number}
-                              {project.customerName
-                                ? ` · ${project.customerName}`
-                                : ""}
                               {project.archivedAt ? " · archiviert" : ""}
                             </small>
                           </span>
@@ -240,16 +237,16 @@ function Dashboard({
                               <ProgressBar
                                 label={
                                   used === null
-                                    ? "Kein Budget"
-                                    : `Budget zu ${used} % verbraucht`
+                                    ? "Keine Schätzung"
+                                    : `${used} % der geplanten Zeit gebucht`
                                 }
                                 percent={used ?? 0}
                                 tone={budgetTone(used)}
                               />
                               <small>
                                 {hoursLabel(project.stats.bookedMinutes)}
-                                {project.budgetMinutes
-                                  ? ` von ${hoursLabel(project.budgetMinutes)}`
+                                {project.stats.estimatedMinutes
+                                  ? ` von ${hoursLabel(project.stats.estimatedMinutes)}`
                                   : ""}
                               </small>
                             </div>
