@@ -4,6 +4,88 @@
 -- unter «Meine offenen Tickets» der aufteilenden Person, und Antworten
 -- gingen nicht per Mail an die ursprüngliche anfragende Person. Jetzt werden
 -- anfragende Person, Kontakt, betroffene Person und Postfach übernommen.
+--
+-- Zusätzlich erhält die anfragende Person eine Mail («split_notice»): in wie
+-- viele Tickets die Anfrage aufgeteilt wurde, mit Nummern und Betreff, und die
+-- Bitte, künftig pro Anliegen ein eigenes Ticket zu erstellen.
+
+alter table public.mail_messages
+  drop constraint if exists mail_messages_kind_check;
+alter table public.mail_messages
+  add constraint mail_messages_kind_check
+  check (kind in (
+    'new_ticket', 'reply', 'acknowledgement', 'agent_reply', 'resolution', 'test',
+    'department_question', 'department_answer', 'ticket_copy', 'notification',
+    'security_notice', 'status_confirmation', 'status_change', 'rating_reminder',
+    'merge_notice', 'ticket_forward', 'split_notice'
+  ));
+
+-- Höchstens eine Aufteilungs-Mail pro Ticket.
+create unique index if not exists mail_messages_split_notice_unique
+  on public.mail_messages (ticket_id)
+  where kind = 'split_notice' and ticket_id is not null;
+
+-- Stellt die Mail über das Postfach, über das das Ticket kam, in die
+-- Warteschlange (wie die Zusammenführungs-Mail). Ohne Postfach oder
+-- Mailadresse der anfragenden Person entfällt sie. Ein Fehler hier darf das
+-- Aufteilen nie verhindern.
+create or replace function public.exchange_mail_enqueue_split_notice(p_ticket_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+declare
+  v_ticket record;
+  v_channel record;
+  v_recipient text;
+begin
+  select ticket.id, ticket.tenant_id, ticket.subject, ticket.requester_contact_id,
+         ticket.exchange_mail_channel_id
+  into v_ticket
+  from public.tickets ticket
+  where ticket.id = p_ticket_id;
+  if not found or v_ticket.exchange_mail_channel_id is null then
+    return;
+  end if;
+  if not public.exchange_mail_feature_enabled(v_ticket.tenant_id) then
+    return;
+  end if;
+  select channel.id, channel.mailbox_address, channel.configuration_version into v_channel
+  from public.exchange_mail_channels channel
+  where channel.tenant_id = v_ticket.tenant_id
+    and channel.status = 'active'
+    and channel.access_mode = 'delegated'
+    and channel.send_resolution
+    and channel.id = v_ticket.exchange_mail_channel_id
+  limit 1;
+  if not found then
+    return;
+  end if;
+  select requester.email into v_recipient
+  from public.ticket_requesters requester
+  where requester.id = v_ticket.requester_contact_id
+    and requester.tenant_id = v_ticket.tenant_id
+    and requester.email is not null;
+  if v_recipient is null then
+    return;
+  end if;
+  insert into public.mail_messages (
+    tenant_id, channel_id, exchange_configuration_version, direction, kind, ticket_id,
+    from_address, to_addresses, subject
+  ) values (
+    v_ticket.tenant_id, v_channel.id, v_channel.configuration_version, 'outbound',
+    'split_notice', v_ticket.id, v_channel.mailbox_address, array[v_recipient], v_ticket.subject
+  ) on conflict do nothing;
+exception when others then
+  return;
+end;
+$$;
+
+revoke all on function public.exchange_mail_enqueue_split_notice(uuid)
+  from public, anon, authenticated;
+grant execute on function public.exchange_mail_enqueue_split_notice(uuid)
+  to service_role;
 
 create or replace function public.ticket_split_create_children(p_tenant_id uuid, p_parent_ticket_id uuid, p_actor_id uuid, p_children jsonb)
  RETURNS jsonb
@@ -111,6 +193,7 @@ begin
 
   insert into public.ticket_events (ticket_id, actor_id, event_type, payload)
   values (v_parent.id, p_actor_id, 'ticket.split', jsonb_build_object('children', v_result));
+  perform public.exchange_mail_enqueue_split_notice(v_parent.id);
   return v_result;
 end;
 $function$;

@@ -241,6 +241,7 @@ export function customerTicketEmailKindForOutbound(
     messageKind === "resolution" ||
     messageKind === "rating_reminder" ||
     messageKind === "merge_notice" ||
+    messageKind === "split_notice" ||
     messageKind === "test"
   )
     return messageKind;
@@ -3008,12 +3009,16 @@ export async function dispatchOutboundMessage(
       }
     }
     if (message.ticket_id) {
-      const ticketResult = await admin
+      // Das aufgeteilte Ticket liegt nach dem Aufteilen im Papierkorb; nur
+      // die Aufteilungs-Mail darf es noch lesen.
+      const ticketQuery = admin
         .from("tickets")
         .select(
           "id, ticket_number, subject, requester_contact_id, is_security_case",
-        )
-        .is("deleted_at", null)
+        );
+      const ticketResult = await (message.kind === "split_notice"
+        ? ticketQuery
+        : ticketQuery.is("deleted_at", null))
         .eq("id", message.ticket_id)
         .eq("tenant_id", message.tenant_id)
         .maybeSingle();
@@ -3117,6 +3122,41 @@ export async function dispatchOutboundMessage(
         `Zu Ihrem Anliegen wurden bei uns mehrere Tickets erstellt, zum Beispiel weil mehrere E-Mails zum selben Thema eingegangen sind. Damit nichts doppelt bearbeitet wird, haben wir sie zusammengeführt.\n\nIhre Anfrage wird unter Ticket ${mergePrimaryNumber}${primarySubject ? ` «${primarySubject}»` : ""} weiterbearbeitet. Sie müssen nichts tun; weitere Nachrichten erhalten Sie zu diesem Ticket.`,
       );
     }
+    // Aufgeteilt: in welche Tickets und die Bitte um ein Ticket pro Anliegen.
+    let splitCount = 0;
+    if (message.kind === "split_notice") {
+      const parts = await admin
+        .from("tickets")
+        .select("ticket_number, subject")
+        .eq("tenant_id", message.tenant_id)
+        .eq("parent_ticket_id", ticket?.id ?? message.ticket_id)
+        .is("deleted_at", null)
+        .order("ticket_number");
+      const rows = (parts.data ?? []) as Row[];
+      splitCount = rows.length;
+      if (parts.error || splitCount === 0) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "split_parts_unavailable",
+        });
+        return;
+      }
+      const contact = await admin
+        .from("ticket_requesters")
+        .select("display_name")
+        .eq("id", ticket?.requester_contact_id)
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle();
+      bodyText = splitNoticeText({
+        formality,
+        firstName: firstNameOf(asString(contact.data?.display_name)),
+        originalNumber: asString(ticket?.ticket_number) ?? "",
+        parts: rows.map((row) => ({
+          number: asString(row.ticket_number) ?? "",
+          subject: asString(row.subject) ?? "",
+        })),
+      });
+    }
     if (message.kind === "rating_reminder") {
       // Erinnerung nur, solange das Ticket gelöst und noch nicht bewertet ist.
       const rated = await admin
@@ -3201,6 +3241,8 @@ export async function dispatchOutboundMessage(
             message.kind === "resolution" ||
             message.kind === "merge_notice"
           ? "Ticket im Portal ansehen"
+          : message.kind === "split_notice"
+            ? "Tickets im Portal ansehen"
           : null;
     const html = internalDepartmentNotice
       ? internalNoticeHtmlTemplate({
@@ -3264,6 +3306,8 @@ export async function dispatchOutboundMessage(
               ? `${tone(formality, "Wie zufrieden warst du?", "Wie zufrieden waren Sie?")} [${ticketNumber}] ${ticketSubject}`
               : message.kind === "merge_notice" && mergePrimaryNumber
                 ? `[${ticketNumber}] Weiter unter ${mergePrimaryNumber}: ${ticketSubject}`
+              : message.kind === "split_notice" && splitCount > 0
+                ? `[${ticketNumber}] In ${splitCount} ${splitCount === 1 ? "Ticket" : "Tickets"} aufgeteilt: ${ticketSubject}`
               : `[${ticketNumber}] ${ticketSubject}`,
       body: { contentType: "HTML", content: html },
       toRecipients: [{ emailAddress: { address: recipient } }],
@@ -3484,4 +3528,62 @@ export async function removeSubscriptionsForChannel(
     .eq("tenant_id", channel.tenant_id)
     .in("status", ["active", "removal_pending"]);
   if (removed.error) throw new Error("subscription_cleanup_failed");
+}
+
+/** Vorname für die Anrede aus dem Anzeigenamen des Kontakts. */
+export function firstNameOf(displayName: string | null): string | null {
+  const first = (displayName ?? "").trim().split(/\s+/u)[0] ?? "";
+  if (!first || first.includes("@") || /anfragende/iu.test(displayName ?? "")) {
+    return null;
+  }
+  return first.charAt(0).toLocaleUpperCase("de-CH") + first.slice(1);
+}
+
+/** Text der Mail, wenn ein Ticket in mehrere Tickets aufgeteilt wurde. */
+export function splitNoticeText(input: {
+  formality: Formality;
+  firstName: string | null;
+  originalNumber: string;
+  parts: { number: string; subject: string }[];
+}): string {
+  const { formality, firstName, originalNumber, parts } = input;
+  const greeting = firstName
+    ? tone(formality, `Hallo ${firstName}`, `Guten Tag ${firstName}`)
+    : tone(formality, "Hallo", "Guten Tag");
+  const list = parts
+    .map((part) => `• ${part.number}${part.subject ? ` – ${part.subject}` : ""}`)
+    .join("\n");
+  if (parts.length === 1) {
+    return [
+      greeting,
+      tone(
+        formality,
+        `Deine Anfrage wird neu unter diesem Ticket weiterbearbeitet:\n${list}`,
+        `Ihre Anfrage wird neu unter diesem Ticket weiterbearbeitet:\n${list}`,
+      ),
+      tone(
+        formality,
+        `Das ursprüngliche Ticket ${originalNumber} wird nicht weitergeführt. Du musst nichts tun; weitere Nachrichten erhältst du zum neuen Ticket.`,
+        `Das ursprüngliche Ticket ${originalNumber} wird nicht weitergeführt. Sie müssen nichts tun; weitere Nachrichten erhalten Sie zum neuen Ticket.`,
+      ),
+    ].join("\n\n");
+  }
+  return [
+    greeting,
+    tone(
+      formality,
+      `Deine Anfrage enthielt mehrere Anliegen. Damit wir jedes davon sauber und von der richtigen Stelle bearbeiten lassen können, haben wir sie in ${parts.length} Tickets aufgeteilt:\n${list}`,
+      `Ihre Anfrage enthielt mehrere Anliegen. Damit wir jedes davon sauber und von der richtigen Stelle bearbeiten lassen können, haben wir sie in ${parts.length} Tickets aufgeteilt:\n${list}`,
+    ),
+    tone(
+      formality,
+      `Das ursprüngliche Ticket ${originalNumber} wird nicht weitergeführt. Du musst nichts tun. Zu jedem Ticket erhältst du die weiteren Nachrichten separat. Bitte antworte jeweils auf die Mail des passenden Tickets.`,
+      `Das ursprüngliche Ticket ${originalNumber} wird nicht weitergeführt. Sie müssen nichts tun. Zu jedem Ticket erhalten Sie die weiteren Nachrichten separat. Bitte antworten Sie jeweils auf die Mail des passenden Tickets.`,
+    ),
+    tone(
+      formality,
+      "Unsere Bitte: Erstelle künftig pro Anliegen ein eigenes Ticket bzw. schreibe pro Anliegen eine eigene E-Mail. So landet jede Anfrage direkt bei der richtigen Stelle und wird schneller erledigt.",
+      "Unsere Bitte: Erstellen Sie künftig pro Anliegen ein eigenes Ticket bzw. schreiben Sie pro Anliegen eine eigene E-Mail. So landet jede Anfrage direkt bei der richtigen Stelle und wird schneller erledigt.",
+    ),
+  ].join("\n\n");
 }

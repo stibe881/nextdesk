@@ -499,6 +499,7 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 3. Lege im Formular die Teil-Tickets an (Betreff, Beschreibung, Abteilung, optional Team und Person) und klicke auf **Teil-Tickets erstellen**.
 4. Jedes Teil-Ticket zeigt über der Beschreibung den Hinweis «Teil x von y eines aufgeteilten Tickets» mit der Nummer des ursprünglichen Tickets und den anderen Teilen.
 5. Das ursprüngliche Ticket wird danach gelöscht (90 Tage im Papierkorb wiederherstellbar), und du landest im ersten Teil-Ticket. Ohne Recht zum Löschen bleibt es bestehen.
+6. Die anfragende Person bleibt in allen Teil-Tickets dieselbe und erhält per Mail eine Nachricht, in welche Tickets ihre Anfrage aufgeteilt wurde, mit der Bitte, künftig pro Anliegen ein eigenes Ticket zu erstellen (nur bei Tickets mit Mailadresse und aktivem Postfach).
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 
