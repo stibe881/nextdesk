@@ -1,4 +1,4 @@
-import { ArrowLeft, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Pencil } from "lucide-react";
 import {
   type FormEvent,
   useCallback,
@@ -24,6 +24,7 @@ import {
   type ScheduleOutcome,
 } from "./lib/projects-api";
 import {
+  applyMove,
   buildTree,
   dateLabel,
   dateTimeLabel,
@@ -35,6 +36,7 @@ import {
   linkStateLabel,
   localToday,
   moneyLabel,
+  type Placement,
   PROJECT_STATUS_LABELS,
   ROLE_LABELS,
   rollupTasks,
@@ -130,16 +132,33 @@ function eventDetail(payload: Record<string, unknown>): string {
 
 function OverviewTab({
   data,
+  onEditProject,
   onOpenTask,
   run,
   today,
 }: {
   data: ProjectDetailData;
+  /** Opens the project form; absent when the person may not edit it. */
+  onEditProject?: (() => void) | undefined;
   onOpenTask: (taskId: string) => void;
   run: Run;
   today: string;
 }) {
   const { access, project } = data;
+  const [description, setDescription] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const saveDescription = async (event: FormEvent) => {
+    event.preventDefault();
+    if (description === null) return;
+    setSaving(true);
+    const result = (await run({
+      type: "updateProject",
+      projectId: project.id,
+      description,
+    })) as { updated?: boolean } | undefined;
+    setSaving(false);
+    if (result) setDescription(null);
+  };
   const milestones = data.tasks
     .filter((task) => task.kind === "milestone")
     .sort((a, b) => (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999"));
@@ -164,8 +183,55 @@ function OverviewTab({
     <div className="pj-layout">
       <div className="pj-stack">
         <section className="pj-card">
-          <h3>Beschreibung</h3>
-          {project.description ? (
+          <div className="pj-card__head">
+            <h3>Beschreibung</h3>
+            {access.canAdmin && description === null ? (
+              <button
+                aria-label="Beschreibung bearbeiten"
+                className="pj-icon pj-icon--neutral"
+                onClick={() => setDescription(project.description ?? "")}
+                title="Beschreibung bearbeiten"
+                type="button"
+              >
+                <Pencil aria-hidden="true" size={14} />
+              </button>
+            ) : null}
+          </div>
+          {description !== null ? (
+            <form
+              className="pj-compose"
+              onSubmit={(event) => void saveDescription(event)}
+            >
+              <textarea
+                aria-label="Beschreibung"
+                autoFocus
+                maxLength={20000}
+                onChange={(event) => setDescription(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setDescription(null);
+                }}
+                placeholder="Worum geht es in diesem Projekt? (Markdown möglich)"
+                rows={8}
+                value={description}
+              />
+              <div className="pj-actions">
+                <button
+                  className="pj-button"
+                  onClick={() => setDescription(null)}
+                  type="button"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  className="pj-button pj-button--primary"
+                  disabled={saving}
+                  type="submit"
+                >
+                  Speichern
+                </button>
+              </div>
+            </form>
+          ) : project.description ? (
             <div className="pj-markdown">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {project.description}
@@ -252,7 +318,20 @@ function OverviewTab({
       </div>
       <div className="pj-stack">
         <section className="pj-card">
-          <h3>Eckdaten</h3>
+          <div className="pj-card__head">
+            <h3>Eckdaten</h3>
+            {onEditProject ? (
+              <button
+                aria-label="Eckdaten bearbeiten"
+                className="pj-icon pj-icon--neutral"
+                onClick={onEditProject}
+                title="Eckdaten bearbeiten"
+                type="button"
+              >
+                <Pencil aria-hidden="true" size={14} />
+              </button>
+            ) : null}
+          </div>
           <dl className="pj-facts">
             {facts.map(([label, value]) => (
               <div key={label}>
@@ -1292,6 +1371,16 @@ export function ProjectDetail({
     canEdit: access.canEdit,
     dependencies: data.dependencies,
     onOpenTask: setTaskId,
+    onMove: (movedId: string, placement: Placement) => {
+      // Shown at once; the server renumbers and the reload confirms it.
+      version.current += 1;
+      setData((current) =>
+        current
+          ? { ...current, tasks: applyMove(current.tasks, movedId, placement) }
+          : current,
+      );
+      void run({ type: "moveTask", taskId: movedId, ...placement });
+    },
     people: options?.people ?? [],
     project,
     rollup,
@@ -1544,6 +1633,9 @@ export function ProjectDetail({
       {tab === "overview" ? (
         <OverviewTab
           data={data}
+          onEditProject={
+            access.canAdmin && options ? () => setEditing(true) : undefined
+          }
           onOpenTask={setTaskId}
           run={run}
           today={today}

@@ -1847,6 +1847,76 @@ async function removeTaskFiles(ctx: Ctx, taskIds: string[]) {
   if (paths.length) await ctx.admin.storage.from(BUCKET).remove(paths);
 }
 
+/**
+ * Moves an element to a place in the plan: under `parentId` (null = top
+ * level) and directly before `beforeId` (null = at the end). The siblings are
+ * renumbered so the order is unambiguous.
+ */
+async function moveTask(ctx: Ctx, body: Row) {
+  const { task, project, access } = await loadTask(ctx, body.taskId);
+  requireEdit(access);
+  const projectId = project.id as string;
+  const taskId = task.id as string;
+  const parentId = optionalUuid(body.parentId);
+  const beforeId = optionalUuid(body.beforeId);
+  if (parentId === taskId || beforeId === taskId) {
+    throw invalid(
+      "Ein Element kann nicht neben oder unter sich selbst stehen.",
+    );
+  }
+  await validateTaskReferences(
+    ctx,
+    projectId,
+    { parent_task_id: parentId },
+    taskId,
+  );
+
+  if (parentId !== ((task.parent_task_id as string | null) ?? null)) {
+    const { error } = await ctx.admin
+      .from("project_tasks")
+      .update({ parent_task_id: parentId, updated_by: ctx.actorId })
+      .eq("project_id", projectId)
+      .eq("id", taskId);
+    if (error) throw hierarchyError(error);
+  }
+
+  const siblings = (await projectTasks(ctx, projectId)).filter(
+    (other) =>
+      ((other.parent_task_id as string | null) ?? null) === parentId &&
+      other.id !== taskId,
+  );
+  const index = beforeId
+    ? siblings.findIndex((other) => other.id === beforeId)
+    : -1;
+  const ordered = siblings.map((other) => other.id as string);
+  ordered.splice(index < 0 ? ordered.length : index, 0, taskId);
+  const current = new Map(
+    [...siblings, task].map((other) => [
+      other.id as string,
+      Number(other.position),
+    ]),
+  );
+  for (const [position, id] of ordered.entries()) {
+    if (current.get(id) === position) continue;
+    const { error } = await ctx.admin
+      .from("project_tasks")
+      .update({ position })
+      .eq("project_id", projectId)
+      .eq("id", id);
+    if (error) throw failed();
+  }
+  // A new parent changes whose period the element belongs to.
+  const schedule =
+    parentId !== ((task.parent_task_id as string | null) ?? null)
+      ? await settleSchedule(ctx, project)
+      : { applied: [], pending: [] };
+  return {
+    moved: true,
+    shifted: schedule.applied.length,
+    pending: schedule.pending.length,
+  };
+}
+
 async function deleteTask(ctx: Ctx, body: Row) {
   const { task, project, access } = await loadTask(ctx, body.taskId);
   requireEdit(access);
@@ -3253,6 +3323,8 @@ export async function dispatch(ctx: Ctx, body: Row): Promise<Row> {
       return await updateTask(ctx, body);
     case "bulkUpdateTasks":
       return await bulkUpdateTasks(ctx, body);
+    case "moveTask":
+      return await moveTask(ctx, body);
     case "deleteTask":
       return await deleteTask(ctx, body);
     case "addChecklistItem":

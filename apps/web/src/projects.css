@@ -1857,3 +1857,48 @@
 .pj-icon:disabled {
   opacity: 0.4;
 }
+
+/* Zeilen im Zeitplan verschieben */
+
+.pj-gantt__label[draggable="true"] {
+  cursor: grab;
+}
+
+.pj-gantt__handle {
+  flex: none;
+  color: var(--muted);
+  opacity: 0;
+}
+
+.pj-gantt__row:hover .pj-gantt__handle {
+  opacity: 0.7;
+}
+
+.pj-gantt__row.is-dragging {
+  opacity: 0.45;
+}
+
+.pj-gantt__row.is-drop-before {
+  box-shadow: inset 0 3px 0 var(--primary);
+}
+
+.pj-gantt__row.is-drop-after {
+  box-shadow: inset 0 -3px 0 var(--primary);
+}
+
+.pj-gantt__row.is-drop-into .pj-gantt__label,
+.pj-gantt__row.is-drop-into .pj-gantt__lane {
+  background-color: var(--primary-soft);
+}
+
+.pj-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.projects .pj-card__head h3 {
+  margin-bottom: 0;
+}

@@ -926,6 +926,42 @@ Deno.test(
   },
 );
 
+Deno.test("rows move to a new place and into or out of a phase", async () => {
+  const { as } = world();
+  const lead = as(LEAD);
+  const ids = await plan(lead);
+  const titles = async (parentId: string | null) =>
+    (
+      (await lead({ type: "getProject", projectId: ids.projectId }))
+        .tasks as Row[]
+    )
+      .filter((task) => task.parentId === parentId)
+      .sort((a, b) => (a.position as number) - (b.position as number))
+      .map((task) => task.title);
+  const move = (
+    taskId: string,
+    parentId: string | null,
+    beforeId: string | null,
+  ) => lead({ type: "moveTask", taskId, parentId, beforeId });
+
+  // Within the phase: «Einbauen» in front of «Konfigurieren».
+  await move(ids.second, ids.phase, ids.first);
+  assertEquals(await titles(ids.phase), ["Einbauen", "Konfigurieren"]);
+
+  // Out of the phase, to the very top.
+  await move(ids.first, null, ids.phase);
+  assertEquals(await titles(null), ["Konfigurieren", "Umsetzung", "Abnahme"]);
+  assertEquals(await titles(ids.phase), ["Einbauen"]);
+
+  // Back into the phase at the end; the phase to the end of the top level.
+  await move(ids.first, ids.phase, null);
+  assertEquals(await titles(ids.phase), ["Einbauen", "Konfigurieren"]);
+  await move(ids.phase, null, null);
+  assertEquals(await titles(null), ["Abnahme", "Umsetzung"]);
+
+  await assertRejects(() => move(ids.first, ids.first, null), Error);
+});
+
 Deno.test(
   "the workload counts project work of everyone with something to do",
   async () => {

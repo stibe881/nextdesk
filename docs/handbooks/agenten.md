@@ -2117,6 +2117,22 @@ Eine Aufgabe unter einer Aufgabe ist eine Unteraufgabe. Mehr dazu unter «Projek
 
 Mehr dazu unter «Projekte».
 
+### Wie ändere ich die Reihenfolge im Zeitplan?
+
+1. Öffne das Projekt und das Register **Zeitplan**.
+2. Ziehe eine Zeile links am Namen nach oben oder unten; eine Linie zeigt, wo sie landet.
+3. Lasse sie auf dem oberen oder unteren Rand einer Zeile los, um sie davor oder danach einzuordnen, oder auf der Mitte einer Phase, um sie in die Phase zu legen.
+
+Phasen bleiben auf der obersten Ebene, Meilensteine stehen oben oder in einer Phase. Mehr dazu unter «Projekte».
+
+### Wie ändere ich Beschreibung und Eckdaten eines Projekts?
+
+1. Öffne das Projekt und das Register **Überblick**.
+2. Klicke bei **Beschreibung** auf den Stift, schreibe den Text und klicke auf **Speichern**.
+3. Klicke bei **Eckdaten** auf den Stift, um Projektleitung, Zeitraum, Budget und Terminplanung im Formular zu ändern.
+
+Die Stifte erscheinen nur für die Projektleitung. Mehr dazu unter «Projekte».
+
 ### Wie verknüpfe ich Aufgaben mit einer Abhängigkeit?
 
 1. Öffne die Aufgabe, die warten soll, mit einem Klick auf ihren Titel.
@@ -3435,7 +3451,9 @@ findest du «Projekt bearbeiten», «Termine prüfen», «Als Vorlage speichern�
 «Archivieren» und «Projekt löschen».
 
 Das Register **Überblick** zeigt Beschreibung, Meilensteine, überfällige
-Aufgaben, Kommentare zum Projekt, Eckdaten und den Verlauf.
+Aufgaben, Kommentare zum Projekt, Eckdaten und den Verlauf. Mit dem Stift bei
+«Beschreibung» und «Eckdaten» ändert die Projektleitung den Text und die
+Projektdaten.
 
 ![Überblick eines Projekts mit Meilensteinen und Verlauf](images/ag-projekt-ueberblick.jpg)
 
@@ -3457,6 +3475,11 @@ Balken ziehst du mit der Maus: der ganze Balken verschiebt die Aufgabe, der
 rechte Rand ändert ihr Ende. Hängen andere Elemente davon ab, werden sie
 nachgeführt. Dabei gilt: Nachfolger rücken nur nach hinten, die Dauer in
 Arbeitstagen bleibt erhalten, und Erledigtes bleibt stehen.
+
+Die Reihenfolge der Zeilen änderst du ebenfalls mit der Maus: Eine Zeile links am
+Namen ziehen und auf dem oberen oder unteren Rand einer anderen Zeile
+loslassen. Auf der Mitte einer Phase losgelassen, wandert das Element in
+diese Phase.
 
 ![Zeitplan eines Projekts mit Abhängigkeiten](images/ag-projekt-zeitplan.jpg)
 

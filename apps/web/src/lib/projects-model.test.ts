@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectTask } from "./projects-api";
 import {
+  applyMove,
   buildTree,
+  canBeChildOf,
   dependencyPath,
+  dropPlacement,
   EMPTY_FILTER,
   filterTasks,
   ganttBar,
@@ -77,6 +80,55 @@ describe("project tree", () => {
 
   it("keeps elements whose parent is missing", () => {
     expect(buildTree([task("x", { parentId: "gone" })])[0]?.depth).toBe(0);
+  });
+});
+
+describe("moving rows", () => {
+  const order = (tasks: ProjectTask[]) =>
+    buildTree(tasks).map((row) => `${row.depth}:${row.task.id}`);
+
+  it("drops before and after a row among its siblings", () => {
+    const before = dropPlacement(plan, "b", "a", "before", false)!;
+    expect(before).toEqual({ parentId: "phase", beforeId: "a" });
+    expect(order(applyMove(plan, "b", before))).toEqual([
+      "0:phase",
+      "1:b",
+      "2:sub",
+      "1:a",
+      "0:ms",
+    ]);
+    // After the last top-level row: at the end.
+    expect(dropPlacement(plan, "a", "ms", "after", false)).toEqual({
+      parentId: null,
+      beforeId: null,
+    });
+  });
+
+  it("moves into a phase, as first child below an open one", () => {
+    expect(dropPlacement(plan, "ms", "phase", "into", true)).toEqual({
+      parentId: "phase",
+      beforeId: null,
+    });
+    const first = dropPlacement(plan, "ms", "phase", "after", true)!;
+    expect(first).toEqual({ parentId: "phase", beforeId: "a" });
+    expect(order(applyMove(plan, "ms", first))[1]).toBe("1:ms");
+    // A closed phase is followed by the next top-level row.
+    expect(dropPlacement(plan, "a", "phase", "after", false)).toEqual({
+      parentId: null,
+      beforeId: "ms",
+    });
+  });
+
+  it("refuses places the plan does not allow", () => {
+    // A phase stays on top, nothing goes below a milestone or itself.
+    expect(dropPlacement(plan, "phase", "a", "before", false)).toBeNull();
+    expect(dropPlacement(plan, "a", "ms", "into", false)).toBeNull();
+    expect(dropPlacement(plan, "b", "sub", "before", false)).toBeNull();
+    // No subtask of a subtask, and a task with subtasks is no subtask.
+    expect(dropPlacement(plan, "a", "sub", "into", false)).toBeNull();
+    expect(dropPlacement(plan, "b", "a", "into", false)).toBeNull();
+    expect(canBeChildOf(plan, "a", "b")).toBe(true);
+    expect(canBeChildOf(plan, "ms", "b")).toBe(false);
   });
 });
 
