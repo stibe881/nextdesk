@@ -72,7 +72,12 @@ type Entry = {
   changeTypes?: ChangeType[];
   canEdit?: boolean;
   /** ICT-Verantwortung (Agent), änderbar mit «canAssign». */
-  ictResponsibleUserId?: string;
+  ictResponsibleUserId?: string | null;
+  /** Abteilung, über die der Eintritt gemeldet wurde. */
+  departmentId?: string | null;
+  departmentName?: string | null;
+  /** Agenten der Teams dieser Abteilung. */
+  assignableAgentIds?: string[];
   canAssign?: boolean;
   /** Sichtbar als Stellvertretung für diese Person. */
   delegatedFor?: string | null;
@@ -88,6 +93,8 @@ type Workspace = {
   people: Person[];
   /** Agenten, denen sich Eintritte zuweisen lassen. */
   agents?: Person[];
+  /** Abteilungen mit Teams und ihren Agenten (Auswahl beim Erfassen). */
+  departments?: { id: string; name: string; agentIds: string[] }[];
   templates: Template[];
   entries: Entry[];
 };
@@ -106,6 +113,7 @@ const emptyDraft = () => ({
   location: "",
   managerUserId: "",
   ictResponsibleUserId: "",
+  departmentId: "",
   templateId: "",
   kind: "onboarding" as EntryKind,
   changeTypes: [] as ChangeType[],
@@ -879,15 +887,24 @@ function progress(tasks: Task[]) {
 
 export type EntryFilter = "open" | "done" | "all";
 
-/** Auswahl «ICT-Verantwortung»: Agenten, die aktuelle Person immer dabei. */
+/**
+ * Auswahl «ICT-Verantwortung»: die Agenten der Teams der Abteilung; eine
+ * bisherige Person ausserhalb davon bleibt sichtbar. «Nicht zugewiesen»
+ * steht immer davor (leere ID).
+ */
 export function assignOptions(
   agents: readonly { id: string; displayName: string }[],
-  currentId: string,
+  allowedIds: readonly string[] | undefined,
+  currentId: string | null | undefined,
   currentName: string,
 ): { id: string; displayName: string }[] {
-  return agents.some((agent) => agent.id === currentId)
-    ? [...agents]
-    : [{ id: currentId, displayName: currentName }, ...agents];
+  const allowed = allowedIds ? new Set(allowedIds) : null;
+  const options = agents.filter((agent) => !allowed || allowed.has(agent.id));
+  const current =
+    currentId && !options.some((agent) => agent.id === currentId)
+      ? [{ id: currentId, displayName: currentName }]
+      : [];
+  return [{ id: "", displayName: "Nicht zugewiesen" }, ...current, ...options];
 }
 
 /** Datumsbereiche (JJJJ-MM-TT, leer = offen) für Eintrittsdatum und Meldung. */
@@ -1160,13 +1177,13 @@ export function Onboarding({
       !draft.employeeName.trim() ||
       !draft.startsOn ||
       !draft.managerUserId ||
-      !draft.ictResponsibleUserId ||
+      !draft.departmentId ||
       (!isChange && !draft.templateId)
     ) {
       setErrorMessage(
         tn(
-          "Bitte fülle Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus.",
-          "Bitte füllen Sie Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus.",
+          "Bitte fülle Name, Datum, Führungsperson, Abteilung und Vorlage aus.",
+          "Bitte füllen Sie Name, Datum, Führungsperson, Abteilung und Vorlage aus.",
         ),
       );
       return;
@@ -1183,7 +1200,8 @@ export function Onboarding({
           organisationUnit: draft.organisationUnit.trim() || null,
           location: draft.location.trim() || null,
           managerUserId: draft.managerUserId,
-          ictResponsibleUserId: draft.ictResponsibleUserId,
+          ictResponsibleUserId: draft.ictResponsibleUserId || null,
+          departmentId: draft.departmentId || null,
           kind: draft.kind,
           ...(isChange
             ? {
@@ -1254,8 +1272,9 @@ export function Onboarding({
       setPending(false);
     }
   }
-  async function assignEntry(entry: Entry, userId: string) {
-    if (!supabase || !userId || userId === entry.ictResponsibleUserId) return;
+  async function assignEntry(entry: Entry, value: string) {
+    const userId = value || null;
+    if (!supabase || userId === (entry.ictResponsibleUserId ?? null)) return;
     const label = entryKindWithArticle(entry.kind);
     setPending(true);
     setErrorMessage("");
@@ -1274,9 +1293,11 @@ export function Onboarding({
       const requestedName =
         typeof result.requestedName === "string" ? result.requestedName : null;
       setNotice(
-        result.redirected === true && assignedName
-          ? `${requestedName ?? "Die gewählte Person"} ist abwesend. ${label} von «${entry.employeeName}» ging an die Stellvertretung ${assignedName}.`
-          : `${label} von «${entry.employeeName}» ist jetzt ${assignedName ?? "der gewählten Person"} zugewiesen.`,
+        userId === null
+          ? `${label} von «${entry.employeeName}» ist nicht mehr zugewiesen.`
+          : result.redirected === true && assignedName
+            ? `${requestedName ?? "Die gewählte Person"} ist abwesend. ${label} von «${entry.employeeName}» ging an die Stellvertretung ${assignedName}.`
+            : `${label} von «${entry.employeeName}» ist jetzt ${assignedName ?? "der gewählten Person"} zugewiesen.`,
       );
       await load(true);
     } catch (error) {
@@ -1385,7 +1406,16 @@ export function Onboarding({
           {canRequest ? (
             <button
               className="primary-button"
-              onClick={() => setEditor(true)}
+              onClick={() => {
+                // Nur eine Abteilung mit Teams: gleich vorwählen.
+                const departments = workspace?.departments ?? [];
+                setDraft((current) =>
+                  current.departmentId || departments.length !== 1
+                    ? current
+                    : { ...current, departmentId: departments[0]!.id },
+                );
+                setEditor(true);
+              }}
               type="button"
             >
               <Plus size={17} /> Eintritt, Austritt oder Mutation planen
@@ -1673,9 +1703,29 @@ export function Onboarding({
                   ))}
                 </select>
               </FormField>
-              <FormField label="ICT-Verantwortung" required>
+              <FormField label="Zuständige Abteilung" required>
                 <select
                   required
+                  value={draft.departmentId}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      departmentId: event.target.value,
+                      ictResponsibleUserId: "",
+                    })
+                  }
+                >
+                  <option value="">Abteilung auswählen …</option>
+                  {workspace?.departments?.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="ICT-Verantwortung">
+                <select
+                  disabled={!draft.departmentId}
                   value={draft.ictResponsibleUserId}
                   onChange={(event) =>
                     setDraft({
@@ -1684,9 +1734,15 @@ export function Onboarding({
                     })
                   }
                 >
-                  <option value="">Person auswählen …</option>
-                  {workspace?.people.map((person) => (
-                    <option key={person.id} value={person.id}>
+                  {assignOptions(
+                    workspace?.agents ?? [],
+                    workspace?.departments?.find(
+                      (department) => department.id === draft.departmentId,
+                    )?.agentIds ?? [],
+                    null,
+                    "",
+                  ).map((person) => (
+                    <option key={person.id || "none"} value={person.id}>
                       {person.displayName}
                     </option>
                   ))}
@@ -1985,7 +2041,14 @@ export function Onboarding({
                         </li>
                         <li>
                           <UserRound aria-hidden="true" size={13} />
-                          ICT: {entry.ictResponsibleName}
+                          ICT:{" "}
+                          {entry.ictResponsibleUserId ? (
+                            entry.ictResponsibleName
+                          ) : (
+                            <strong className="onboarding__unassigned">
+                              Nicht zugewiesen
+                            </strong>
+                          )}
                         </li>
                       </ul>
                       {entry.kind === "change" && entry.changeTypes?.length ? (
@@ -2247,7 +2310,7 @@ export function Onboarding({
                         />
                       ) : null}
                       <footer className="onboarding__entry-foot">
-                        {entry.canAssign && entry.ictResponsibleUserId ? (
+                        {entry.canAssign ? (
                           <label className="onboarding__assign">
                             <span>ICT-Verantwortung</span>
                             <select
@@ -2255,14 +2318,18 @@ export function Onboarding({
                               onChange={(event) =>
                                 void assignEntry(entry, event.target.value)
                               }
-                              value={entry.ictResponsibleUserId}
+                              value={entry.ictResponsibleUserId ?? ""}
                             >
                               {assignOptions(
                                 workspace?.agents ?? [],
+                                entry.assignableAgentIds,
                                 entry.ictResponsibleUserId,
                                 entry.ictResponsibleName,
                               ).map((person) => (
-                                <option key={person.id} value={person.id}>
+                                <option
+                                  key={person.id || "none"}
+                                  value={person.id}
+                                >
                                   {person.displayName}
                                 </option>
                               ))}

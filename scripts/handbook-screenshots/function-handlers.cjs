@@ -3328,6 +3328,13 @@ const HANDLERS = {
         { id: D.uid("0c0c0c0c", 2), displayName: "Daniel Frei" },
         { id: D.uid("0c0c0c0c", 1), displayName: "Mara Keller" },
       ],
+      departments: [
+        {
+          id: D.uid("0f0f0f0f", 1),
+          name: "ICT",
+          agentIds: [D.uid("0c0c0c0c", 1), D.uid("0c0c0c0c", 2)],
+        },
+      ],
       templates: [
         { id: D.uid("0d0d0d0d", 1), key: "standard", name: "Standard" },
       ],
@@ -3341,6 +3348,9 @@ const HANDLERS = {
           managerName: "Thomas Huber",
           ictResponsibleName: "Mara Keller",
           ictResponsibleUserId: D.uid("0c0c0c0c", 1),
+          departmentId: D.uid("0f0f0f0f", 1),
+          departmentName: "ICT",
+          assignableAgentIds: [D.uid("0c0c0c0c", 1), D.uid("0c0c0c0c", 2)],
           templateId: D.uid("0d0d0d0d", 1),
           kind: "onboarding",
           canEdit: true,
@@ -3383,6 +3393,9 @@ const HANDLERS = {
           managerName: "Thomas Huber",
           ictResponsibleName: "Mara Keller",
           ictResponsibleUserId: D.uid("0c0c0c0c", 1),
+          departmentId: D.uid("0f0f0f0f", 1),
+          departmentName: "ICT",
+          assignableAgentIds: [D.uid("0c0c0c0c", 1), D.uid("0c0c0c0c", 2)],
           templateId: null,
           kind: "change",
           changeTypes: ["name", "department"],

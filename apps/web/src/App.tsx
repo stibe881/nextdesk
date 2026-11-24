@@ -6343,19 +6343,21 @@ function AuthenticatedApp() {
         ? "neue Bestellungen warten auf Bearbeitung"
         : label === "Tickets"
           ? "Tickets sind noch keinem Agenten zugewiesen"
-          : label === "Phishing / Junk"
-            ? teamModuleUrgent.securityCases
-              ? "offene Phishing-/Junk-Fälle, davon nicht alle zugewiesen"
-              : "offene Phishing-/Junk-Fälle"
-            : label === "Störungen"
-              ? teamModuleUrgent.incidents
-                ? "aktive Störungen, davon nicht alle bestätigt"
-                : "aktive Störungen"
-              : label === "Überwachung"
-                ? monitoringAttention?.urgent
-                  ? "Geräte mit Ausfall oder Warnung, davon mindestens eines mit Ausfall"
-                  : "Geräte mit Warnung"
-                : "Eintritte sind noch nicht in Bearbeitung";
+          : label === "Eintritte"
+            ? "Eintritte, Austritte oder Mutationen sind noch niemandem zugewiesen"
+            : label === "Phishing / Junk"
+              ? teamModuleUrgent.securityCases
+                ? "offene Phishing-/Junk-Fälle, davon nicht alle zugewiesen"
+                : "offene Phishing-/Junk-Fälle"
+              : label === "Störungen"
+                ? teamModuleUrgent.incidents
+                  ? "aktive Störungen, davon nicht alle bestätigt"
+                  : "aktive Störungen"
+                : label === "Überwachung"
+                  ? monitoringAttention?.urgent
+                    ? "Geräte mit Ausfall oder Warnung, davon mindestens eines mit Ausfall"
+                    : "Geräte mit Warnung"
+                  : "Eintritte sind noch nicht in Bearbeitung";
   // Berichte und darunter die Wissensdatenbank stehen für sich unter den
   // Kategorien.
   const standaloneNavigationItems = (["Berichte", "Wissen"] as const).flatMap(

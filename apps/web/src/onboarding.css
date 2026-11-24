@@ -1113,3 +1113,8 @@ button.onboarding__exception-button {
 .onboarding__change-summary strong {
   font-weight: 700;
 }
+
+.onboarding__unassigned {
+  color: var(--warning);
+  font-weight: 700;
+}
