@@ -76,6 +76,7 @@ const EVENT_LABELS: Record<string, string> = {
   "project.archived": "Projekt archiviert",
   "project.restored": "Projekt aus dem Archiv geholt",
   "task.created": "Element angelegt",
+  "task.duplicated": "Element dupliziert",
   "task.updated": "Element geändert",
   "task.deleted": "Element gelöscht",
   "task.bulk_updated": "Mehrere Elemente geändert",

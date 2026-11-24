@@ -2125,6 +2125,14 @@ Der Punkt erscheint nur mit dem Recht «Alle Projekte und Projektvorlagen verwal
 
 Eine Aufgabe unter einer Aufgabe ist eine Unteraufgabe. Mehr dazu unter «Projekte».
 
+### Wie dupliziere ich eine Aufgabe, einen Meilenstein oder eine Phase?
+
+1. Öffne das Projekt und klicke im Zeitplan, im Board oder in der Liste auf den Titel des Elements.
+2. Klicke unten in der Seitenleiste auf **Duplizieren**.
+3. Die Kopie steht mit dem Zusatz «(Kopie)» direkt unter dem Original und öffnet sich zum Bearbeiten.
+
+Unterelemente, Checklisten, Termine und Zuständigkeiten werden mitkopiert; alle Kopien beginnen mit dem Status «Offen». Mehr dazu unter «Projekte».
+
 ### Wie verschiebe ich Termine im Zeitplan?
 
 1. Öffne das Projekt und das Register **Zeitplan**.
@@ -2288,6 +2296,14 @@ Die Person erhält eine Benachrichtigung und öffnet das Projekt mit einem Klick
 4. Die Person erhält einen Anmeldelink und sieht danach nur dieses Projekt.
 
 Mehr dazu unter «Projekte».
+
+### Wie nutze ich Projekte in der App?
+
+1. Halte in der App den Home-Knopf lange gedrückt (Mitglieder des Teams **System Engineer**) und wähle unter **Öffnen** **Projekte**. Eine Mitteilung zu einem Projekt öffnet das Projekt oder die Aufgabe direkt.
+2. Tippe auf ein Projekt. Du siehst Status, Ampel, Fortschritt, deine Aufgaben, den ganzen Plan, das Team und die Kommentare.
+3. Tippe auf eine Aufgabe, um den Status zu setzen, Punkte der Checkliste abzuhaken oder einen Kommentar zu schreiben.
+
+Planung, Zeiten und Dokumente bearbeitest du in der Web-App. Mehr dazu unter «Projekte».
 
 ### Wie archiviere oder lösche ich ein Projekt?
 
@@ -3541,6 +3557,13 @@ Bei Elementen mit Unterelementen ergeben sich Zeitraum, Schätzung und
 Fortschritt aus den Unterelementen. Wer ein Element löscht, löscht auch seine
 Unterelemente und die darauf gebuchten Zeiten.
 
+Mit **Duplizieren** unten in der Seitenleiste legst du eine Kopie direkt
+unter dem Original an: eine Phase samt allem, was darin liegt, eine Aufgabe
+samt Unteraufgaben. Checklisten kommen ohne Haken mit, Abhängigkeiten
+innerhalb der Kopie bleiben erhalten, gebuchte Zeiten, Kommentare und Anhänge
+nicht. Alle Kopien beginnen mit dem Status «Offen»; wer in der Kopie zuständig
+ist, erhält eine Benachrichtigung.
+
 ![Seitenleiste einer Projektaufgabe](images/ag-projekt-aufgabe.jpg)
 
 ### Zeiten und Budget
@@ -3638,6 +3661,22 @@ Das Register **Vorlagen** listet die gespeicherten Projektvorlagen. Eine
 Vorlage entsteht aus einem bestehenden Projekt über **Mehr → Als Vorlage
 speichern** und enthält Phasen, Aufgaben, Checklisten, Abhängigkeiten,
 Dokumente und die Termine als Abstand zum Projektstart.
+
+### Projekte in der App
+
+In der App öffnest du **Projekte** über einen langen Druck auf den
+Home-Knopf unter **Öffnen** (Mitglieder des Teams **System Engineer**) oder
+über eine Mitteilung zu einem Projekt. Die Liste zeigt laufende und
+abgeschlossene Projekte mit Status, Ampel und Fortschritt und lässt sich nach
+Titel, Nummer oder Projektleitung durchsuchen.
+
+Ein Projekt zeigt Eckdaten, Beschreibung, unter **Meine** die dir
+zugewiesenen offenen Aufgaben, unter **Ganzer Plan** alle Phasen, Meilensteine
+und Aufgaben, das Team und die Kommentare zum Projekt. In einer Aufgabe
+setzt du den Status, hakst Punkte der Checkliste ab und
+schreibst Kommentare – sofern deine Projektrolle das erlaubt.
+Projekte anlegen, planen, Zeiten buchen und dokumentieren kannst du in
+der Web-App.
 
 ## Dienste und Systemstatus
 

@@ -10,6 +10,34 @@ const tenantId = "10000000-0000-4000-8000-000000000001";
 const id = "20000000-0000-4000-8000-000000000002";
 
 describe("pushRoute", () => {
+  it("öffnet bei Projekt-Mitteilungen das Projekt bzw. die Aufgabe", () => {
+    const taskId = "30000000-0000-4000-8000-000000000003";
+    expect(pushRoute({ tenantId, kind: "project", projectId: id })).toEqual({
+      kind: "path",
+      path: `/projects/${id}`,
+      feature: "projects.management",
+    });
+    expect(
+      pushRoute({
+        tenantId,
+        kind: "project",
+        projectId: id,
+        projectTaskId: taskId,
+      }),
+    ).toEqual({
+      kind: "path",
+      path: `/projects/${id}/task/${taskId}`,
+      feature: "projects.management",
+    });
+    expect(pushRoute({ tenantId, kind: "project", projectId: "../x" })).toEqual(
+      {
+        kind: "path",
+        path: "/projects",
+        feature: "projects.management",
+      },
+    );
+  });
+
   it("hat für jede Push-Art ein Ziel (nur die Testmitteilung nicht)", () => {
     for (const kind of PUSH_PAYLOAD_KINDS) {
       const route = pushRoute({ tenantId, kind });

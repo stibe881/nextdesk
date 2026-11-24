@@ -186,6 +186,37 @@ describe("inboxRoute (dieselbe Tabelle wie Push)", () => {
   });
 });
 
+describe("Projekt-Mitteilungen", () => {
+  it("öffnen das Projekt bzw. die Aufgabe und nennen beide", () => {
+    const taskId = "30000000-0000-4000-8000-000000000003";
+    const assigned = item("project.task_assigned", {
+      projectId: id,
+      projectTitle: "Netzwerkumbau",
+      taskId,
+      taskTitle: "Switch tauschen",
+    });
+    expect(inboxRoute(assigned)).toEqual({
+      kind: "path",
+      path: `/projects/${id}/task/${taskId}`,
+      feature: "projects.management",
+    });
+    expect(inboxPresentation(assigned)).toMatchObject({
+      title: "Projektaufgabe zugewiesen",
+      detail: "Netzwerkumbau · Switch tauschen",
+    });
+    const added = item("project.member_added", {
+      projectId: id,
+      projectTitle: "Netzwerkumbau",
+    });
+    expect(inboxRoute(added)).toEqual({
+      kind: "path",
+      path: `/projects/${id}`,
+      feature: "projects.management",
+    });
+    expect(inboxPresentation(added).title).toBe("Zu einem Projekt hinzugefügt");
+  });
+});
+
 describe("inboxPresentation", () => {
   it("nennt Art und Objekt", () => {
     expect(inboxPresentation(item("ticket.assigned", {}, ticket))).toEqual({

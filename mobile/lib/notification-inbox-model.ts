@@ -34,6 +34,7 @@ export type InboxIcon =
   | "alarm-outline"
   | "checkmark-circle-outline"
   | "repeat-outline"
+  | "albums-outline"
   | "notifications-outline";
 
 export type InboxPresentation = {
@@ -197,6 +198,12 @@ export function inboxNavigationData(
     const value = payloadId(payload, source);
     if (value) data[target] = value;
   }
+  if (kind === "project") {
+    const projectId = payloadId(payload, "projectId");
+    const taskId = payloadId(payload, "taskId");
+    if (projectId) data.projectId = projectId;
+    if (taskId) data.projectTaskId = taskId;
+  }
   if (kind === "ipam") {
     data.ipamEvent =
       notification.kind === "ipam.agent_offline"
@@ -240,7 +247,7 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
   inventory_low_stock: ["Lager", "cube-outline"],
   shop: ["Shop", "bag-handle-outline"],
   service_task: ["Serviceaufgabe", "construct-outline"],
-  project: ["Projekt", "checkmark-circle-outline"],
+  project: ["Projekt", "albums-outline"],
   infrastructure: ["Infrastruktur", "server-outline"],
   ipam: ["IP-Adressverwaltung", "git-network-outline"],
   incident: ["Störung", "pulse-outline"],

@@ -1986,6 +1986,171 @@ async function moveTask(ctx: Ctx, body: Row) {
   };
 }
 
+/**
+ * Copies an element right below the original: a phase with everything in it,
+ * a task with its subtasks. Checklists come along unticked, dependencies
+ * inside the copy are kept, and every copy starts as open.
+ */
+async function duplicateTask(ctx: Ctx, body: Row) {
+  const { task, project, access } = await loadTask(ctx, body.taskId);
+  requireEdit(access);
+  const projectId = project.id as string;
+  const rootId = task.id as string;
+  const all = await projectTasks(ctx, projectId);
+
+  // The element and everything below it, parents before children.
+  const subtree: Row[] = [];
+  const queue = [rootId];
+  const inSubtree = new Set<string>();
+  while (queue.length) {
+    const current = queue.shift() as string;
+    if (inSubtree.has(current)) continue;
+    const row = all.find((entry) => entry.id === current);
+    if (!row) continue;
+    inSubtree.add(current);
+    subtree.push(row);
+    for (const child of all) {
+      if (child.parent_task_id === current) queue.push(child.id as string);
+    }
+  }
+  if (!subtree.length) throw notFound("Das Element");
+  if (all.length + subtree.length > MAX_TASKS) {
+    throw invalid(`Ein Projekt fasst höchstens ${MAX_TASKS} Elemente.`);
+  }
+
+  // Make room directly below the original.
+  const position = Number(task.position);
+  for (const sibling of all) {
+    if (
+      sibling.id !== rootId &&
+      (sibling.parent_task_id ?? null) === (task.parent_task_id ?? null) &&
+      Number(sibling.position) > position
+    ) {
+      const { error } = await ctx.admin
+        .from("project_tasks")
+        .update({ position: Number(sibling.position) + 1 })
+        .eq("project_id", projectId)
+        .eq("id", sibling.id);
+      if (error) throw failed();
+    }
+  }
+
+  const copies = new Map<string, string>();
+  for (const row of subtree) {
+    const isRoot = row.id === rootId;
+    const { data, error } = await ctx.admin
+      .from("project_tasks")
+      .insert({
+        tenant_id: ctx.tenantId,
+        project_id: projectId,
+        parent_task_id: isRoot
+          ? (row.parent_task_id ?? null)
+          : (copies.get(row.parent_task_id as string) ?? null),
+        kind: row.kind,
+        title: isRoot
+          ? `${String(row.title).slice(0, 190)} (Kopie)`
+          : row.title,
+        description: row.description,
+        status: "todo",
+        priority: row.priority,
+        assignee_id: row.assignee_id,
+        team_id: row.team_id,
+        starts_on: row.starts_on,
+        due_on: row.due_on,
+        estimated_minutes: row.estimated_minutes,
+        progress_percent: 0,
+        position: isRoot ? position + 1 : row.position,
+        created_by: ctx.actorId,
+        updated_by: ctx.actorId,
+      })
+      .select("id")
+      .single();
+    if (error || !data) throw hierarchyError(error);
+    copies.set(row.id as string, data.id as string);
+  }
+
+  const { data: checklist, error: checklistError } = await ctx.admin
+    .from("project_task_checklist_items")
+    .select("task_id, description, position")
+    .eq("tenant_id", ctx.tenantId)
+    .in("task_id", [...inSubtree]);
+  if (checklistError) throw failed();
+  if (checklist?.length) {
+    const { error } = await ctx.admin
+      .from("project_task_checklist_items")
+      .insert(
+        (checklist as Row[]).map((item) => ({
+          tenant_id: ctx.tenantId,
+          task_id: copies.get(item.task_id as string),
+          description: item.description,
+          position: item.position,
+        })),
+      );
+    if (error) throw failed();
+  }
+
+  const dependencies = (await projectDependencies(ctx, projectId)).filter(
+    (row) =>
+      inSubtree.has(row.predecessor_id as string) &&
+      inSubtree.has(row.successor_id as string),
+  );
+  if (dependencies.length) {
+    const { error } = await ctx.admin.from("project_task_dependencies").insert(
+      dependencies.map((row) => ({
+        tenant_id: ctx.tenantId,
+        project_id: projectId,
+        predecessor_id: copies.get(row.predecessor_id as string),
+        successor_id: copies.get(row.successor_id as string),
+        dependency_type: row.dependency_type,
+        lag_days: row.lag_days,
+        created_by: ctx.actorId,
+      })),
+    );
+    if (error) throw failed();
+  }
+
+  const newId = copies.get(rootId) as string;
+  await logEvent(ctx, projectId, newId, "task.duplicated", {
+    title: task.title,
+    kind: task.kind,
+    count: subtree.length,
+  });
+
+  // One message per person for everything the copy assigns to them.
+  const byAssignee = new Map<string, Row[]>();
+  for (const row of subtree) {
+    if (!row.assignee_id || row.kind === "phase") continue;
+    const list = byAssignee.get(row.assignee_id as string) ?? [];
+    list.push(row);
+    byAssignee.set(row.assignee_id as string, list);
+  }
+  for (const [assigneeId, rows] of byAssignee) {
+    await notify(
+      ctx,
+      [assigneeId],
+      "project.task_assigned",
+      project,
+      rows.length === 1
+        ? {
+            taskId: copies.get(rows[0].id as string),
+            taskTitle:
+              rows[0].id === rootId
+                ? `${String(rows[0].title).slice(0, 190)} (Kopie)`
+                : rows[0].title,
+          }
+        : { taskCount: rows.length },
+    );
+  }
+
+  const schedule = await settleSchedule(ctx, project);
+  return {
+    taskId: newId,
+    copied: subtree.length,
+    shifted: schedule.applied.length,
+    pending: schedule.pending.length,
+  };
+}
+
 async function deleteTask(ctx: Ctx, body: Row) {
   const { task, project, access } = await loadTask(ctx, body.taskId);
   requireEdit(access);
@@ -3404,6 +3569,8 @@ export async function dispatch(ctx: Ctx, body: Row): Promise<Row> {
       return await bulkUpdateTasks(ctx, body);
     case "moveTask":
       return await moveTask(ctx, body);
+    case "duplicateTask":
+      return await duplicateTask(ctx, body);
     case "deleteTask":
       return await deleteTask(ctx, body);
     case "addChecklistItem":
