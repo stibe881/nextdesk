@@ -840,21 +840,32 @@ async function actorTeamDepartmentIds(
   tenantId: string,
   actorId: string,
 ): Promise<string[]> {
-  const { data, error } = await admin
+  // Zwei einfache Abfragen: team_memberships hat zwei Verknüpfungen zu teams,
+  // eine eingebettete Abfrage wäre mehrdeutig.
+  const { data: memberships, error } = await admin
     .from("team_memberships")
-    .select("team:teams!inner(department_id, active)")
+    .select("team_id")
     .eq("tenant_id", tenantId)
     .eq("user_id", actorId)
     .limit(100);
   if (error) databaseFailure(error);
+  const teamIds = (memberships ?? [])
+    .map((row: Row) => row.team_id)
+    .filter((id): id is string => typeof id === "string");
+  if (!teamIds.length) return [];
+  const { data: teams, error: teamsError } = await admin
+    .from("teams")
+    .select("department_id")
+    .eq("tenant_id", tenantId)
+    .eq("active", true)
+    .in("id", teamIds)
+    .limit(100);
+  if (teamsError) databaseFailure(teamsError);
   return [
     ...new Set(
-      (data ?? []).flatMap((row: Row) => {
-        const team = (Array.isArray(row.team) ? row.team[0] : row.team) as Row | null;
-        return team && team.active !== false && typeof team.department_id === "string"
-          ? [team.department_id]
-          : [];
-      }),
+      (teams ?? [])
+        .map((row: Row) => row.department_id)
+        .filter((id): id is string => typeof id === "string"),
     ),
   ];
 }
