@@ -1564,9 +1564,18 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 ### Wie hake ich Aufgaben eines Eintritts ab?
 
 1. Öffne unter **Planung und Betrieb** die **Eintritte**.
-2. Die Aufgaben stehen nach Fälligkeit gruppiert: **Überfällig**, **Nächste 7 Tage** und **Später**.
+2. Klicke auf die Karte (oder den Pfeil rechts), um den Eintritt aufzuklappen; alle Eintritte sind zuerst eingeklappt. Die Aufgaben stehen nach Fälligkeit gruppiert: **Überfällig**, **Nächste 7 Tage** und **Später**.
 3. Klicke auf das Kästchen vor einer Aufgabe, um sie als erledigt zu markieren. Ein zweiter Klick öffnet sie wieder.
 4. «In Arbeit» oder «Blockiert» wählst du im Feld rechts. Erledigte Aufgaben klappst du unter **Erledigt** auf.
+
+Mehr dazu unter «Eintritte und Austritte».
+
+### Wie lösche ich einen Eintritt oder Austritt?
+
+1. Öffne unter **Planung und Betrieb** die **Eintritte**.
+2. Klappe den Eintritt bzw. Austritt mit einem Klick auf die Karte auf.
+3. Klicke unten in der Karte auf **Eintritt löschen** bzw. **Austritt löschen** (nur mit dem Recht, Eintritte zu verwalten).
+4. Bestätige die Rückfrage. Alle Aufgaben, Ausnahmetickets und die gespeicherte Meldung werden ebenfalls entfernt.
 
 Mehr dazu unter «Eintritte und Austritte».
 
@@ -3770,7 +3779,7 @@ ohne den Anlass aufzuklappen.
 Unter **Planung und Betrieb → Eintritte** steht für jeden Eintritt bzw.
 Austritt eine Karte. Über der Liste wählst du **Offen** (Standard), **Erledigt** oder **Alle** und suchst nach Name, Abteilung, Ort, Führung oder Ticketnummer; erledigt ist ein Eintritt, wenn alle Aufgaben erledigt sind. Oben siehst du Name, Datum mit Countdown (z. B. «in
 12 Tagen»), Abteilung, Ort, Führung und ICT-Verantwortung sowie rechts den
-Fortschritt («1 / 6 Aufgaben erledigt»). Darunter stehen die Aufgaben nach
+Fortschritt («1 / 6 Aufgaben erledigt»). Die Karten sind eingeklappt; ein Klick auf die Karte oder den Pfeil rechts klappt sie auf. Darunter stehen die Aufgaben nach
 Fälligkeit gruppiert: **Überfällig** (rot), **Nächste 7 Tage** und
 **Später**; erledigte Aufgaben sind unter **Erledigt** eingeklappt. Jede
 Zeile zeigt Fälligkeit («in 3 Tagen», «1 Tag überfällig»), die zuständige
@@ -3779,7 +3788,7 @@ Mit dem **Kästchen** hakst du eine Aufgabe ab, im Feld rechts wählst du «In
 Arbeit» oder «Blockiert». Verzögert sich eine Aufgabe, verknüpfst du über den
 **Schraubenschlüssel** ein Ausnahmeticket; es erscheint dann unter der
 Aufgabe. Bei Eintritten aus einer Mail klappst du unten **Angaben aus der
-Eintrittsmeldung** auf. Die Eintrittsmeldung selbst (PDF) öffnest du mit **Eintrittsmeldung (PDF) öffnen**; sie bleibt beim Eintritt gespeichert, auch wenn das Mail-Ticket entfällt. In der App steht auf der Startseite immer die Kachel **Eintritte**, auch ohne offene Eintritte («Keine offenen Eintritte»).
+Eintrittsmeldung** auf. Die Eintrittsmeldung selbst (PDF) öffnest du mit **Eintrittsmeldung (PDF) öffnen**. Mit dem Recht, Eintritte zu verwalten, löschst du dort mit **Eintritt löschen** bzw. **Austritt löschen** den ganzen Eintritt samt Aufgaben; sie bleibt beim Eintritt gespeichert, auch wenn das Mail-Ticket entfällt. In der App steht auf der Startseite immer die Kachel **Eintritte**, auch ohne offene Eintritte («Keine offenen Eintritte»).
 
 ![Eintritt mit Aufgaben nach Fälligkeit](images/ag-eintritte.jpg)
 
