@@ -8732,6 +8732,25 @@ function BulkTicketStatusActions({
     setMergePrimaryId(null);
   }, [selectedTicketIds]);
 
+  useEffect(() => {
+    setMergePreview(null);
+    if (!mergePrimaryId) return;
+    let active = true;
+    const ids = selectedTickets
+      .map((ticket) => ticket.recordId ?? ticket.id)
+      .filter((id) => selectedTicketIds.has(id));
+    void loadMergePreview(tenantId, mergePrimaryId, ids, mergePrimaryId)
+      .then((preview) => {
+        if (active) setMergePreview(preview);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+    // mergeCandidates ändert sich mit der Auswahl; die Vorschau folgt dem Haupt-Ticket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergePrimaryId, tenantId]);
+
   if (selectedTicketIds.size === 0) return null;
 
   const ticketKey = (ticket: DashboardTicket) => ticket.recordId ?? ticket.id;
@@ -8779,23 +8798,6 @@ function BulkTicketStatusActions({
         // Ohne Vorschlag bleibt das älteste offene Ticket vorgewählt.
       });
   }
-
-  useEffect(() => {
-    setMergePreview(null);
-    if (!mergePrimaryId) return;
-    let active = true;
-    const ids = mergeCandidates.map(ticketKey);
-    void loadMergePreview(tenantId, mergePrimaryId, ids, mergePrimaryId)
-      .then((preview) => {
-        if (active) setMergePreview(preview);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-    // mergeCandidates ändert sich mit der Auswahl; die Vorschau folgt dem Haupt-Ticket.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mergePrimaryId, tenantId]);
 
   async function mergeTickets() {
     if (!supabase || !mergePrimaryId) return;
