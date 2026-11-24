@@ -694,3 +694,37 @@
   border-color: var(--primary);
   background: var(--primary-soft);
 }
+
+/* Vermerk über der Beschreibung eines Teil-Tickets (aus dem Aufteilen). */
+.ticket-split-note {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 4px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
+  border-left: 4px solid var(--primary);
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--text);
+}
+.ticket-split-note > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--primary);
+}
+.ticket-split-note strong {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--primary);
+}
+.ticket-split-note p {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.ticket-split-note__number {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-weight: 600;
+  white-space: nowrap;
+}

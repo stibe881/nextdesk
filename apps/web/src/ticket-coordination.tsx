@@ -230,6 +230,32 @@ export function parseCoordinationOverview(value: unknown): Overview | null {
   };
 }
 
+type SplitResult = {
+  children: { id: string; ticketNumber: string }[];
+  parentDeleted: boolean;
+};
+
+function splitResult(response: unknown): SplitResult {
+  const data =
+    response && typeof response === "object" && "data" in response
+      ? (response as { data: unknown }).data
+      : null;
+  const record = (data && typeof data === "object" ? data : {}) as Record<
+    string,
+    unknown
+  >;
+  const children = Array.isArray(record.children)
+    ? record.children.flatMap((child) => {
+        const row = child as Record<string, unknown>;
+        return typeof row?.id === "string" &&
+          typeof row.ticketNumber === "string"
+          ? [{ id: row.id, ticketNumber: row.ticketNumber }]
+          : [];
+      })
+    : [];
+  return { children, parentDeleted: record.parentDeleted === true };
+}
+
 async function invokeCoordination(
   body: Record<string, unknown>,
 ): Promise<unknown> {
@@ -787,8 +813,20 @@ export function TicketCoordination({
         <TicketSplitDialog
           description={description}
           onClose={() => setSplitOpen(false)}
-          onSplit={async () => {
+          onSplit={async (result) => {
             setSplitOpen(false);
+            const firstChild = result.children[0];
+            if (result.parentDeleted && firstChild && onOpenTicket) {
+              // Das aufgeteilte Ticket liegt im Papierkorb: zum ersten Teil.
+              onChanged();
+              onOpenTicket(firstChild.id);
+              return;
+            }
+            if (!result.parentDeleted) {
+              setNotice(
+                "Die Teil-Tickets wurden erstellt. Das ursprüngliche Ticket bleibt bestehen, weil das Recht zum Löschen fehlt.",
+              );
+            }
             await afterChange();
           }}
           subject={subject}
@@ -830,7 +868,7 @@ function TicketSplitDialog({
   subject: string;
   description: string;
   onClose: () => void;
-  onSplit: () => Promise<void>;
+  onSplit: (result: SplitResult) => Promise<void>;
 }) {
   const parent = useMemo(
     () => ({ ticketNumber, subject, description }),
@@ -931,13 +969,13 @@ function TicketSplitDialog({
     setSaving(true);
     setError("");
     try {
-      await invokeCoordination({
+      const response = await invokeCoordination({
         type: "split",
         tenantId,
         ticketId,
         children: splitPayload(children),
       });
-      await onSplit();
+      await onSplit(splitResult(response));
     } catch (nextError) {
       setError(
         await coordinationError(
@@ -969,9 +1007,9 @@ function TicketSplitDialog({
             <p className="eyebrow">TICKET-AUFTEILUNG</p>
             <h3 id="ticket-split-heading">Ticket {ticketNumber} aufteilen</h3>
             <p className="ticket-coordination__muted">
-              Jedes Teil-Ticket wird mit diesem Ticket verknüpft. Das
-              Hauptticket kann erst gelöst werden, wenn alle Teil-Tickets
-              erledigt sind.
+              Jedes Teil-Ticket erhält einen Vermerk, aus welchem Ticket es
+              stammt und welche Teile es noch gibt. Das ursprüngliche Ticket
+              wird danach gelöscht (90 Tage im Papierkorb wiederherstellbar).
             </p>
           </div>
           <button
