@@ -306,3 +306,30 @@ describe("wiederkehrende Ausfälle", () => {
     expect(route?.kind).toBe("message");
   });
 });
+
+describe("Teamauslastung", () => {
+  const overload = item("team.overload", {
+    agentName: "Tamara Adzhova",
+    openTickets: 7,
+    overdueTickets: 1,
+    averageOpen: 2.9,
+    departmentName: "ICT",
+  });
+
+  it("zeigt Person und Zahlen statt «Benachrichtigung»", () => {
+    expect(inboxPresentation(overload)).toEqual({
+      title: "Team: hohe Auslastung",
+      detail:
+        "Tamara Adzhova · 7 offene Tickets, 1 überfällig (Ø 2.9 im Team ICT)",
+      icon: "people-outline",
+    });
+  });
+
+  it("öffnet einen Hinweis mit den Zahlen", () => {
+    const route = inboxRoute(overload);
+    expect(route?.kind).toBe("message");
+    expect(route && "message" in route ? route.message : "").toContain(
+      "Tamara Adzhova · 7 offene Tickets",
+    );
+  });
+});

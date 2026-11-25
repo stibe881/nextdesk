@@ -35,6 +35,7 @@ export type InboxIcon =
   | "checkmark-circle-outline"
   | "repeat-outline"
   | "albums-outline"
+  | "people-outline"
   | "notifications-outline";
 
 export type InboxPresentation = {
@@ -143,6 +144,8 @@ const EXACT_PUSH_KINDS: Record<string, string> = {
   "contract.deadline": "contract_deadline",
   "infrastructure.due": "infrastructure",
   "problem.recurring_detected": "recurring_problem",
+  // Ohne Push (nur Mitteilungen der App); öffnet einen Hinweis.
+  "team.overload": "team_overload",
 };
 
 /**
@@ -202,6 +205,10 @@ export function inboxNavigationData(
   if (kind === "onboarding") {
     const entryId = payloadId(payload, "entryId");
     if (entryId) data.onboardingEntryId = entryId;
+  }
+  if (kind === "team_overload") {
+    const summary = teamOverloadText(payload);
+    if (summary) data.teamSummary = summary;
   }
   if (kind === "project") {
     const projectId = payloadId(payload, "projectId");
@@ -269,6 +276,7 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
   ipam: ["IP-Adressverwaltung", "git-network-outline"],
   incident: ["Störung", "pulse-outline"],
   recurring_problem: ["Wiederkehrende Ausfälle", "repeat-outline"],
+  team_overload: ["Team: hohe Auslastung", "people-outline"],
 });
 
 const SPECIFIC_TITLES: Record<string, string> = {
@@ -358,6 +366,8 @@ export function inboxPresentation(
       text(payload.title, 80);
   } else if (kind === "contract_deadline") {
     detail = text(payload.title, 80) ?? text(payload.contractName, 80);
+  } else if (kind === "team_overload") {
+    detail = teamOverloadText(payload);
   } else if (kind === "recurring_problem") {
     const count =
       typeof payload.alertCount === "number" ? payload.alertCount : null;
@@ -410,4 +420,27 @@ export function formatInboxTime(createdAt: string, now: Date): string {
   if (days < 7) return `vor ${days} Tagen`;
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${pad(created.getDate())}.${pad(created.getMonth() + 1)}.${created.getFullYear()}`;
+}
+
+/** «Tamara Adzhova · 7 offene Tickets, 1 überfällig (Ø 2.9 im Team ICT)». */
+export function teamOverloadText(
+  payload: Record<string, unknown>,
+): string | null {
+  const name = text(payload.agentName, 80);
+  const open =
+    typeof payload.openTickets === "number" ? payload.openTickets : null;
+  const overdue =
+    typeof payload.overdueTickets === "number" ? payload.overdueTickets : null;
+  const average =
+    typeof payload.averageOpen === "number" ? payload.averageOpen : null;
+  const team = text(payload.departmentName, 60);
+  const load =
+    open !== null
+      ? `${open} offene Tickets${overdue ? `, ${overdue} überfällig` : ""}${
+          average !== null
+            ? ` (Ø ${average.toLocaleString("de-CH")}${team ? ` im Team ${team}` : ""})`
+            : ""
+        }`
+      : null;
+  return [name, load].filter(Boolean).join(" · ") || null;
 }
