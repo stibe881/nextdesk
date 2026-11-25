@@ -333,3 +333,38 @@ describe("Teamauslastung", () => {
     );
   });
 });
+
+describe("Gelöschte Tickets", () => {
+  const mention: InboxNotification = {
+    ...item("ticket.mention", { authorName: "Darko Petrovic" }),
+    deletedTicket: { ticketNumber: "ICT-2026-000224" },
+  };
+  it("bleibt sichtbar mit Hinweis", () => {
+    expect(inboxPresentation(mention).detail).toBe(
+      "ICT-2026-000224 · Ticket gelöscht",
+    );
+    const route = inboxRoute(mention);
+    expect(route?.kind).toBe("message");
+  });
+  it("liest den Hinweis aus der Antwort", () => {
+    const parsed = parseInboxNotifications({
+      data: {
+        notifications: [
+          {
+            id,
+            tenantId,
+            kind: "ticket.mention",
+            payload: {},
+            readAt: null,
+            createdAt: "2026-11-25T06:56:20.000Z",
+            ticket: null,
+            deletedTicket: { ticketNumber: "ICT-2026-000224" },
+          },
+        ],
+      },
+    });
+    expect(parsed?.[0]?.deletedTicket).toEqual({
+      ticketNumber: "ICT-2026-000224",
+    });
+  });
+});

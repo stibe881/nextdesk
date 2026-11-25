@@ -19,6 +19,8 @@ export type InboxNotification = {
   readAt: string | null;
   createdAt: string;
   ticket: { id: string; ticketNumber: string; subject: string | null } | null;
+  /** Das Ticket liegt inzwischen im Papierkorb (nur die Nummer bleibt). */
+  deletedTicket?: { ticketNumber: string } | null;
 };
 
 export type InboxIcon =
@@ -94,6 +96,11 @@ function notificationFromValue(value: unknown): InboxNotification | null {
     readAt: value.readAt,
     createdAt: value.createdAt,
     ticket,
+    deletedTicket:
+      isRecord(value.deletedTicket) &&
+      typeof value.deletedTicket.ticketNumber === "string"
+        ? { ticketNumber: value.deletedTicket.ticketNumber }
+        : null,
   };
 }
 
@@ -231,6 +238,16 @@ export function inboxNavigationData(
 
 /** Ziel eines Tipps: dieselbe Tabelle wie bei Push-Mitteilungen. */
 export function inboxRoute(notification: InboxNotification): PushRoute | null {
+  if (notification.deletedTicket) {
+    return {
+      kind: "message",
+      title: "Ticket gelöscht",
+      message: tn(
+        `Das Ticket ${notification.deletedTicket.ticketNumber} wurde inzwischen gelöscht und liegt im Papierkorb. Wiederherstellen kannst du es in der Web-App in der Ticketliste über den Filter «Gelöschte Tickets».`,
+        `Das Ticket ${notification.deletedTicket.ticketNumber} wurde inzwischen gelöscht und liegt im Papierkorb. Wiederherstellen können Sie es in der Web-App in der Ticketliste über den Filter «Gelöschte Tickets».`,
+      ),
+    };
+  }
   return pushRoute(inboxNavigationData(notification));
 }
 
@@ -317,7 +334,9 @@ export function inboxPresentation(
   }
 
   let detail: string | null = null;
-  if (notification.ticket) {
+  if (notification.deletedTicket) {
+    detail = `${notification.deletedTicket.ticketNumber} · Ticket gelöscht`;
+  } else if (notification.ticket) {
     const subject = text(notification.ticket.subject, 80);
     detail = subject
       ? `${notification.ticket.ticketNumber} · ${subject}`

@@ -403,6 +403,8 @@ type NotificationItem = {
   payload: unknown;
   readAt: string | null;
   ticket: NotificationTicketReference | null;
+  /** Das Ticket liegt inzwischen im Papierkorb (nur die Nummer bleibt). */
+  deletedTicketNumber?: string | null;
 };
 
 type TicketSortBy = "updated" | "agent" | "status" | "department" | "priority";
@@ -1136,6 +1138,11 @@ function notificationFromValue(value: unknown): NotificationItem | null {
     payload: value.payload,
     readAt: value.readAt,
     ticket,
+    deletedTicketNumber:
+      isRecord(value.deletedTicket) &&
+      typeof value.deletedTicket.ticketNumber === "string"
+        ? value.deletedTicket.ticketNumber
+        : null,
   };
 }
 
@@ -1298,6 +1305,12 @@ function notificationPresentation(
   notification: NotificationItem,
 ): NotificationPresentation {
   const base = baseNotificationPresentation(notification);
+  if (notification.deletedTicketNumber) {
+    return {
+      ...base,
+      description: `${base.description} Das Ticket ${notification.deletedTicketNumber} wurde inzwischen gelöscht (Papierkorb).`,
+    };
+  }
   const delegatedFrom = notificationPayloadText(
     notification,
     "delegatedFromName",
@@ -5122,6 +5135,15 @@ function AuthenticatedApp() {
       setNotificationActionPending(null);
     }
 
+    if (notification.deletedTicketNumber) {
+      setNotificationStatus(
+        tn(
+          `Das Ticket ${notification.deletedTicketNumber} wurde gelöscht. Wiederherstellen kannst du es in der Ticketliste über den Filter «Gelöschte Tickets».`,
+          `Das Ticket ${notification.deletedTicketNumber} wurde gelöscht. Wiederherstellen können Sie es in der Ticketliste über den Filter «Gelöschte Tickets».`,
+        ),
+      );
+      return;
+    }
     openNotificationTarget(notification);
   }
 
