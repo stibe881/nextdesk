@@ -47,8 +47,8 @@ export const HOME_SECTIONS = [
   },
   {
     id: "onboarding",
-    label: "Eintritte",
-    description: "Aufgaben zu neuen Mitarbeitenden",
+    label: "Ein-/Austritte",
+    description: "Ein- und Austritte, Mutationen",
   },
   {
     id: "mentions",

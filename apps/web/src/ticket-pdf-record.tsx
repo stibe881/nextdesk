@@ -1,3 +1,10 @@
+/** Eingebettete Bilder stehen als Anhänge in der Akte, nicht im Text. */
+function withoutInlineImageMarkers(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\[\[nextdesk-(?:inline|pending)-image:[0-9a-z-]{1,64}\]\]/giu, "")
+    .replace(/\n{3,}/gu, "\n\n");
+}
+
 import { useState } from "react";
 import { FileDown, LoaderCircle } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -251,7 +258,7 @@ function createPrintDocument(
               <div><strong>${escapeHtml(comment.authorName)}</strong><span class="comment__visibility">${visibilityLabel}</span>${inboundEmail ? '<span class="comment__channel">per E-Mail</span>' : ""}${deliveryLabel ? `<span class="comment__delivery${emailDelivery === "failed" ? " is-warning" : ""}">${deliveryLabel}</span>` : ""}</div>
               <time>${escapeHtml(formatDateTime(comment.created_at))}</time>
             </header>
-            <p>${escapeHtml(comment.body).replace(/\n/g, "<br>")}</p>${(
+            <p>${escapeHtml(withoutInlineImageMarkers(comment.body)).replace(/\n/g, "<br>")}</p>${(
               imagesByCommentId.get(String(comment.id)) ?? []
             )
               .map(
@@ -348,7 +355,7 @@ function createPrintDocument(
         <div class="fact"><span>Erstellt</span><strong>${escapeHtml(formatDateTime(ticket.created_at))}</strong></div>
       </div>
     </section>
-    <section class="record-section"><div class="record-section__heading"><h2>Beschreibung</h2></div><div class="description${text(ticket.description, "") ? "" : " is-empty"}">${escapeHtml(ticket.description) || "Keine Beschreibung hinterlegt."}</div></section>
+    <section class="record-section"><div class="record-section__heading"><h2>Beschreibung</h2></div><div class="description${text(ticket.description, "") ? "" : " is-empty"}">${escapeHtml(withoutInlineImageMarkers(ticket.description ?? "")) || "Keine Beschreibung hinterlegt."}</div></section>
     <section class="record-section"><div class="record-section__heading"><h2>Checkliste</h2></div><ul class="checklist">${checklistRows}</ul></section>
     <section class="record-section record-communication"><div class="record-section__heading"><h2>Kommunikation</h2><span class="communication-count">${comments.length} ${comments.length === 1 ? "Beitrag" : "Beiträge"}</span></div><div class="timeline">${visibleComments || '<p class="empty-communication">Keine sichtbaren Beiträge vorhanden.</p>'}</div></section>
     <footer class="record__footer"><span>Exportiert am ${escapeHtml(formatDateTime(exportedAt))}</span><span>Umfang: Stammdaten, Beschreibung, Checkliste und berechtigte Kommunikation.</span></footer>

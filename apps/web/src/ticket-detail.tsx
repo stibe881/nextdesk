@@ -73,7 +73,17 @@ import {
   ticketInlineAttachmentIds,
   ticketInlineMediaSegments,
 } from "./lib/ticket-inline-media";
-import { pastedImageFiles } from "./lib/clipboard-images";
+import { renameClipboardImages } from "./lib/clipboard-images";
+import {
+  composerPlainText,
+  finalizeComposerBody,
+  keepComposerImages,
+  pendingImageKeys,
+} from "./lib/composer-content";
+import {
+  TicketComposerEditor,
+  type ComposerEditorHandle,
+} from "./ticket-composer-editor";
 import {
   MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS,
   ticketCommentAttachmentIds,
@@ -640,6 +650,10 @@ type QueuedCommentImage = {
   file: File;
   originalFilename: string;
   byteSize: number;
+  /** Im Text eingefügtes Bild (Platzhalter im Nachrichtenfeld). */
+  inline?: boolean;
+  /** Lokale Vorschau-Adresse eines eingefügten Bildes. */
+  previewUrl?: string;
 };
 
 type CommentImageNotice = {
@@ -4524,7 +4538,7 @@ export function TicketDetail({
     commentDrafts,
     commentVisibility,
   );
-  const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const commentTextareaRef = useRef<ComposerEditorHandle>(null);
   // Replies to the requester start with «Lieber <Vorname>» and room to write.
   const replyGreeting = requesterView
     ? null
@@ -4536,6 +4550,19 @@ export function TicketDetail({
   const greetingAppliedRef = useRef<string | null>(null);
   const activeCommentImageAttachments =
     commentImageAttachments[commentVisibility];
+  // Eingefügte Bilder stehen im Text; als Karte erscheinen nur Dateien.
+  const composerFileAttachments = activeCommentImageAttachments.filter(
+    (item) => !item.inline,
+  );
+  const composerImageUrls = useMemo(
+    () =>
+      Object.fromEntries(
+        activeCommentImageAttachments.flatMap((item) =>
+          item.inline && item.previewUrl ? [[item.key, item.previewUrl]] : [],
+        ),
+      ) as Record<string, string>,
+    [activeCommentImageAttachments],
+  );
   // Shared with colleagues so nobody answers the same ticket twice.
   const composingVisibility: "external" | "internal" | null =
     !requesterView &&
@@ -6316,17 +6343,23 @@ export function TicketDetail({
     if (commentImageInputRef.current) commentImageInputRef.current.value = "";
   }
 
-  function addCommentImages(files: readonly File[]) {
-    if (!detail || !canAttachCommentImages || busy || attachmentBusy) return;
-    const remaining =
-      MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS -
-      commentImageAttachments[commentVisibility].length;
+  function addCommentImages(
+    files: readonly File[],
+    options: { inline?: boolean } = {},
+  ): QueuedCommentImage[] {
+    if (!detail || !canAttachCommentImages || busy || attachmentBusy) return [];
+    // Eingefügte Bilder, die im Text gelöscht wurden, zählen nicht mehr.
+    const usedKeys = new Set(pendingImageKeys(commentBody));
+    const used = commentImageAttachments[commentVisibility].filter(
+      (item) => !item.inline || usedKeys.has(item.key),
+    ).length;
+    const remaining = MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS - used;
     if (remaining < 1) {
       setCommentImageNotice({
         tone: "error",
-        text: `Pro Nachricht sind höchstens ${MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Dateien möglich.`,
+        text: `Pro Nachricht sind höchstens ${MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Bilder und Dateien möglich.`,
       });
-      return;
+      return [];
     }
 
     const selectedFiles = [...files].slice(0, remaining);
@@ -6335,23 +6368,28 @@ export function TicketDetail({
       .find((message): message is string => Boolean(message));
     if (validationError) {
       setCommentImageNotice({ tone: "error", text: validationError });
-      return;
+      return [];
     }
-    if (selectedFiles.length === 0) return;
+    if (selectedFiles.length === 0) return [];
 
     setCommentImageNotice(null);
-    const queuedImages = selectedFiles.map((file) => {
-      return {
-        key: crypto.randomUUID(),
-        file,
-        originalFilename: file.name.trim(),
-        byteSize: file.size,
-      };
-    });
+    const queuedImages: QueuedCommentImage[] = selectedFiles.map((file) => ({
+      key: crypto.randomUUID(),
+      file,
+      originalFilename: file.name.trim(),
+      byteSize: file.size,
+      ...(options.inline
+        ? { inline: true, previewUrl: URL.createObjectURL(file) }
+        : {}),
+    }));
     setCommentImageAttachments((current) => ({
       ...current,
       [commentVisibility]: [...current[commentVisibility], ...queuedImages],
     }));
+    if (commentImageInputRef.current) commentImageInputRef.current.value = "";
+    // Eingefügte Bilder sieht man im Text; ein Hinweis braucht es nur für
+    // Dateien.
+    if (options.inline) return queuedImages;
     setCommentImageNotice({
       tone: "success",
       text:
@@ -6361,7 +6399,7 @@ export function TicketDetail({
           : // formality-ok: «Sie» sind hier die Dateien, keine Anrede
             `${queuedImages.length} Dateien vorgemerkt. Sie werden erst beim Senden der Nachricht hochgeladen.`,
     });
-    if (commentImageInputRef.current) commentImageInputRef.current.value = "";
+    return queuedImages;
   }
 
   function removeCommentImage(
@@ -6383,26 +6421,6 @@ export function TicketDetail({
     if (!busy && !attachmentBusy && canAttachCommentImages) {
       setIsCommentImageDropActive(true);
     }
-  }
-
-  /**
-   * Bild aus der Zwischenablage (Screenshot, kopiertes Bild) wie in Outlook
-   * direkt ins Nachrichtenfeld einfügen: Es wird als Datei vorgemerkt und
-   * beim Senden mitgeschickt. Text in der Zwischenablage wird normal
-   * eingefügt.
-   */
-  function handleCommentPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
-    const images = pastedImageFiles(event.clipboardData);
-    if (images.length === 0) return;
-    if (!canAttachCommentImages) {
-      setCommentImageNotice({
-        tone: "error",
-        text: "In dieser Nachricht lassen sich keine Bilder anhängen.",
-      });
-      return;
-    }
-    if (!event.clipboardData.getData("text/plain")) event.preventDefault();
-    addCommentImages(images);
   }
 
   function handleCommentImageDrop(event: DragEvent<HTMLDivElement>) {
@@ -6815,26 +6833,22 @@ export function TicketDetail({
   }
 
   /** Untouched greeting: continue writing right below it. */
-  function placeCaretAfterGreeting(field: HTMLTextAreaElement) {
-    if (
-      commentVisibility === "external" &&
-      replyGreeting &&
-      field.value === replyGreeting &&
-      field.selectionStart === field.selectionEnd
-    ) {
-      field.setSelectionRange(field.value.length, field.value.length);
-    }
-  }
-
   async function saveComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const resolveAfter = resolveAfterCommentRef.current;
     resolveAfterCommentRef.current = false;
-    const body = ticketCommentBodyWithAttachments(
+    const draftBody =
       commentVisibility === "external" && externalGreetingOnly
         ? ""
-        : commentBody,
-      activeCommentImageAttachments.length,
+        : commentBody;
+    // Im Text gelöschte Bilder werden nicht hochgeladen.
+    const usedImageKeys = new Set(pendingImageKeys(draftBody));
+    const sendAttachments = activeCommentImageAttachments.filter(
+      (item) => !item.inline || usedImageKeys.has(item.key),
+    );
+    const body = ticketCommentBodyWithAttachments(
+      composerPlainText(draftBody) || usedImageKeys.size > 0 ? draftBody : "",
+      sendAttachments.length,
     );
     // Ausgewählte Personen und von Hand getippte «@Name» im Text.
     const mentionRecipients = detail?.canUseInternalNotes
@@ -6892,24 +6906,37 @@ export function TicketDetail({
     setCommentNotice("");
     const submittedAt = Date.now();
     const uploadedAttachments: TicketAttachment[] = [];
+    let finalBody = body;
     let commentSaved = false;
     let copyNotice = "";
     try {
-      if (activeCommentImageAttachments.length > 0) {
+      const uploadedByKey = new Map<string, string>();
+      if (sendAttachments.length > 0) {
         setPendingAttachmentAction("upload");
-        for (const image of activeCommentImageAttachments) {
-          uploadedAttachments.push(
-            await uploadTicketAttachment(image.file, commentVisibility),
+        for (const image of sendAttachments) {
+          const uploaded = await uploadTicketAttachment(
+            image.file,
+            commentVisibility,
           );
+          uploadedAttachments.push(uploaded);
+          if (image.inline) uploadedByKey.set(image.key, uploaded.id);
         }
         setPendingAttachmentAction(null);
       }
+      // Eingefügte Bilder an ihrer Stelle im Text.
+      finalBody =
+        usedImageKeys.size > 0
+          ? ticketCommentBodyWithAttachments(
+              finalizeComposerBody(body, uploadedByKey),
+              sendAttachments.length,
+            )
+          : body;
       const attachmentIds = ticketCommentAttachmentIds(uploadedAttachments);
       const sendResult = await invokeTicketOperation({
         type: "addComment",
         tenantId,
         ticketId,
-        body,
+        body: finalBody,
         visibility: commentVisibility,
         ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
         ...(commentVisibility === "external" && copyRecipients.length > 0
@@ -6946,7 +6973,7 @@ export function TicketDetail({
           .filter(
             (item) =>
               item.visibility === commentVisibility &&
-              item.body === body &&
+              item.body === finalBody &&
               Date.parse(item.created_at) >= submittedAt - 15_000,
           )
           .sort(
@@ -8311,8 +8338,14 @@ export function TicketDetail({
                         : emailDelivery === "failed"
                           ? "E-Mail-Versand fehlgeschlagen"
                           : null;
-                  const commentAttachments =
-                    attachmentsByCommentId.get(item.id) ?? [];
+                  // Im Text eingefügte Bilder nicht ein zweites Mal als
+                  // Anhang darunter zeigen.
+                  const inlineIds = new Set(
+                    ticketInlineAttachmentIds([item.body]),
+                  );
+                  const commentAttachments = (
+                    attachmentsByCommentId.get(item.id) ?? []
+                  ).filter((attachment) => !inlineIds.has(attachment.id));
                   return (
                     <li
                       className={`ticket-comment ticket-conversation__message ticket-conversation__message--${direction}`}
@@ -8457,40 +8490,36 @@ export function TicketDetail({
                     if (canAttachCommentImages) handleCommentImageDrop(event);
                   }}
                 >
-                  <textarea
-                    className="ticket-composer__text"
-                    id="ticket-comment-text"
-                    aria-describedby="ticket-comment-visibility-hint"
+                  <TicketComposerEditor
+                    ariaDescribedBy="ticket-comment-visibility-hint"
                     disabled={busy || attachmentBusy}
-                    maxLength={50_000}
-                    ref={commentTextareaRef}
-                    onChange={(event) =>
+                    id="ticket-comment-text"
+                    imageUrls={composerImageUrls}
+                    onAddFiles={(files) => void addCommentImages(files)}
+                    onChange={(next) =>
                       setCommentDrafts((current) =>
                         updateTicketCommentDraft(
                           current,
                           commentVisibility,
-                          event.target.value,
+                          next,
                         ),
                       )
                     }
-                    onClick={(event) =>
-                      placeCaretAfterGreeting(event.currentTarget)
+                    onInsertImages={(files) =>
+                      addCommentImages(renameClipboardImages(files), {
+                        inline: true,
+                      }).map((item) => ({
+                        key: item.key,
+                        url: item.previewUrl ?? "",
+                      }))
                     }
-                    onFocus={(event) => {
-                      const field = event.currentTarget;
-                      window.setTimeout(
-                        () => placeCaretAfterGreeting(field),
-                        0,
-                      );
-                    }}
-                    onPaste={handleCommentPaste}
                     placeholder={commentComposer.placeholder}
-                    rows={4}
+                    ref={commentTextareaRef}
                     value={commentBody}
                   />
-                  {activeCommentImageAttachments.length > 0 ? (
+                  {composerFileAttachments.length > 0 ? (
                     <ul className="ticket-comment-image-preview-list">
-                      {activeCommentImageAttachments.map((attachment) => (
+                      {composerFileAttachments.map((attachment) => (
                         <li key={attachment.key}>
                           {attachment.file.type.startsWith("image/") ? (
                             <PendingImageThumbnail file={attachment.file} />
@@ -8543,7 +8572,8 @@ export function TicketDetail({
                         <Paperclip aria-hidden="true" size={17} />
                       </button>
                       <small>
-                        Bilder mit Ctrl+V einfügen oder Dateien hierher ziehen
+                        Bilder mit Ctrl+V an der Cursor-Position einfügen ·
+                        Dateien hierher ziehen oder über die Büroklammer
                       </small>
                     </div>
                   ) : null}
@@ -8612,12 +8642,12 @@ export function TicketDetail({
                       updateTicketCommentDraft(
                         current,
                         commentVisibility,
-                        next,
+                        keepComposerImages(commentBody, next),
                       ),
                     )
                   }
                   tenantId={tenantId}
-                  text={commentBody}
+                  text={composerPlainText(commentBody)}
                 />
               )}
               {activeCommunicationDraft.restored && (

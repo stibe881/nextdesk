@@ -67,7 +67,7 @@ export function OnboardingHomeCard({ tenantId }: { tenantId: string | null }) {
       </View>
       <View style={styles.copy}>
         <Text style={[styles.title, { color: colors.foreground }]}>
-          Eintritte
+          Ein-/Austritte
         </Text>
         <Text
           numberOfLines={1}

@@ -472,26 +472,28 @@ export const SHOTS = [
         .getByRole("button", { name: /Antwort an anfragende Person/ })
         .first()
         .click();
-      const textarea = h.page
-        .locator(".ticket-comment-body textarea")
+      const editor = h.page
+        .locator(".ticket-comment-body [role=textbox]")
         .filter({ visible: true })
         .first();
-      await textarea.fill(
-        "Hallo Reto\n\nIch habe dir die neue VPN-Version 5.2 über das Unternehmensportal zugewiesen. Bitte starte deinen Laptop heute Abend neu und melde dich morgen kurz, ob die Verbindung stabil bleibt.\n\nFreundliche Grüsse\nMara Keller",
+      await editor.click();
+      await h.page.keyboard.press("Control+End");
+      await h.page.keyboard.type(
+        "Ich habe dir die neue VPN-Version 5.2 zugewiesen. So sieht die Meldung nach dem Update aus:",
       );
-      // Ein Screenshot als Anhang im Nachrichtenfeld (wie mit Ctrl+V eingefügt).
-      await h.page
-        .locator(".ticket-composer input[type=file]")
-        .first()
-        .setInputFiles({
-          name: "Bild 2026-11-25 10-15-30.png",
-          mimeType: "image/png",
-          buffer: Buffer.from(
-            "iVBORw0KGgoAAAANSUhEUgAAAEAAAAAoCAIAAADBrGu+AAAAaklEQVR4nO3PsQmAMAAF0SyTyVzMOkNY21g7hAtIsHCBdBKOLwc3wL1Slyu6gh8IoA8E0AcC6IOvgLs/0QmgE0AngG4MWNvGJiAdEJQAOgF0Y8B+nLMT8G9AUALoBNAJoBNAJ4BOAF084AW2ArFMFpVJSAAAAABJRU5ErkJggg==",
-            "base64",
-          ),
-        });
-      await h.settle(400);
+      await h.page.keyboard.press("Enter");
+      // Screenshot wie mit Ctrl+V an der Cursor-Position eingefügt.
+      await editor.evaluate((element, base64) => {
+        const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+        const file = new File([bytes], "image.png", { type: "image/png" });
+        const data = new DataTransfer();
+        data.items.add(file);
+        element.dispatchEvent(
+          new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+        );
+      }, "iVBORw0KGgoAAAANSUhEUgAAAEAAAAAoCAIAAADBrGu+AAAAaklEQVR4nO3PsQmAMAAF0SyTyVzMOkNY21g7hAtIsHCBdBKOLwc3wL1Slyu6gh8IoA8E0AcC6IOvgLs/0QmgE0AngG4MWNvGJiAdEJQAOgF0Y8B+nLMT8G9AUALoBNAJoBNAJ4BOAF084AW2ArFMFpVJSAAAAABJRU5ErkJggg==");
+      await h.page.keyboard.type("Bitte starte deinen Laptop heute Abend neu.");
+      await h.settle(500);
       await h.scrollTo(
         h.page
           .locator(".ticket-comment-body")
@@ -499,9 +501,6 @@ export const SHOTS = [
           .first(),
         230,
       );
-      await textarea.evaluate((element) => {
-        element.scrollTop = 0;
-      });
     },
   },
   {
@@ -642,7 +641,7 @@ SHOTS.push(
     persona: "agent",
     async run(h) {
       await h.open();
-      await h.nav("Eintritte");
+      await h.nav("Ein-/Austritte");
       await h.settle(1200);
       // Karten sind eingeklappt; die erste aufklappen, damit Aufgaben sichtbar sind.
       await h.page.locator(".onboarding__entry-toggle").first().click();

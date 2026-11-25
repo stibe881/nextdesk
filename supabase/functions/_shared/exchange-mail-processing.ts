@@ -2172,12 +2172,21 @@ async function outboundAttachments(
   ticketId: string,
   commentId: string | null,
   forward?: { sourceCommentId: string | null },
-): Promise<{ attachments: Row[]; omitted: boolean }> {
-  if (!commentId && !forward) return { attachments: [], omitted: false };
+  inlineIds: ReadonlySet<string> = new Set(),
+): Promise<{
+  attachments: Row[];
+  omitted: boolean;
+  /** Im Text eingefügte Bilder: Anhang-ID → Content-ID. */
+  inlineImages: Record<string, string>;
+}> {
+  const inlineImages: Record<string, string> = {};
+  if (!commentId && !forward) {
+    return { attachments: [], omitted: false, inlineImages };
+  }
   let query = admin
     .from("ticket_attachments")
     .select(
-      "storage_bucket, storage_object_path, original_filename, content_type, byte_size",
+      "id, storage_bucket, storage_object_path, original_filename, content_type, byte_size",
     )
     .eq("ticket_id", ticketId);
   if (forward) {
@@ -2195,7 +2204,7 @@ async function outboundAttachments(
     .in("malware_status", ["clean", "pending"])
     .order("created_at")
     .limit(10);
-  if (rows.error) return { attachments: [], omitted: true };
+  if (rows.error) return { attachments: [], omitted: true, inlineImages };
   let total = 0;
   const attachments: Row[] = [];
   let omitted = false;
@@ -2226,14 +2235,28 @@ async function outboundAttachments(
     total += size;
     let binary = "";
     for (const byte of bytes) binary += String.fromCharCode(byte);
+    const id = String(row.id).toLowerCase();
+    const inline =
+      inlineIds.has(id) && String(row.content_type).startsWith("image/");
+    if (inline) inlineImages[id] = `nd-${id}`;
     attachments.push({
       "@odata.type": "#microsoft.graph.fileAttachment",
       name: String(row.original_filename),
       contentType: String(row.content_type),
       contentBytes: btoa(binary),
+      ...(inline ? { isInline: true, contentId: `nd-${id}` } : {}),
     });
   }
-  return { attachments, omitted };
+  return { attachments, omitted, inlineImages };
+}
+
+/** IDs der im Text eingefügten Bilder ([[nextdesk-inline-image:<id>]]). */
+function inlineImageIdsOf(text: string): Set<string> {
+  return new Set(
+    [...text.matchAll(/\[\[nextdesk-inline-image:([0-9a-f-]{36})\]\]/giu)].map(
+      (match) => String(match[1]).toLowerCase(),
+    ),
+  );
 }
 
 /**
@@ -3204,8 +3227,9 @@ export async function dispatchOutboundMessage(
                   sourceCommentId: asString(message.forward_source_comment_id),
                 }
               : undefined,
+            inlineImageIdsOf(bodyText),
           )
-        : { attachments: [], omitted: false };
+        : { attachments: [], omitted: false, inlineImages: {} };
     const customerEmailKind = customerTicketEmailKindForOutbound(message.kind);
     if (!internalDepartmentNotice && !customerEmailKind)
       throw new Error("outbound_message_kind_unsupported");
@@ -3246,7 +3270,7 @@ export async function dispatchOutboundMessage(
           : null;
     const html = internalDepartmentNotice
       ? internalNoticeHtmlTemplate({
-          text: bodyText,
+          text: bodyText.replace(/\[\[nextdesk-inline-image:[0-9a-f-]{36}\]\]/giu, ""),
           ticketNumber,
           subject: ticketSubject,
           portalName,
@@ -3270,6 +3294,7 @@ export async function dispatchOutboundMessage(
             : {}),
           ...(pickedNotice ? { notice: pickedNotice.notice } : {}),
           text: bodyText,
+          inlineImages: attachments.inlineImages,
           ticketNumber,
           subject: ticketSubject,
           branding: customerBranding!.branding,

@@ -3,6 +3,14 @@
  * Browser liefern sie meist als «image.png»; sie erhalten einen lesbaren
  * Namen mit Datum und Uhrzeit.
  */
+/** Gibt Bildern ohne echten Namen («image.png») einen lesbaren Namen. */
+export function renameClipboardImages(
+  images: readonly File[],
+  now: Date = new Date(),
+): File[] {
+  return pastedImageFilesFrom([...images], now);
+}
+
 export function pastedImageFiles(
   clipboard: Pick<DataTransfer, "items"> | null,
   now: Date = new Date(),
@@ -15,6 +23,10 @@ export function pastedImageFiles(
     if (!file) continue;
     files.push(file);
   }
+  return pastedImageFilesFrom(files, now);
+}
+
+function pastedImageFilesFrom(files: File[], now: Date): File[] {
   const stamp = new Intl.DateTimeFormat("sv-SE", {
     timeZone: "Europe/Zurich",
     year: "numeric",

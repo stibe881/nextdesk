@@ -1,4 +1,4 @@
-export const MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS = 5;
+export const MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS = 10;
 
 /** Files that arrived with the request belong to the first message. */
 export const REQUEST_ATTACHMENT_WINDOW_MS = 10 * 60 * 1000;

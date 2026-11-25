@@ -22,7 +22,7 @@ describe("ticketCommentBodyWithAttachments", () => {
     expect(
       ticketCommentAttachmentIds([{ id: "a" }, { id: "a" }, { id: "b" }]),
     ).toEqual(["a", "b"]);
-    expect(MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS).toBe(5);
+    expect(MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS).toBe(10);
   });
 });
 

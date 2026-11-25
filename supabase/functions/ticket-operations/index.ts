@@ -198,7 +198,7 @@ const hasOnlyKeys = (value: Record<string, unknown>, keys: string[]) => {
 
 function parseCommentAttachmentIds(value: unknown): string[] | null {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 5) return null;
+  if (!Array.isArray(value) || value.length > 10) return null;
   const attachmentIds = value.map((attachmentId) =>
     isUuid(attachmentId) ? attachmentId.toLowerCase() : null,
   );
