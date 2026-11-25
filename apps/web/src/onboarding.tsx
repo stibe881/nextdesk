@@ -2150,9 +2150,6 @@ export function Onboarding({
                                     : days <= 7
                                       ? "soon"
                                       : "later";
-                                const showResponsible =
-                                  task.responsibleName !==
-                                  entry.ictResponsibleName;
                                 return (
                                   <li
                                     className={`onboarding__task onboarding__task--${task.status}`}
@@ -2190,19 +2187,18 @@ export function Onboarding({
                                     )}
                                     <div className="onboarding__task-text">
                                       <strong>{task.title}</strong>
-                                      {showResponsible ||
-                                      task.departmentName ? (
-                                        <span>
-                                          {[
-                                            task.departmentName,
-                                            showResponsible
-                                              ? task.responsibleName
-                                              : null,
-                                          ]
-                                            .filter(Boolean)
-                                            .join(" · ")}
-                                        </span>
-                                      ) : null}
+                                      <span>
+                                        {[
+                                          task.departmentName,
+                                          task.responsibleName,
+                                        ]
+                                          .filter(
+                                            (part, index, parts) =>
+                                              Boolean(part) &&
+                                              parts.indexOf(part) === index,
+                                          )
+                                          .join(" · ")}
+                                      </span>
                                       {task.exception ? (
                                         <small>
                                           <TriangleAlert
