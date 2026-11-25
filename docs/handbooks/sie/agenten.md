@@ -1609,7 +1609,8 @@ Mehr dazu unter «Eintritte und Austritte».
 1. Öffnen Sie unter **Planung und Betrieb** die **Eintritte**.
 2. Klicken Sie rechts im Suchfeld auf das Filter-Symbol.
 3. Wählen Sie unter **Datum des Ein- oder Austritts** und/oder **Meldung eingegangen** ein Datum **Von** und/oder **Bis**. Beides gilt für Eintritte, Austritte und Mutationen. Die Liste und die Zahlen bei **Offen**, **Erledigt** und **Alle** passen sich sofort an; die Zahl am Filter-Symbol zeigt, wie viele Filter aktiv sind.
-4. Mit **Filter zurücksetzen** sehen Sie wieder alle Eintritte.
+4. Mit **Alle Arten**, **Eintritte**, **Austritte** und **Mutationen** neben **Offen / Erledigt / Alle** zeigen Sie nur eine Art.
+5. Mit **Filter zurücksetzen** sehen Sie wieder alle Eintritte.
 
 Mehr dazu unter «Eintritte und Austritte».
 
