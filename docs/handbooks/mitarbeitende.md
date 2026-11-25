@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-23
+updated: 2026-11-25
 ---
 
 # Handbuch für Mitarbeitende
@@ -133,7 +133,7 @@ Du kannst auch direkt auf die E-Mail des Supports antworten. Mehr dazu unter
 ### Wie hänge ich eine Datei an ein Ticket an?
 
 1. Öffne das Ticket und schreibe deine Nachricht in **Deine Nachricht**.
-2. Wähle **Dateien anhängen** und suche den Screenshot oder das Dokument aus.
+2. Wähle **Dateien anhängen** und suche den Screenshot oder das Dokument aus. Einen Screenshot oder ein kopiertes Bild kannst du auch mit Ctrl+V (Mac: Cmd+V) direkt ins Nachrichtenfeld einfügen.
    Erlaubt sind unter anderem PDF, Office-Dokumente, TXT, CSV, PNG und JPG.
 3. Klicke auf **Nachricht senden**.
 

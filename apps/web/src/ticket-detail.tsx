@@ -15,6 +15,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type DragEvent,
   type FormEvent,
 } from "react";
@@ -72,6 +73,7 @@ import {
   ticketInlineAttachmentIds,
   ticketInlineMediaSegments,
 } from "./lib/ticket-inline-media";
+import { pastedImageFiles } from "./lib/clipboard-images";
 import {
   MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS,
   ticketCommentAttachmentIds,
@@ -1600,6 +1602,21 @@ function parseTicketInlineImages(value: unknown): TicketInlineImage[] | null {
     ];
   });
   return images.length === data.inlineImages.length ? images : null;
+}
+
+/** Kleine Vorschau eines vorgemerkten Bildes (lokal, ohne Upload). */
+function PendingImageThumbnail({ file }: { file: File }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  return url ? (
+    <img alt="" className="ticket-comment-image-thumbnail" src={url} />
+  ) : (
+    <Paperclip aria-hidden="true" size={19} />
+  );
 }
 
 function TicketTextWithInlineImages({
@@ -6368,6 +6385,26 @@ export function TicketDetail({
     }
   }
 
+  /**
+   * Bild aus der Zwischenablage (Screenshot, kopiertes Bild) wie in Outlook
+   * direkt ins Nachrichtenfeld einfügen: Es wird als Datei vorgemerkt und
+   * beim Senden mitgeschickt. Text in der Zwischenablage wird normal
+   * eingefügt.
+   */
+  function handleCommentPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const images = pastedImageFiles(event.clipboardData);
+    if (images.length === 0) return;
+    if (!canAttachCommentImages) {
+      setCommentImageNotice({
+        tone: "error",
+        text: "In dieser Nachricht lassen sich keine Bilder anhängen.",
+      });
+      return;
+    }
+    if (!event.clipboardData.getData("text/plain")) event.preventDefault();
+    addCommentImages(images);
+  }
+
   function handleCommentImageDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsCommentImageDropActive(false);
@@ -8424,6 +8461,7 @@ export function TicketDetail({
                     const field = event.currentTarget;
                     window.setTimeout(() => placeCaretAfterGreeting(field), 0);
                   }}
+                  onPaste={handleCommentPaste}
                   placeholder={commentComposer.placeholder}
                   rows={4}
                   value={commentBody}
@@ -8534,7 +8572,11 @@ export function TicketDetail({
                     <ul className="ticket-comment-image-preview-list">
                       {activeCommentImageAttachments.map((attachment) => (
                         <li key={attachment.key}>
-                          <Paperclip aria-hidden="true" size={19} />
+                          {attachment.file.type.startsWith("image/") ? (
+                            <PendingImageThumbnail file={attachment.file} />
+                          ) : (
+                            <Paperclip aria-hidden="true" size={19} />
+                          )}
                           <span>
                             <strong>{attachment.originalFilename}</strong>
                             <small>{formatFileSize(attachment.byteSize)}</small>
