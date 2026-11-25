@@ -10487,6 +10487,16 @@ body:has(.ticket-list-filter-panel) {
   background: var(--surface);
 }
 
+.ticket-comment-image-thumbnail {
+  width: 56px;
+  height: 42px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  object-fit: cover;
+}
+
 .ticket-comment-image-preview-list li > svg {
   width: 42px;
   height: 42px;
