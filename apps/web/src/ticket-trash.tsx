@@ -1,10 +1,11 @@
-import { ArrowLeft, RotateCcw, Trash2, X } from "lucide-react";
+import { ArrowLeft, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import {
   daysUntilPurge,
+  filterDeletedTickets,
   parseDeletedTicket,
   parseDeletedTickets,
   type DeletedTicket,
@@ -57,6 +58,7 @@ export function TicketTrashDialog({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     setError("");
@@ -133,6 +135,8 @@ export function TicketTrashDialog({
       setPending(false);
     }
   };
+
+  const filtered = filterDeletedTickets(tickets ?? [], query);
 
   return (
     <div
@@ -273,39 +277,57 @@ export function TicketTrashDialog({
               )}
             </p>
           ) : (
-            <ul className="ticket-trash__list">
-              {tickets.map((ticket) => (
-                <li key={ticket.id}>
-                  <button
-                    className="ticket-trash__open"
-                    disabled={pending}
-                    onClick={() => void open(ticket)}
-                    type="button"
-                  >
-                    <span className="ticket-trash__number">
-                      {ticket.ticketNumber}
-                      {ticket.department ? ` · ${ticket.department}` : ""}
-                    </span>
-                    <strong>{ticket.subject}</strong>
-                    <small>
-                      Gelöscht {formatDate(ticket.deletedAt)}
-                      {ticket.deletedByName
-                        ? ` von ${ticket.deletedByName}`
-                        : ""}{" "}
-                      · {purgeText(ticket.purgeAt)}
-                    </small>
-                  </button>
-                  <button
-                    className="secondary-button"
-                    disabled={pending}
-                    onClick={() => void restore(ticket)}
-                    type="button"
-                  >
-                    <RotateCcw aria-hidden="true" size={15} /> Wiederherstellen
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              <label className="ticket-trash__search">
+                <Search aria-hidden="true" size={16} />
+                <input
+                  aria-label="Gelöschte Tickets durchsuchen"
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Nummer, Betreff oder Person suchen …"
+                  type="search"
+                  value={query}
+                />
+              </label>
+              {filtered.length === 0 ? (
+                <p className="ticket-trash__muted">
+                  Keine gelöschten Tickets gefunden.
+                </p>
+              ) : null}
+              <ul className="ticket-trash__list">
+                {filtered.map((ticket) => (
+                  <li key={ticket.id}>
+                    <button
+                      className="ticket-trash__open"
+                      disabled={pending}
+                      onClick={() => void open(ticket)}
+                      type="button"
+                    >
+                      <span className="ticket-trash__number">
+                        {ticket.ticketNumber}
+                        {ticket.department ? ` · ${ticket.department}` : ""}
+                      </span>
+                      <strong>{ticket.subject}</strong>
+                      <small>
+                        Gelöscht {formatDate(ticket.deletedAt)}
+                        {ticket.deletedByName
+                          ? ` von ${ticket.deletedByName}`
+                          : ""}{" "}
+                        · {purgeText(ticket.purgeAt)}
+                      </small>
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={pending}
+                      onClick={() => void restore(ticket)}
+                      type="button"
+                    >
+                      <RotateCcw aria-hidden="true" size={15} />{" "}
+                      Wiederherstellen
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       </section>

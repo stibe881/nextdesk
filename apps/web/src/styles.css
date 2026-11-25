@@ -22842,7 +22842,10 @@ html body form:has(> .fk-layout) {
 .nav-item__badge--muted,
 .navigation-cluster__badge--muted {
   color: var(--text, var(--ink));
-  background: var(--surface-muted, color-mix(in srgb, var(--text, #334) 14%, transparent));
+  background: var(
+    --surface-muted,
+    color-mix(in srgb, var(--text, #334) 14%, transparent)
+  );
 }
 
 /* Externe Statusquellen: Dienste der Statusseite pro Quelle. */
@@ -23594,3 +23597,27 @@ body.app-dialog-open {
   margin-bottom: 0;
 }
 
+.ticket-trash__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--line, #d9dde7);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+}
+
+.ticket-trash__search input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  outline: none;
+}
+
+.ticket-trash__search:focus-within {
+  border-color: var(--accent, #4f46e5);
+}
