@@ -111,3 +111,27 @@ export function daysUntilPurge(purgeAt: string, now: number): number {
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, Math.ceil((parsed - now) / (24 * 60 * 60 * 1000)));
 }
+
+/** Filtert gelöschte Tickets nach Nummer, Betreff, Abteilung, Personen und Status. */
+export function filterDeletedTickets(
+  tickets: DeletedTicket[],
+  query: string,
+): DeletedTicket[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return tickets;
+  return tickets.filter((ticket) => {
+    const haystack = [
+      ticket.ticketNumber,
+      ticket.subject,
+      ticket.department,
+      ticket.status,
+      ticket.requesterName,
+      ticket.assigneeName,
+      ticket.deletedByName,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return terms.every((term) => haystack.includes(term));
+  });
+}

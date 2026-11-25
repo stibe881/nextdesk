@@ -23634,6 +23634,29 @@ body.app-dialog-open {
   margin-bottom: 0;
 }
 
+.ticket-trash__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--line, #d9dde7);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+}
+
+.ticket-trash__search input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  outline: none;
+}
+
+.ticket-trash__search:focus-within {
+  border-color: var(--accent, #4f46e5);
 /* Verschachtelte Lager-Panels (z. B. «Regeln für künftige Quellen» unter
    «Reservation anlegen») brauchen Abstand zum vorherigen Block. */
 .inventory__panel > .inventory__panel {
