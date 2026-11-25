@@ -134,8 +134,7 @@ Sie können auch direkt auf die E-Mail des Supports antworten. Mehr dazu unter
 
 1. Öffnen Sie das Ticket und schreiben Sie Ihre Nachricht in **Ihre
    Nachricht**.
-2. Wählen Sie **Dateien anhängen** und suchen Sie den Screenshot oder das
-   Dokument aus. Einen Screenshot oder ein kopiertes Bild können Sie auch mit Ctrl+V (Mac: Cmd+V) direkt ins Nachrichtenfeld einfügen. Erlaubt sind unter anderem PDF, Office-Dokumente, TXT, CSV, PNG
+2. Fügen Sie einen Screenshot oder ein kopiertes Bild mit Ctrl+V (Mac: Cmd+V) direkt ins Nachrichtenfeld ein, ziehen Sie eine Datei hinein oder klicken Sie unten im Feld auf die Büroklammer. Erlaubt sind unter anderem PDF, Office-Dokumente, TXT, CSV, PNG
    und JPG.
 3. Klicken Sie auf **Nachricht senden**.
 
@@ -667,7 +666,7 @@ Die Beschreibung Ihres Anliegens ist eingeklappt, sobald es Nachrichten
 gibt; ein Klick darauf zeigt sie wieder ganz.
 
 - **Antworten:** Schreiben Sie in **Ihre Nachricht** und klicken Sie auf
-  **Nachricht senden**. Mit **Dateien anhängen** fügen Sie Screenshots oder Dokumente hinzu.
+  **Nachricht senden**. Screenshots oder Dokumente fügen Sie direkt im Nachrichtenfeld hinzu (Ctrl+V, hineinziehen oder Büroklammer).
   Erlaubt sind u. a. PDF, Office-Dokumente, TXT, CSV, PNG und JPG.
 - **Wartet auf Sie:** nextDesk fragt «Ist Ihr Problem inzwischen gelöst?».
   Klicken Sie auf **Problem ist gelöst** oder **Ich brauche noch Hilfe**. Bei
