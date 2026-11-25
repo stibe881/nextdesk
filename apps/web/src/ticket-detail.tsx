@@ -15,6 +15,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type DragEvent,
   type FormEvent,
 } from "react";
@@ -72,6 +73,7 @@ import {
   ticketInlineAttachmentIds,
   ticketInlineMediaSegments,
 } from "./lib/ticket-inline-media";
+import { pastedImageFiles } from "./lib/clipboard-images";
 import {
   MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS,
   ticketCommentAttachmentIds,
@@ -1600,6 +1602,21 @@ function parseTicketInlineImages(value: unknown): TicketInlineImage[] | null {
     ];
   });
   return images.length === data.inlineImages.length ? images : null;
+}
+
+/** Kleine Vorschau eines vorgemerkten Bildes (lokal, ohne Upload). */
+function PendingImageThumbnail({ file }: { file: File }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  return url ? (
+    <img alt="" className="ticket-comment-image-thumbnail" src={url} />
+  ) : (
+    <Paperclip aria-hidden="true" size={19} />
+  );
 }
 
 function TicketTextWithInlineImages({
@@ -6368,6 +6385,26 @@ export function TicketDetail({
     }
   }
 
+  /**
+   * Bild aus der Zwischenablage (Screenshot, kopiertes Bild) wie in Outlook
+   * direkt ins Nachrichtenfeld einfügen: Es wird als Datei vorgemerkt und
+   * beim Senden mitgeschickt. Text in der Zwischenablage wird normal
+   * eingefügt.
+   */
+  function handleCommentPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const images = pastedImageFiles(event.clipboardData);
+    if (images.length === 0) return;
+    if (!canAttachCommentImages) {
+      setCommentImageNotice({
+        tone: "error",
+        text: "In dieser Nachricht lassen sich keine Bilder anhängen.",
+      });
+      return;
+    }
+    if (!event.clipboardData.getData("text/plain")) event.preventDefault();
+    addCommentImages(images);
+  }
+
   function handleCommentImageDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsCommentImageDropActive(false);
@@ -8401,34 +8438,128 @@ export function TicketDetail({
                   </button>
                 </div>
               )}
-              <label className="ticket-comment-body">
-                {commentComposer.bodyLabel}
-                <textarea
-                  aria-describedby="ticket-comment-visibility-hint"
-                  disabled={busy || attachmentBusy}
-                  maxLength={50_000}
-                  ref={commentTextareaRef}
-                  onChange={(event) =>
-                    setCommentDrafts((current) =>
-                      updateTicketCommentDraft(
-                        current,
-                        commentVisibility,
-                        event.target.value,
-                      ),
-                    )
-                  }
-                  onClick={(event) =>
-                    placeCaretAfterGreeting(event.currentTarget)
-                  }
-                  onFocus={(event) => {
-                    const field = event.currentTarget;
-                    window.setTimeout(() => placeCaretAfterGreeting(field), 0);
+              <div className="ticket-comment-body">
+                <label htmlFor="ticket-comment-text">
+                  {commentComposer.bodyLabel}
+                </label>
+                {/*
+                  Anhänge gehören wie in Outlook ins Nachrichtenfeld: einfügen
+                  (Ctrl+V), hineinziehen oder über die Büroklammer wählen.
+                */}
+                <div
+                  className={`ticket-composer${isCommentImageDropActive ? " ticket-composer--drop" : ""}`}
+                  onDragLeave={() => setIsCommentImageDropActive(false)}
+                  onDragOver={(event) => {
+                    if (canAttachCommentImages)
+                      handleCommentImageDragOver(event);
                   }}
-                  placeholder={commentComposer.placeholder}
-                  rows={4}
-                  value={commentBody}
-                />
-              </label>
+                  onDrop={(event) => {
+                    if (canAttachCommentImages) handleCommentImageDrop(event);
+                  }}
+                >
+                  <textarea
+                    className="ticket-composer__text"
+                    id="ticket-comment-text"
+                    aria-describedby="ticket-comment-visibility-hint"
+                    disabled={busy || attachmentBusy}
+                    maxLength={50_000}
+                    ref={commentTextareaRef}
+                    onChange={(event) =>
+                      setCommentDrafts((current) =>
+                        updateTicketCommentDraft(
+                          current,
+                          commentVisibility,
+                          event.target.value,
+                        ),
+                      )
+                    }
+                    onClick={(event) =>
+                      placeCaretAfterGreeting(event.currentTarget)
+                    }
+                    onFocus={(event) => {
+                      const field = event.currentTarget;
+                      window.setTimeout(
+                        () => placeCaretAfterGreeting(field),
+                        0,
+                      );
+                    }}
+                    onPaste={handleCommentPaste}
+                    placeholder={commentComposer.placeholder}
+                    rows={4}
+                    value={commentBody}
+                  />
+                  {activeCommentImageAttachments.length > 0 ? (
+                    <ul className="ticket-comment-image-preview-list">
+                      {activeCommentImageAttachments.map((attachment) => (
+                        <li key={attachment.key}>
+                          {attachment.file.type.startsWith("image/") ? (
+                            <PendingImageThumbnail file={attachment.file} />
+                          ) : (
+                            <Paperclip aria-hidden="true" size={19} />
+                          )}
+                          <span>
+                            <strong>{attachment.originalFilename}</strong>
+                            <small>{formatFileSize(attachment.byteSize)}</small>
+                          </span>
+                          <button
+                            aria-label={`${attachment.originalFilename} entfernen`}
+                            className="icon-button"
+                            disabled={busy || attachmentBusy}
+                            onClick={() =>
+                              removeCommentImage(attachment, commentVisibility)
+                            }
+                            type="button"
+                          >
+                            <X aria-hidden="true" size={16} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {canAttachCommentImages ? (
+                    <div className="ticket-composer__toolbar">
+                      <input
+                        accept={ATTACHMENT_ACCEPT}
+                        aria-label="Dateien für diese Nachricht auswählen"
+                        className="ticket-comment-image-input"
+                        disabled={busy || attachmentBusy}
+                        multiple
+                        onChange={(event) =>
+                          void addCommentImages([
+                            ...(event.currentTarget.files ?? []),
+                          ])
+                        }
+                        ref={commentImageInputRef}
+                        type="file"
+                      />
+                      <button
+                        aria-label="Dateien anhängen"
+                        className="ticket-composer__attach"
+                        disabled={busy || attachmentBusy}
+                        onClick={() => commentImageInputRef.current?.click()}
+                        title={`Dateien anhängen (${ATTACHMENT_ALLOWLIST_LABEL}, höchstens ${MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Dateien à 25 MiB)`}
+                        type="button"
+                      >
+                        <Paperclip aria-hidden="true" size={17} />
+                      </button>
+                      <small>
+                        Bilder mit Ctrl+V einfügen oder Dateien hierher ziehen
+                      </small>
+                    </div>
+                  ) : null}
+                </div>
+                {commentImageNotice ? (
+                  <p
+                    className={`ticket-comment-image-notice ticket-comment-image-notice--${commentImageNotice.tone}`}
+                    role={
+                      commentImageNotice.tone === "error" ? "alert" : "status"
+                    }
+                  >
+                    {commentImageNotice.text}
+                  </p>
+                ) : null}
+              </div>
+
               {mentionSuggestions.length > 0 ? (
                 <ul
                   aria-label="Agenten erwähnen"
@@ -8489,83 +8620,6 @@ export function TicketDetail({
                   text={commentBody}
                 />
               )}
-              {canAttachCommentImages ? (
-                <div
-                  className={`ticket-comment-image-dropzone${isCommentImageDropActive ? " ticket-comment-image-dropzone--active" : ""}`}
-                  onDragLeave={() => setIsCommentImageDropActive(false)}
-                  onDragOver={handleCommentImageDragOver}
-                  onDrop={handleCommentImageDrop}
-                >
-                  <input
-                    accept={ATTACHMENT_ACCEPT}
-                    aria-label="Dateien für diese Nachricht auswählen"
-                    className="ticket-comment-image-input"
-                    disabled={busy || attachmentBusy}
-                    multiple
-                    onChange={(event) =>
-                      void addCommentImages([
-                        ...(event.currentTarget.files ?? []),
-                      ])
-                    }
-                    ref={commentImageInputRef}
-                    type="file"
-                  />
-                  <div className="ticket-comment-image-dropzone__copy">
-                    <Paperclip aria-hidden="true" size={19} />
-                    <span>
-                      <strong>Dateien zur Nachricht hinzufügen</strong>
-                      <small>
-                        Hierher ziehen oder auswählen ·{" "}
-                        {ATTACHMENT_ALLOWLIST_LABEL} · höchstens{" "}
-                        {MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Dateien à 25 MiB
-                      </small>
-                    </span>
-                  </div>
-                  <button
-                    className="secondary-button"
-                    disabled={busy || attachmentBusy}
-                    onClick={() => commentImageInputRef.current?.click()}
-                    type="button"
-                  >
-                    <Paperclip aria-hidden="true" size={16} />
-                    Dateien anhängen
-                  </button>
-                  {activeCommentImageAttachments.length > 0 ? (
-                    <ul className="ticket-comment-image-preview-list">
-                      {activeCommentImageAttachments.map((attachment) => (
-                        <li key={attachment.key}>
-                          <Paperclip aria-hidden="true" size={19} />
-                          <span>
-                            <strong>{attachment.originalFilename}</strong>
-                            <small>{formatFileSize(attachment.byteSize)}</small>
-                          </span>
-                          <button
-                            aria-label={`${attachment.originalFilename} entfernen`}
-                            className="icon-button"
-                            disabled={busy || attachmentBusy}
-                            onClick={() =>
-                              removeCommentImage(attachment, commentVisibility)
-                            }
-                            type="button"
-                          >
-                            <X aria-hidden="true" size={16} />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  {commentImageNotice ? (
-                    <p
-                      className={`ticket-comment-image-notice ticket-comment-image-notice--${commentImageNotice.tone}`}
-                      role={
-                        commentImageNotice.tone === "error" ? "alert" : "status"
-                      }
-                    >
-                      {commentImageNotice.text}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
               {activeCommunicationDraft.restored && (
                 <p className="ticket-workbench__notice" role="status">
                   {activeCommunicationDraft.restoredLabel}

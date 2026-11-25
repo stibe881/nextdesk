@@ -366,7 +366,7 @@ Mehr dazu unter «Antworten und interne Notizen».
 ### Wie hänge ich Dateien an eine Nachricht an?
 
 1. Öffnen Sie das Ticket und den Antwortbereich.
-2. Klicken Sie auf **Dateien anhängen** und wählen Sie die Dateien (Bilder, PDF, Word, Excel, TXT, CSV; bis 5 Dateien pro Nachricht).
+2. Fügen Sie einen Screenshot oder ein kopiertes Bild mit Ctrl+V (Mac: Cmd+V) direkt ins Nachrichtenfeld ein, ziehen Sie Dateien hinein oder klicken Sie unten im Feld auf die Büroklammer (Bilder, PDF, Word, Excel, TXT, CSV; bis 5 Dateien pro Nachricht). Die Anhänge erscheinen mit Vorschau im Nachrichtenfeld; mit × entfernen Sie einen.
 3. Senden Sie die Nachricht.
 
 Mehr dazu unter «Antworten und interne Notizen».
@@ -3272,7 +3272,8 @@ Praktische Helfer:
 
 - **Antwort senden und als gelöst markieren** in einem Schritt
 - `@Name` erwähnt Kolleginnen und Kollegen
-- **Dateien anhängen** (Bilder, PDF, Word, Excel, TXT, CSV; bis 5 Dateien pro
+- Anhänge direkt im Nachrichtenfeld: einfügen mit Ctrl+V, hineinziehen oder
+  über die Büroklammer (Bilder, PDF, Word, Excel, TXT, CSV; bis 5 Dateien pro
   Nachricht), **Makro anwenden**, **KI-Entwurf erstellen**
   (falls KI-Assistenz aktiv)
 

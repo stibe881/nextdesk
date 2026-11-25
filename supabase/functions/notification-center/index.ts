@@ -271,10 +271,31 @@ async function listNotifications(
       ticketsById.set(ticket.id, ticket);
     }
   }
+  // Ticket inzwischen gelöscht (Papierkorb): Die Mitteilung bleibt sichtbar,
+  // nur mit der Ticketnummer und dem Hinweis, dass das Ticket gelöscht ist.
+  // Gesperrte Tickets (fehlende Leserechte) bleiben weiterhin verborgen.
+  const missingTicketIds = ticketIds.filter((id) => !ticketsById.has(id));
+  const deletedTickets = new Map<string, { tenant_id: string; ticket_number: string }>();
+  if (missingTicketIds.length > 0) {
+    const { data: deleted } = await admin
+      .from("tickets")
+      .select("id, tenant_id, ticket_number")
+      .in("id", missingTicketIds)
+      .not("deleted_at", "is", null);
+    for (const row of (deleted ?? []) as {
+      id: string;
+      tenant_id: string;
+      ticket_number: string;
+    }[]) {
+      deletedTickets.set(row.id, row);
+    }
+  }
   const visibleNotifications = membershipVisibleNotifications.filter(
     (notification) =>
       notification.ticket_id === null ||
-      ticketsById.has(notification.ticket_id),
+      ticketsById.has(notification.ticket_id) ||
+      deletedTickets.get(notification.ticket_id)?.tenant_id ===
+        notification.tenant_id,
   );
 
   return json(request, {
@@ -300,6 +321,16 @@ async function listNotifications(
           readAt: notification.read_at,
           createdAt: notification.created_at,
           ticket: ticketReference,
+          ...(notification.ticket_id &&
+          !ticketReference &&
+          deletedTickets.has(notification.ticket_id)
+            ? {
+                deletedTicket: {
+                  ticketNumber: deletedTickets.get(notification.ticket_id)!
+                    .ticket_number,
+                },
+              }
+            : {}),
         };
       }),
     },

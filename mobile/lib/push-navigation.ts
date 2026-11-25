@@ -90,6 +90,8 @@ export type PushNavigationData = {
   contractId?: string;
   inventoryItemId?: string;
   inventoryLocationId?: string;
+  /** Teamauslastung: Person und Zahlen für den Hinweis. */
+  teamSummary?: string;
 };
 
 export type PushRoute =
@@ -279,6 +281,17 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
   // Sammelmitteilung: kann Tickets, Shop, Störungen … enthalten. Die
   // Mitteilungen der App listen alle; dort öffnet ein Tipp das Objekt.
   if (kind === "summary") return path("/inbox");
+  // Hohe Auslastung einer Person im Team: Die Teamführung gibt es nur im Web.
+  if (kind === "team_overload") {
+    return {
+      kind: "message",
+      title: "Team: hohe Auslastung",
+      message: `${data.teamSummary ? `${data.teamSummary}.\n\n` : ""}${tn(
+        "Die Verteilung der Tickets siehst du in der Web-App unter «Teamführung». Dort kannst du Tickets umverteilen.",
+        "Die Verteilung der Tickets sehen Sie in der Web-App unter «Teamführung». Dort können Sie Tickets umverteilen.",
+      )}`,
+    };
+  }
   if (kind === "test") return null;
   // Unbekannte (neuere) Art mit Ticket: Ticket öffnen.
   return ticketId ? { kind: "ticket", ticketId } : null;

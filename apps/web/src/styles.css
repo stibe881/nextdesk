@@ -10487,6 +10487,16 @@ body:has(.ticket-list-filter-panel) {
   background: var(--surface);
 }
 
+.ticket-comment-image-thumbnail {
+  width: 56px;
+  height: 42px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  object-fit: cover;
+}
+
 .ticket-comment-image-preview-list li > svg {
   width: 42px;
   height: 42px;
@@ -23657,6 +23667,8 @@ body.app-dialog-open {
 
 .ticket-trash__search:focus-within {
   border-color: var(--accent, #4f46e5);
+}
+
 /* Verschachtelte Lager-Panels (z. B. «Regeln für künftige Quellen» unter
    «Reservation anlegen») brauchen Abstand zum vorherigen Block. */
 .inventory__panel > .inventory__panel {
@@ -24190,4 +24202,79 @@ button.inventory__metric--link:focus-visible {
 /* Platzhalter für später geladene Nebenbereiche (Deferred). */
 .deferred-placeholder {
   min-height: 1px;
+}
+
+/* Nachrichtenfeld mit Anhängen (wie Outlook): Text, Anhänge und Büroklammer
+   in einem gemeinsamen Rahmen. */
+.ticket-composer {
+  display: grid;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background 150ms ease;
+}
+.ticket-composer:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.ticket-composer--drop {
+  border-color: var(--primary);
+  border-style: dashed;
+  background: var(--surface-tint-eef2ff, var(--surface-subtle));
+}
+.ticket-detail-primary .ticket-comment-body .ticket-composer__text,
+.ticket-composer__text {
+  min-height: 108px;
+  border: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  box-shadow: none;
+}
+.ticket-composer__text:focus-visible {
+  border: 0;
+  box-shadow: none;
+  outline: none;
+}
+.ticket-composer .ticket-comment-image-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+.ticket-composer .ticket-comment-image-preview-list li {
+  max-width: 280px;
+  padding: 5px 6px;
+  background: var(--surface-subtle);
+}
+.ticket-composer__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+}
+.ticket-composer__toolbar small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ticket-composer__attach {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.ticket-composer__attach:hover,
+.ticket-composer__attach:focus-visible {
+  background: var(--surface-subtle);
+  color: var(--primary);
 }
