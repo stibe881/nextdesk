@@ -1394,7 +1394,7 @@ export function Onboarding({
       <header className="onboarding__hero panel">
         <div>
           <p className="eyebrow">Planung statt Ticket</p>
-          <h2 id="onboarding-heading">Eintritte & Austritte</h2>
+          <h2 id="onboarding-heading">Ein-/Austritte</h2>
           <p>
             Ein- und Austritte werden mit klaren Verantwortlichkeiten
             vorbereitet. Die beteiligten Abteilungen erhalten ihre Teilaufgaben

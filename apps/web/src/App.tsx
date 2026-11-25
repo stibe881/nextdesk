@@ -903,11 +903,13 @@ function isSection(value: unknown): value is Section {
 
 function sectionDisplayLabel(section: Section): string {
   if (section === "Services") return "Dienste";
+  if (section === "Eintritte") return "Ein-/Austritte";
   return section === "Wissen" ? "Wissensdatenbank" : section;
 }
 
 /** Page title in the top bar; internal section keys stay stable. */
 function sectionPageTitle(section: Section): string {
+  if (section === "Eintritte") return "Ein-/Austritte";
   return section === "Services" ? "Dienste" : section;
 }
 

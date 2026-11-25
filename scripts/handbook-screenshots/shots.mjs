@@ -642,7 +642,7 @@ SHOTS.push(
     persona: "agent",
     async run(h) {
       await h.open();
-      await h.nav("Eintritte");
+      await h.nav("Ein-/Austritte");
       await h.settle(1200);
       // Karten sind eingeklappt; die erste aufklappen, damit Aufgaben sichtbar sind.
       await h.page.locator(".onboarding__entry-toggle").first().click();

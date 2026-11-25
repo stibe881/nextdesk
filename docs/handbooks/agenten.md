@@ -1566,7 +1566,7 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 
 ### Wie erfasse ich eine Mutation, z. B. eine Namensänderung?
 
-1. Öffne unter **Planung und Betrieb** die **Eintritte** und klicke auf **Eintritt, Austritt oder Mutation planen**.
+1. Öffne unter **Planung und Betrieb** die **Ein-/Austritte** und klicke auf **Eintritt, Austritt oder Mutation planen**.
 2. Wähle bei **Art** die **Mutation**, trage den bisherigen Namen und den Stichtag (**Gültig ab**) ein.
 3. Wähle eine oder mehrere Mutationsarten: **Namensänderung**, **Abteilung/Angebot**, **Funktion/Rolle** oder **Standort/Pensum**, und fülle jeweils die neue Angabe aus (bei Wechseln auch die bisherige).
 4. Ergänze den aktuellen Einsatz, die Führungsperson und die zuständige Abteilung (die ICT-Verantwortung ist optional) und klicke auf **Mutation planen**.
@@ -1576,7 +1576,7 @@ Mehr dazu unter «Eintritte und Austritte».
 
 ### Wie hake ich Aufgaben eines Eintritts ab?
 
-1. Öffne unter **Planung und Betrieb** die **Eintritte**.
+1. Öffne unter **Planung und Betrieb** die **Ein-/Austritte**.
 2. Klicke auf die Karte (oder den Pfeil rechts), um den Eintritt aufzuklappen; alle Eintritte sind zuerst eingeklappt. Die Aufgaben stehen nach Fälligkeit gruppiert: **Überfällig**, **Nächste 7 Tage** und **Später**.
 3. Klicke auf das Kästchen vor einer Aufgabe, um sie als erledigt zu markieren. Ein zweiter Klick öffnet sie wieder.
 4. «In Arbeit» oder «Blockiert» wählst du im Feld rechts. Erledigte Aufgaben klappst du unter **Erledigt** auf.
@@ -1585,18 +1585,18 @@ Mehr dazu unter «Eintritte und Austritte».
 
 ### Wie weise ich einen Eintritt einer anderen Person zu?
 
-1. Öffne unter **Planung und Betrieb** die **Eintritte** (in der App über die Kachel **Eintritte**).
+1. Öffne unter **Planung und Betrieb** die **Ein-/Austritte** (in der App über die Kachel **Ein-/Austritte**).
 2. Klappe den Eintritt bzw. Austritt auf.
 3. Wähle unten unter **ICT-Verantwortung** einen Agenten (in der App: **Zuweisen an …**). Zur Auswahl stehen nur die Agenten aus den Teams der Abteilung, über die der Eintritt gemeldet wurde (bei einer Eintrittsmeldung per Mail die Abteilung des Mail-Tickets). Mit **Nicht zugewiesen** hebst du die Zuweisung auf.
 4. Die ICT-Aufgaben gehen mit, Aufgaben der Führung und der Abteilungen bleiben. Die neue Person erhält eine Mitteilung. Ist sie gerade abwesend, geht der Eintritt an ihre Stellvertretung.
 
-Neue Eintritte, Austritte und Mutationen sind zuerst nicht zugewiesen; die Zahl beim Menüpunkt **Eintritte** zeigt, wie viele es sind. Zuweisen kann, wer Eintritte verwaltet, wer den Eintritt erfasst hat, die bisherige ICT-Verantwortung mit ihrer Stellvertretung und jedes Mitglied der Teams der Abteilung.
+Neue Eintritte, Austritte und Mutationen sind zuerst nicht zugewiesen; die Zahl beim Menüpunkt **Ein-/Austritte** zeigt, wie viele es sind. Zuweisen kann, wer Eintritte verwaltet, wer den Eintritt erfasst hat, die bisherige ICT-Verantwortung mit ihrer Stellvertretung und jedes Mitglied der Teams der Abteilung.
 
 Mehr dazu unter «Eintritte und Austritte».
 
 ### Wie lösche ich einen Eintritt oder Austritt?
 
-1. Öffne unter **Planung und Betrieb** die **Eintritte**.
+1. Öffne unter **Planung und Betrieb** die **Ein-/Austritte**.
 2. Klappe den Eintritt bzw. Austritt mit einem Klick auf die Karte auf.
 3. Klicke unten in der Karte auf **Eintritt löschen** bzw. **Austritt löschen** (nur mit dem Recht, Eintritte zu verwalten).
 4. Bestätige die Rückfrage. Alle Aufgaben, Ausnahmetickets und die gespeicherte Meldung werden ebenfalls entfernt.
@@ -1605,7 +1605,7 @@ Mehr dazu unter «Eintritte und Austritte».
 
 ### Wie filtere ich Eintritte nach Datum?
 
-1. Öffne unter **Planung und Betrieb** die **Eintritte**.
+1. Öffne unter **Planung und Betrieb** die **Ein-/Austritte**.
 2. Klicke rechts im Suchfeld auf das Filter-Symbol.
 3. Wähle unter **Eintrittsdatum** und/oder **Eintrittsmeldung eingegangen** ein Datum **Von** und/oder **Bis**. Die Liste und die Zahlen bei **Offen**, **Erledigt** und **Alle** passen sich sofort an; die Zahl am Filter-Symbol zeigt, wie viele Filter aktiv sind.
 4. Mit **Filter zurücksetzen** siehst du wieder alle Eintritte.
@@ -1614,7 +1614,7 @@ Mehr dazu unter «Eintritte und Austritte».
 
 ### Wie finde ich erledigte Eintritte wieder?
 
-1. Öffne unter **Planung und Betrieb** die **Eintritte** (in der App über die Kachel **Eintritte** auf der Startseite).
+1. Öffne unter **Planung und Betrieb** die **Ein-/Austritte** (in der App über die Kachel **Ein-/Austritte** auf der Startseite).
 2. Wähle über der Liste **Erledigt** (oder **Alle**). Standard ist **Offen**; die Zahl in Klammern zeigt, wie viele es sind.
 3. Im Suchfeld daneben suchst du nach Name, Abteilung, Ort, Führung oder Ticketnummer der Eintrittsmeldung.
 
@@ -2382,7 +2382,7 @@ Tickets» –, bei
 **Phishing / Junk** alle offenen Fälle und bei **Störungen** alle aktiven
 Störungen – rot, solange davon ein Fall niemandem zugewiesen bzw. eine
 Störung nicht bestätigt ist, sonst grau –, bei **Anlässe**, **Shop** und
-**Eintritte** die offenen Anfragen. Ist eine Kategorie zugeklappt, steht die
+**Ein-/Austritte** die offenen Anfragen. Ist eine Kategorie zugeklappt, steht die
 Summe neben ihrem Namen. Die Zahlen aktualisieren sich alle 30 Sekunden.
 
 In der **iOS- und Android-App** zeigt die untere Leiste dieselben Zahlen als
@@ -2510,7 +2510,7 @@ Der **Arbeitsplatz** bündelt deine persönliche Arbeit in Registern:
 Unter **Arbeitsplatz → Stellvertretung → Stellvertretung anlegen** wählst du
 die stellvertretende Person, Beginn, Ende und eine Notiz und speicherst mit
 **Stellvertretung speichern**. Deine Tickets erscheinen in dieser Zeit bei der
-Stellvertretung. Auch deine Eintritte und Austritte sieht sie unter **Eintritte** (markiert mit «Stellvertretung für …») und kann Aufgaben abhaken, den Status setzen und Ausnahmetickets verknüpfen; die Zuständigkeit bleibt bei dir. Wird dir während der Abwesenheit ein Ticket, ein Eintritt oder ein Austritt neu zugewiesen, geht er direkt an die Stellvertretung.
+Stellvertretung. Auch deine Eintritte und Austritte sieht sie unter **Ein-/Austritte** (markiert mit «Stellvertretung für …») und kann Aufgaben abhaken, den Status setzen und Ausnahmetickets verknüpfen; die Zuständigkeit bleibt bei dir. Wird dir während der Abwesenheit ein Ticket, ein Eintritt oder ein Austritt neu zugewiesen, geht er direkt an die Stellvertretung.
 
 ### Phishing melden
 
@@ -3916,7 +3916,7 @@ ohne den Anlass aufzuklappen.
 
 ## Eintritte und Austritte
 
-Unter **Planung und Betrieb → Eintritte** steht für jeden Eintritt bzw.
+Unter **Planung und Betrieb → Ein-/Austritte** steht für jeden Eintritt bzw.
 Austritt eine Karte. Über der Liste wählst du **Offen** (Standard), **Erledigt** oder **Alle** und suchst nach Name, Abteilung, Ort, Führung oder Ticketnummer; erledigt ist ein Eintritt, wenn alle Aufgaben erledigt sind. Oben siehst du Name, Datum mit Countdown (z. B. «in
 12 Tagen»), Abteilung, Ort, Führung und ICT-Verantwortung sowie rechts den
 Fortschritt («1 / 6 Aufgaben erledigt»). Die Karten sind eingeklappt; ein Klick auf die Karte oder den Pfeil rechts klappt sie auf. Darunter stehen die Aufgaben nach
@@ -3928,7 +3928,7 @@ Mit dem **Kästchen** hakst du eine Aufgabe ab, im Feld rechts wählst du «In
 Arbeit» oder «Blockiert». Verzögert sich eine Aufgabe, verknüpfst du über den
 **Schraubenschlüssel** ein Ausnahmeticket; es erscheint dann unter der
 Aufgabe. Bei Eintritten aus einer Mail klappst du unten **Angaben aus der
-Eintrittsmeldung** auf. Die Eintrittsmeldung selbst (PDF) öffnest du mit **Eintrittsmeldung (PDF) öffnen**. Mit dem Recht, Eintritte zu verwalten, löschst du dort mit **Eintritt löschen** bzw. **Austritt löschen** den ganzen Eintritt samt Aufgaben; sie bleibt beim Eintritt gespeichert, auch wenn das Mail-Ticket entfällt. In der App steht auf der Startseite immer die Kachel **Eintritte**, auch ohne offene Eintritte («Keine offenen Eintritte»).
+Eintrittsmeldung** auf. Die Eintrittsmeldung selbst (PDF) öffnest du mit **Eintrittsmeldung (PDF) öffnen**. Mit dem Recht, Eintritte zu verwalten, löschst du dort mit **Eintritt löschen** bzw. **Austritt löschen** den ganzen Eintritt samt Aufgaben; sie bleibt beim Eintritt gespeichert, auch wenn das Mail-Ticket entfällt. In der App steht auf der Startseite immer die Kachel **Ein-/Austritte**, auch ohne offene Eintritte («Keine offenen Eintritte»).
 
 **Mutationen.** Mit der Art **Mutation** erfasst du Änderungen bei bestehenden Mitarbeitenden, etwa eine Namensänderung nach einer Heirat oder einen Wechsel von Abteilung/Angebot, Funktion, Standort oder Pensum. In der Liste ist die Karte mit **Mutation** markiert und zeigt bisherige und neue Werte (z. B. «Namensänderung Anna Muster → Anna Meier»). Aufgaben, Zuweisung, Stellvertretung und Löschen funktionieren wie bei Eintritten. Unter **Abteilungsaufgaben** legst du mit der Art **Mutation** zusätzliche Aufgaben für Abteilungen fest.
 

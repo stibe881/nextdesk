@@ -186,7 +186,7 @@ export default function OnboardingScreen() {
           >
             <Ionicons color={colors.primaryText} name="arrow-back" size={22} />
           </Pressable>
-          <Text style={styles.title}>Eintritte</Text>
+          <Text style={styles.title}>Ein-/Austritte</Text>
           <View style={styles.back} />
         </View>
 
