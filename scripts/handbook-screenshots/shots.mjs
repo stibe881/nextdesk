@@ -473,16 +473,28 @@ export const SHOTS = [
         .first()
         .click();
       const textarea = h.page
-        .locator("label.ticket-comment-body textarea")
+        .locator(".ticket-comment-body textarea")
         .filter({ visible: true })
         .first();
       await textarea.fill(
         "Hallo Reto\n\nIch habe dir die neue VPN-Version 5.2 über das Unternehmensportal zugewiesen. Bitte starte deinen Laptop heute Abend neu und melde dich morgen kurz, ob die Verbindung stabil bleibt.\n\nFreundliche Grüsse\nMara Keller",
       );
+      // Ein Screenshot als Anhang im Nachrichtenfeld (wie mit Ctrl+V eingefügt).
+      await h.page
+        .locator(".ticket-composer input[type=file]")
+        .first()
+        .setInputFiles({
+          name: "Bild 2026-11-25 10-15-30.png",
+          mimeType: "image/png",
+          buffer: Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAEAAAAAoCAIAAADBrGu+AAAAaklEQVR4nO3PsQmAMAAF0SyTyVzMOkNY21g7hAtIsHCBdBKOLwc3wL1Slyu6gh8IoA8E0AcC6IOvgLs/0QmgE0AngG4MWNvGJiAdEJQAOgF0Y8B+nLMT8G9AUALoBNAJoBNAJ4BOAF084AW2ArFMFpVJSAAAAABJRU5ErkJggg==",
+            "base64",
+          ),
+        });
       await h.settle(400);
       await h.scrollTo(
         h.page
-          .locator("label.ticket-comment-body")
+          .locator(".ticket-comment-body")
           .filter({ visible: true })
           .first(),
         230,
