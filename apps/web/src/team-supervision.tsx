@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  ArrowRight,
   CalendarClock,
   ClipboardCheck,
   FileBarChart,
@@ -639,13 +640,45 @@ function Redistribute({
           <ul>
             {overview.suggestions.map((move) => {
               const ticket = ticketById.get(move.ticketId);
+              const from = nameById.get(move.fromAgentId) ?? "Nicht zugewiesen";
               return (
                 <li key={move.ticketId}>
-                  <code>{ticket?.ticketNumber}</code>
-                  <span>{ticket?.subject}</span>
-                  <small>
-                    {nameById.get(move.fromAgentId)} → {move.toAgentName}
-                  </small>
+                  <div className="team-supervision__suggestion-ticket">
+                    <span className="team-supervision__suggestion-number">
+                      {ticket?.ticketNumber}
+                    </span>
+                    <strong title={ticket?.subject}>{ticket?.subject}</strong>
+                    {ticket ? (
+                      <small
+                        className={
+                          ticket.overdue
+                            ? "is-overdue"
+                            : ticket.atRisk
+                              ? "is-risk"
+                              : undefined
+                        }
+                      >
+                        {ticket.priorityLabel}
+                        {ticket.overdue
+                          ? " · überfällig"
+                          : ticket.atRisk
+                            ? " · SLA in Gefahr"
+                            : ""}
+                      </small>
+                    ) : null}
+                  </div>
+                  <div
+                    aria-label={`Von ${from} an ${move.toAgentName}`}
+                    className="team-supervision__suggestion-move"
+                  >
+                    <span className="team-supervision__suggestion-from">
+                      {from}
+                    </span>
+                    <ArrowRight aria-hidden="true" size={14} />
+                    <span className="team-supervision__suggestion-to">
+                      {move.toAgentName}
+                    </span>
+                  </div>
                 </li>
               );
             })}
