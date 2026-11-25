@@ -69,7 +69,8 @@ Mehr dazu unter «Ticketliste».
 1. Öffne in der Navigation **Tickets**.
 2. Öffne **Filter & Sortierung**.
 3. Gib einen Suchbegriff ein oder wähle Status (mehrere gleichzeitig möglich), Priorität, Agent (_Mir zugewiesen_, _Nicht zugewiesen_) oder Abteilung.
-4. Mit **Filter zurücksetzen** stellst du alles zurück.
+4. Mit **Alle Arten**, **Eintritte**, **Austritte** und **Mutationen** neben **Offen / Erledigt / Alle** zeigst du nur eine Art. 
+5. Mit **Filter zurücksetzen** stellst du alles zurück.
 
 Mehr dazu unter «Ticketliste».
 
@@ -1608,8 +1609,9 @@ Mehr dazu unter «Eintritte und Austritte».
 
 1. Öffne unter **Planung und Betrieb** die **Ein-/Austritte**.
 2. Klicke rechts im Suchfeld auf das Filter-Symbol.
-3. Wähle unter **Eintrittsdatum** und/oder **Eintrittsmeldung eingegangen** ein Datum **Von** und/oder **Bis**. Die Liste und die Zahlen bei **Offen**, **Erledigt** und **Alle** passen sich sofort an; die Zahl am Filter-Symbol zeigt, wie viele Filter aktiv sind.
-4. Mit **Filter zurücksetzen** siehst du wieder alle Eintritte.
+3. Wähle unter **Datum des Ein- oder Austritts** und/oder **Meldung eingegangen** ein Datum **Von** und/oder **Bis**. Beides gilt für Eintritte, Austritte und Mutationen. Die Liste und die Zahlen bei **Offen**, **Erledigt** und **Alle** passen sich sofort an; die Zahl am Filter-Symbol zeigt, wie viele Filter aktiv sind.
+4. Mit **Alle Arten**, **Eintritte**, **Austritte** und **Mutationen** neben **Offen / Erledigt / Alle** zeigst du nur eine Art.
+5. Mit **Filter zurücksetzen** siehst du wieder alle Eintritte.
 
 Mehr dazu unter «Eintritte und Austritte».
 
@@ -3924,12 +3926,14 @@ Fortschritt («1 / 6 Aufgaben erledigt»). Die Karten sind eingeklappt; ein Klic
 Fälligkeit gruppiert: **Überfällig** (rot), **Nächste 7 Tage** und
 **Später**; erledigte Aufgaben sind unter **Erledigt** eingeklappt. Jede
 Zeile zeigt Fälligkeit («in 3 Tagen», «1 Tag überfällig»), die zuständige
-Abteilung bzw. Person (wenn nicht die ICT-Verantwortung) und den Status.
+Person bzw. Abteilung (ohne Person die Abteilung des Eintritts, z. B. «ICT») und den Status.
 Mit dem **Kästchen** hakst du eine Aufgabe ab, im Feld rechts wählst du «In
 Arbeit» oder «Blockiert». Verzögert sich eine Aufgabe, verknüpfst du über den
 **Schraubenschlüssel** ein Ausnahmeticket; es erscheint dann unter der
 Aufgabe. Bei Eintritten aus einer Mail klappst du unten **Angaben aus der
 Eintrittsmeldung** auf. Die Eintrittsmeldung selbst (PDF) öffnest du mit **Eintrittsmeldung (PDF) öffnen**. Mit dem Recht, Eintritte zu verwalten, löschst du dort mit **Eintritt löschen** bzw. **Austritt löschen** den ganzen Eintritt samt Aufgaben; sie bleibt beim Eintritt gespeichert, auch wenn das Mail-Ticket entfällt. In der App steht auf der Startseite immer die Kachel **Ein-/Austritte**, auch ohne offene Eintritte («Keine offenen Eintritte»).
+
+**Meldungen per Mail.** Schickt die Personal-App eine Eintritts- oder Austrittsmeldung (PDF) per Mail, legt nextDesk daraus automatisch einen Eintritt bzw. Austritt an und ersetzt das Mail-Ticket. Ein Austritt enthält die Aufgaben aus der Meldung (Rückgabe der ICT-Ausstattung, Gruppenpostfächer) und «Konto und Zugriffe deaktivieren». Kommt dieselbe Meldung (gleiche Person, gleiches Datum) ein zweites Mal, erscheint sie nicht in der Ticketliste, sondern im Papierkorb der Tickets; dort kannst du sie 90 Tage lang wiederherstellen.
 
 **Mutationen.** Mit der Art **Mutation** erfasst du Änderungen bei bestehenden Mitarbeitenden, etwa eine Namensänderung nach einer Heirat oder einen Wechsel von Abteilung/Angebot, Funktion, Standort oder Pensum. In der Liste ist die Karte mit **Mutation** markiert und zeigt bisherige und neue Werte (z. B. «Namensänderung Anna Muster → Anna Meier»). Aufgaben, Zuweisung, Stellvertretung und Löschen funktionieren wie bei Eintritten. Unter **Abteilungsaufgaben** legst du mit der Art **Mutation** zusätzliche Aufgaben für Abteilungen fest.
 

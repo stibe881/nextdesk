@@ -3,6 +3,11 @@ import {
   parseOnboardingPdf,
   type OnboardingPdfData,
 } from "./onboarding-pdf-intake.ts";
+import {
+  buildOffboardingTasks,
+  parseOffboardingPdf,
+  type OffboardingPdfData,
+} from "./offboarding-pdf-intake.ts";
 import { extractPdfTextItems } from "./onboarding-pdf-text.ts";
 import { resolveReporterAccount } from "./onboarding-reporter.ts";
 
@@ -32,7 +37,8 @@ export type OnboardingIntakeOutcome =
   | "ignored";
 
 const MAX_PDFS = 3;
-const MAX_PDF_BYTES = 5 * 1024 * 1024;
+// Entspricht der Grenze für eingehende Anhänge (Power-Apps-PDFs sind gross).
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -70,6 +76,28 @@ async function firstOnboardingPdf(
       if (parsed) return { data: parsed, pdf };
     } catch {
       // Ein defektes oder unbekanntes PDF ist kein Eintritt.
+    }
+  }
+  return null;
+}
+
+async function firstOffboardingPdf(
+  attachments: readonly InboundPdfAttachment[],
+): Promise<{ data: OffboardingPdfData; pdf: InboundPdfAttachment } | null> {
+  const pdfs = attachments
+    .filter(
+      (attachment) =>
+        attachment.contentType === "application/pdf" &&
+        attachment.bytes.byteLength > 0 &&
+        attachment.bytes.byteLength <= MAX_PDF_BYTES,
+    )
+    .slice(0, MAX_PDFS);
+  for (const pdf of pdfs) {
+    try {
+      const parsed = parseOffboardingPdf(await extractPdfTextItems(pdf.bytes));
+      if (parsed) return { data: parsed, pdf };
+    } catch {
+      // Ein defektes oder unbekanntes PDF ist kein Austritt.
     }
   }
   return null;
@@ -143,6 +171,68 @@ async function removeSourceTicket(
   }
 }
 
+/** Entfernt die Vorlagenaufgabe «Gerät bereitstellen» des neuen Eintritts. */
+async function removeGenericDeviceTask(
+  admin: Admin,
+  tenantId: string,
+  entryId: string,
+): Promise<void> {
+  try {
+    const { data: templates } = await admin
+      .from("onboarding_template_tasks")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("task_key", "device");
+    const ids = (templates ?? []).map((row: { id: string }) => row.id);
+    if (ids.length === 0) return;
+    await admin
+      .from("onboarding_tasks")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("entry_id", entryId)
+      .eq("status", "open")
+      .in("template_task_id", ids);
+  } catch {
+    // Die Aufgabe bleibt dann bestehen.
+  }
+}
+
+/**
+ * Eine zweite Mail zum selben Eintritt (gleiche Person, gleiches Datum) ist ein
+ * Duplikat. Das Ticket kommt in den Papierkorb (90 Tage wiederherstellbar) und
+ * erscheint nicht in der Ticketliste; der Vorgang wird protokolliert.
+ */
+async function trashDuplicateTicket(
+  admin: Admin,
+  input: IntakeInput,
+  existingEntryId: string,
+): Promise<void> {
+  try {
+    const { data } = await admin
+      .from("tickets")
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by: input.actorId,
+      })
+      .eq("id", input.ticketId)
+      .eq("tenant_id", input.tenantId)
+      .is("deleted_at", null)
+      .select("id");
+    if (!Array.isArray(data) || data.length === 0) return;
+    await admin.from("audit_logs").insert({
+      tenant_id: input.tenantId,
+      actor_id: input.actorId,
+      action: "onboarding.duplicate_mail_trashed",
+      entity_type: "onboarding_entry",
+      entity_id: existingEntryId,
+      severity: "info",
+      metadata: { ticketNumber: input.ticketNumber },
+    });
+  } catch {
+    // Bei einem Fehler bleibt das Ticket sichtbar.
+  }
+}
+
 /**
  * Erkennt die Eintrittsmeldung der Personal-App (PDF-Anhang) und legt daraus
  * einen Eintritt mit Checkliste an. Läuft nach dem Anlegen des Mail-Tickets und
@@ -161,7 +251,7 @@ export async function processOnboardingEmailTicketIntake(
       return "ignored";
     }
     const found = await firstOnboardingPdf(input.attachments);
-    if (!found) return "ignored";
+    if (!found) return await processOffboardingEmailTicketIntake(admin, input);
     const { data, pdf } = found;
 
     // Vorgesetzte Person ist die Person, die den Eintritt meldet ("Ausgefüllt
@@ -202,7 +292,10 @@ export async function processOnboardingEmailTicketIntake(
     );
     const row = Array.isArray(rows) ? rows[0] : null;
     if (error || !row) return "failed";
-    if (row.created !== true) return "duplicate";
+    if (row.created !== true) {
+      await trashDuplicateTicket(admin, input, String(row.entry_id));
+      return "duplicate";
+    }
     // Der Eintritt gehört zur Abteilung des Mail-Tickets; zuweisen lässt er
     // sich an die Agenten ihrer Teams.
     try {
@@ -222,7 +315,94 @@ export async function processOnboardingEmailTicketIntake(
     } catch {
       // Ohne Abteilung bleiben alle Agenten zuweisbar.
     }
+    // Das allgemeine «Gerät bereitstellen» entfällt: Die Meldung nennt die
+    // konkrete ICT-Ausstattung (eigene Aufgabe) oder keine.
+    await removeGenericDeviceTask(admin, input.tenantId, String(row.entry_id));
     // Die Eintrittsmeldung bleibt beim Eintritt; das Ticket (mit Anhang) entfällt.
+    await storeSourceDocument(admin, input.tenantId, String(row.entry_id), pdf);
+    await removeSourceTicket(admin, input.tenantId, input.ticketId);
+    return "created";
+  } catch {
+    return "failed";
+  }
+}
+
+/**
+ * Austrittsmeldung der Personal-App (PDF «Zusammenfassung Austritt»): legt
+ * einen Austritt an und ersetzt das Mail-Ticket. Wirft nie; bei jedem Fehler
+ * bleibt das Ticket bestehen. Ein zweites Mail zum selben Austritt kommt in den
+ * Papierkorb.
+ */
+async function processOffboardingEmailTicketIntake(
+  admin: Admin,
+  input: IntakeInput,
+): Promise<OnboardingIntakeOutcome> {
+  try {
+    const found = await firstOffboardingPdf(input.attachments);
+    if (!found) return "ignored";
+    const { data, pdf } = found;
+    const reporter = data.filledBy;
+    const reporterEmail = input.senderEmail?.trim().toLowerCase() || null;
+    const reporterUserId = await resolveReporterAccount(
+      admin,
+      input.tenantId,
+      { email: reporterEmail, name: reporter },
+      input.actorId,
+    );
+    if (!reporterUserId) return "failed";
+    const details = {
+      kind: "offboarding",
+      employeeName: data.employeeName,
+      employeeNumber: data.employeeNumber,
+      exitDate: data.exitDate,
+      ictEquipment: data.ictEquipment,
+      groupMailboxes: data.groupMailboxes,
+      supervisor: reporter,
+      reporterEmail,
+      reporterUserId,
+    };
+    const fingerprint = await onboardingFingerprint({
+      employeeName: `austritt|${data.employeeName}`,
+      startDate: data.exitDate,
+    });
+    const { data: rows, error } = await admin.rpc(
+      "create_offboarding_entry_from_email",
+      {
+        p_tenant_id: input.tenantId,
+        p_fingerprint: fingerprint,
+        p_employee_name: data.employeeName,
+        p_exit_on: data.exitDate,
+        p_organisation_unit: null,
+        p_location: null,
+        p_supervisor_name: reporter,
+        p_details: details,
+        p_extra_tasks: buildOffboardingTasks(data),
+        p_source_ticket_number: input.ticketNumber,
+      },
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (error || !row) return "failed";
+    if (row.created !== true) {
+      await trashDuplicateTicket(admin, input, String(row.entry_id));
+      return "duplicate";
+    }
+    try {
+      const { data: ticket } = await admin
+        .from("tickets")
+        .select("department_id")
+        .eq("id", input.ticketId)
+        .eq("tenant_id", input.tenantId)
+        .maybeSingle();
+      if (typeof ticket?.department_id === "string") {
+        await admin
+          .from("onboarding_entries")
+          .update({ department_id: ticket.department_id })
+          .eq("id", String(row.entry_id))
+          .eq("tenant_id", input.tenantId);
+      }
+    } catch {
+      // Ohne Abteilung bleiben alle Agenten zuweisbar.
+    }
     await storeSourceDocument(admin, input.tenantId, String(row.entry_id), pdf);
     await removeSourceTicket(admin, input.tenantId, input.ticketId);
     return "created";

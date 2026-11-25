@@ -907,6 +907,9 @@ export function assignOptions(
   return [{ id: "", displayName: "Nicht zugewiesen" }, ...current, ...options];
 }
 
+/** Art des Vorgangs für den Filter «Alle / Eintritte / Austritte / Mutationen». */
+export type EntryKindFilter = "all" | "onboarding" | "offboarding" | "change";
+
 /** Datumsbereiche (JJJJ-MM-TT, leer = offen) für Eintrittsdatum und Meldung. */
 export type EntryDateFilter = {
   startsFrom: string;
@@ -964,6 +967,7 @@ export function filterEntries<
     sourceTicketNumber?: string | null;
     startsOn?: string;
     createdAt?: string | null;
+    kind?: string;
     tasks: readonly { status: string }[];
   },
 >(
@@ -971,10 +975,12 @@ export function filterEntries<
   filter: EntryFilter,
   query: string,
   dates: EntryDateFilter = emptyEntryDateFilter,
+  kind: EntryKindFilter = "all",
 ): T[] {
   const words = query.toLocaleLowerCase("de-CH").split(/\s+/).filter(Boolean);
   return entries.filter((entry) => {
     const done = entryDone(entry.tasks);
+    if (kind !== "all" && (entry.kind ?? "onboarding") !== kind) return false;
     if (filter === "open" && done) return false;
     if (filter === "done" && !done) return false;
     if (!inRange(dayOf(entry.startsOn), dates.startsFrom, dates.startsTo))
@@ -1024,6 +1030,7 @@ export function Onboarding({
     focusEntryId ? "all" : "open",
   );
   const [entryQuery, setEntryQuery] = useState("");
+  const [entryKind, setEntryKind] = useState<EntryKindFilter>("all");
   const [entryDates, setEntryDates] =
     useState<EntryDateFilter>(emptyEntryDateFilter);
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
@@ -1379,9 +1386,16 @@ export function Onboarding({
     entryFilter,
     entryQuery,
     entryDates,
+    entryKind,
   );
-  // Die Zahlen bei «Offen / Erledigt / Alle» berücksichtigen die Datumsfilter.
-  const datedEntries = filterEntries(allEntries, "all", "", entryDates);
+  // Die Zahlen bei «Offen / Erledigt / Alle» berücksichtigen Datums- und Artfilter.
+  const datedEntries = filterEntries(
+    allEntries,
+    "all",
+    "",
+    entryDates,
+    entryKind,
+  );
   const entryCounts = {
     open: datedEntries.filter((entry) => !entryDone(entry.tasks)).length,
     done: datedEntries.filter((entry) => entryDone(entry.tasks)).length,
@@ -1864,6 +1878,30 @@ export function Onboarding({
               </button>
             ))}
           </div>
+          <div
+            aria-label="Nach Art filtern"
+            className="onboarding__filter-group"
+            role="group"
+          >
+            {(
+              [
+                ["all", "Alle Arten"],
+                ["onboarding", "Eintritte"],
+                ["offboarding", "Austritte"],
+                ["change", "Mutationen"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                aria-pressed={entryKind === key}
+                className={entryKind === key ? "is-active" : undefined}
+                key={key}
+                onClick={() => setEntryKind(key)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="onboarding__search-wrap">
             <input
               aria-label="Eintritte durchsuchen"
@@ -1883,7 +1921,7 @@ export function Onboarding({
               }
               className={`onboarding__filter-button${activeDateFilters ? " is-active" : ""}`}
               onClick={() => setDateFilterOpen((open) => !open)}
-              title="Nach Eintrittsdatum oder Eintrittsmeldung filtern"
+              title="Nach Datum des Ein- oder Austritts oder nach Eingang der Meldung filtern"
               type="button"
             >
               <Filter aria-hidden="true" size={16} />
@@ -1898,7 +1936,7 @@ export function Onboarding({
         {dateFilterOpen ? (
           <div className="onboarding__date-filter" id="onboarding-date-filter">
             <fieldset>
-              <legend>Eintrittsdatum</legend>
+              <legend>Datum des Ein- oder Austritts</legend>
               <label>
                 <span>Von</span>
                 <input
@@ -1929,7 +1967,7 @@ export function Onboarding({
               </label>
             </fieldset>
             <fieldset>
-              <legend>Eintrittsmeldung eingegangen</legend>
+              <legend>Meldung eingegangen</legend>
               <label>
                 <span>Von</span>
                 <input
@@ -2150,9 +2188,6 @@ export function Onboarding({
                                     : days <= 7
                                       ? "soon"
                                       : "later";
-                                const showResponsible =
-                                  task.responsibleName !==
-                                  entry.ictResponsibleName;
                                 return (
                                   <li
                                     className={`onboarding__task onboarding__task--${task.status}`}
@@ -2190,19 +2225,18 @@ export function Onboarding({
                                     )}
                                     <div className="onboarding__task-text">
                                       <strong>{task.title}</strong>
-                                      {showResponsible ||
-                                      task.departmentName ? (
-                                        <span>
-                                          {[
-                                            task.departmentName,
-                                            showResponsible
-                                              ? task.responsibleName
-                                              : null,
-                                          ]
-                                            .filter(Boolean)
-                                            .join(" · ")}
-                                        </span>
-                                      ) : null}
+                                      <span>
+                                        {[
+                                          task.departmentName,
+                                          task.responsibleName,
+                                        ]
+                                          .filter(
+                                            (part, index, parts) =>
+                                              Boolean(part) &&
+                                              parts.indexOf(part) === index,
+                                          )
+                                          .join(" · ")}
+                                      </span>
                                       {task.exception ? (
                                         <small>
                                           <TriangleAlert
@@ -2399,7 +2433,7 @@ export function Onboarding({
           </div>
         ) : allEntries.length ? (
           <p className="empty-state">
-            {entryQuery.trim() || activeDateFilters
+            {entryQuery.trim() || activeDateFilters || entryKind !== "all"
               ? "Kein Eintritt passt zur Suche oder zu den Filtern."
               : entryFilter === "open"
                 ? tn(

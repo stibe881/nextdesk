@@ -1602,7 +1602,10 @@ async function listWorkspace(
           typeof task.department_id === "string" && !task.responsible_user_id
             ? (departmentNames.get(task.department_id) ?? "Abteilung")
             : !task.responsible_user_id
-              ? "Nicht zugewiesen"
+              ? // Ohne Person ist die Abteilung des Eintritts zuständig.
+                ((typeof entry.department_id === "string"
+                  ? departmentNames.get(entry.department_id)
+                  : null) ?? "Nicht zugewiesen")
               : (peopleResult.names.get(String(task.responsible_user_id)) ??
                 "Verantwortliche Person"),
         departmentId:
