@@ -19,6 +19,8 @@ export type InboxNotification = {
   readAt: string | null;
   createdAt: string;
   ticket: { id: string; ticketNumber: string; subject: string | null } | null;
+  /** Das Ticket liegt inzwischen im Papierkorb (nur die Nummer bleibt). */
+  deletedTicket?: { ticketNumber: string } | null;
 };
 
 export type InboxIcon =
@@ -35,6 +37,7 @@ export type InboxIcon =
   | "checkmark-circle-outline"
   | "repeat-outline"
   | "albums-outline"
+  | "people-outline"
   | "notifications-outline";
 
 export type InboxPresentation = {
@@ -93,6 +96,11 @@ function notificationFromValue(value: unknown): InboxNotification | null {
     readAt: value.readAt,
     createdAt: value.createdAt,
     ticket,
+    deletedTicket:
+      isRecord(value.deletedTicket) &&
+      typeof value.deletedTicket.ticketNumber === "string"
+        ? { ticketNumber: value.deletedTicket.ticketNumber }
+        : null,
   };
 }
 
@@ -143,6 +151,8 @@ const EXACT_PUSH_KINDS: Record<string, string> = {
   "contract.deadline": "contract_deadline",
   "infrastructure.due": "infrastructure",
   "problem.recurring_detected": "recurring_problem",
+  // Ohne Push (nur Mitteilungen der App); öffnet einen Hinweis.
+  "team.overload": "team_overload",
 };
 
 /**
@@ -203,6 +213,10 @@ export function inboxNavigationData(
     const entryId = payloadId(payload, "entryId");
     if (entryId) data.onboardingEntryId = entryId;
   }
+  if (kind === "team_overload") {
+    const summary = teamOverloadText(payload);
+    if (summary) data.teamSummary = summary;
+  }
   if (kind === "project") {
     const projectId = payloadId(payload, "projectId");
     const taskId = payloadId(payload, "taskId");
@@ -224,6 +238,16 @@ export function inboxNavigationData(
 
 /** Ziel eines Tipps: dieselbe Tabelle wie bei Push-Mitteilungen. */
 export function inboxRoute(notification: InboxNotification): PushRoute | null {
+  if (notification.deletedTicket) {
+    return {
+      kind: "message",
+      title: "Ticket gelöscht",
+      message: tn(
+        `Das Ticket ${notification.deletedTicket.ticketNumber} wurde inzwischen gelöscht und liegt im Papierkorb. Wiederherstellen kannst du es in der Web-App in der Ticketliste über den Filter «Gelöschte Tickets».`,
+        `Das Ticket ${notification.deletedTicket.ticketNumber} wurde inzwischen gelöscht und liegt im Papierkorb. Wiederherstellen können Sie es in der Web-App in der Ticketliste über den Filter «Gelöschte Tickets».`,
+      ),
+    };
+  }
   return pushRoute(inboxNavigationData(notification));
 }
 
@@ -269,6 +293,7 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
   ipam: ["IP-Adressverwaltung", "git-network-outline"],
   incident: ["Störung", "pulse-outline"],
   recurring_problem: ["Wiederkehrende Ausfälle", "repeat-outline"],
+  team_overload: ["Team: hohe Auslastung", "people-outline"],
 });
 
 const SPECIFIC_TITLES: Record<string, string> = {
@@ -309,7 +334,9 @@ export function inboxPresentation(
   }
 
   let detail: string | null = null;
-  if (notification.ticket) {
+  if (notification.deletedTicket) {
+    detail = `${notification.deletedTicket.ticketNumber} · Ticket gelöscht`;
+  } else if (notification.ticket) {
     const subject = text(notification.ticket.subject, 80);
     detail = subject
       ? `${notification.ticket.ticketNumber} · ${subject}`
@@ -358,6 +385,8 @@ export function inboxPresentation(
       text(payload.title, 80);
   } else if (kind === "contract_deadline") {
     detail = text(payload.title, 80) ?? text(payload.contractName, 80);
+  } else if (kind === "team_overload") {
+    detail = teamOverloadText(payload);
   } else if (kind === "recurring_problem") {
     const count =
       typeof payload.alertCount === "number" ? payload.alertCount : null;
@@ -410,4 +439,27 @@ export function formatInboxTime(createdAt: string, now: Date): string {
   if (days < 7) return `vor ${days} Tagen`;
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${pad(created.getDate())}.${pad(created.getMonth() + 1)}.${created.getFullYear()}`;
+}
+
+/** «Tamara Adzhova · 7 offene Tickets, 1 überfällig (Ø 2.9 im Team ICT)». */
+export function teamOverloadText(
+  payload: Record<string, unknown>,
+): string | null {
+  const name = text(payload.agentName, 80);
+  const open =
+    typeof payload.openTickets === "number" ? payload.openTickets : null;
+  const overdue =
+    typeof payload.overdueTickets === "number" ? payload.overdueTickets : null;
+  const average =
+    typeof payload.averageOpen === "number" ? payload.averageOpen : null;
+  const team = text(payload.departmentName, 60);
+  const load =
+    open !== null
+      ? `${open} offene Tickets${overdue ? `, ${overdue} überfällig` : ""}${
+          average !== null
+            ? ` (Ø ${average.toLocaleString("de-CH")}${team ? ` im Team ${team}` : ""})`
+            : ""
+        }`
+      : null;
+  return [name, load].filter(Boolean).join(" · ") || null;
 }

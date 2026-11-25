@@ -248,29 +248,104 @@
   gap: 6px;
   margin: 0;
 }
+.team-supervision__suggestions header p {
+  margin: 4px 0 0;
+  max-width: 62ch;
+}
 .team-supervision__suggestions ul {
   display: grid;
-  gap: 6px;
   list-style: none;
-  margin: 10px 0 0;
+  margin: 14px 0 0;
   padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
 }
 .team-supervision__suggestions li {
+  align-items: center;
   display: grid;
-  gap: 8px;
-  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px 14px;
+  background: var(--surface);
 }
-.team-supervision__suggestions li span {
+.team-supervision__suggestions li + li {
+  border-top: 1px solid var(--border);
+}
+.team-supervision__suggestions li:hover {
+  background: var(--surface-subtle);
+}
+.team-supervision__suggestion-ticket {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+.team-supervision__suggestion-number {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  font-weight: 600;
+}
+.team-supervision__suggestion-ticket strong {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 600;
 }
-.team-supervision__suggestions li small {
+.team-supervision__suggestion-ticket small {
+  flex: none;
   color: var(--muted);
+  font-size: 12px;
+}
+.team-supervision__suggestion-move {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.team-supervision__suggestion-from,
+.team-supervision__suggestion-to {
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.team-supervision__suggestion-from {
+  min-width: 140px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  text-align: center;
+}
+.team-supervision__suggestion-to {
+  min-width: 150px;
+  text-align: center;
+}
+.team-supervision__suggestion-ticket small.is-overdue {
+  color: var(--danger);
+  font-weight: 650;
+}
+.team-supervision__suggestion-ticket small.is-risk {
+  color: var(--warning);
+  font-weight: 650;
+}
+.team-supervision__suggestion-to {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 650;
 }
 @media (max-width: 640px) {
   .team-supervision__suggestions li {
     grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .team-supervision__suggestion-ticket {
+    flex-wrap: wrap;
   }
 }
 

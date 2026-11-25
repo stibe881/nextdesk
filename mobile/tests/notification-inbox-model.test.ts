@@ -306,3 +306,65 @@ describe("wiederkehrende Ausfälle", () => {
     expect(route?.kind).toBe("message");
   });
 });
+
+describe("Teamauslastung", () => {
+  const overload = item("team.overload", {
+    agentName: "Tamara Adzhova",
+    openTickets: 7,
+    overdueTickets: 1,
+    averageOpen: 2.9,
+    departmentName: "ICT",
+  });
+
+  it("zeigt Person und Zahlen statt «Benachrichtigung»", () => {
+    expect(inboxPresentation(overload)).toEqual({
+      title: "Team: hohe Auslastung",
+      detail:
+        "Tamara Adzhova · 7 offene Tickets, 1 überfällig (Ø 2.9 im Team ICT)",
+      icon: "people-outline",
+    });
+  });
+
+  it("öffnet einen Hinweis mit den Zahlen", () => {
+    const route = inboxRoute(overload);
+    expect(route?.kind).toBe("message");
+    expect(route && "message" in route ? route.message : "").toContain(
+      "Tamara Adzhova · 7 offene Tickets",
+    );
+  });
+});
+
+describe("Gelöschte Tickets", () => {
+  const mention: InboxNotification = {
+    ...item("ticket.mention", { authorName: "Darko Petrovic" }),
+    deletedTicket: { ticketNumber: "ICT-2026-000224" },
+  };
+  it("bleibt sichtbar mit Hinweis", () => {
+    expect(inboxPresentation(mention).detail).toBe(
+      "ICT-2026-000224 · Ticket gelöscht",
+    );
+    const route = inboxRoute(mention);
+    expect(route?.kind).toBe("message");
+  });
+  it("liest den Hinweis aus der Antwort", () => {
+    const parsed = parseInboxNotifications({
+      data: {
+        notifications: [
+          {
+            id,
+            tenantId,
+            kind: "ticket.mention",
+            payload: {},
+            readAt: null,
+            createdAt: "2026-11-25T06:56:20.000Z",
+            ticket: null,
+            deletedTicket: { ticketNumber: "ICT-2026-000224" },
+          },
+        ],
+      },
+    });
+    expect(parsed?.[0]?.deletedTicket).toEqual({
+      ticketNumber: "ICT-2026-000224",
+    });
+  });
+});
