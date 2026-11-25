@@ -466,6 +466,8 @@ function safeAnalysis(value: unknown) {
     attachments,
     // Agreed phishing simulation (awareness training), e.g. Hornetsecurity.
     simulation: text(analysis.simulation),
+    // Outlook «Kein Junk»: the reporter released the mail from junk.
+    notJunk: analysis.notJunk === true,
   };
 }
 

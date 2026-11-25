@@ -25,6 +25,7 @@ import {
 import {
   convertToSecurityTicket,
   finalizePhishingReport,
+  isNotJunkReport,
   isPhishingReportMail,
   loadPhishingSettings,
   type PhishingSettings,
@@ -214,6 +215,16 @@ export async function processPhishingEmailReport(
     const selected = selectOriginal(outer, "text", { preferInline: true });
     const references = await tenantReferenceDomains(admin, input.tenantId);
     const analysis = analyzeMail(selected.mail, { source: selected.source, referenceDomains: references });
+    // Outlook «Kein Junk»: a released mail, not a phishing report.
+    const notJunk = isNotJunkReport(str(input.graphMessage.subject));
+    if (notJunk) {
+      analysis.notJunk = true;
+      analysis.findings.unshift({
+        code: "not_junk_report",
+        severity: "info",
+        message: "Als «Kein Junk» gemeldet: Die Person hat die Mail aus dem Junk-Ordner freigegeben.",
+      });
+    }
     const fingerprint = await reportFingerprint(selected.mail);
     const quoted = defangText(selected.mail.text || textBody).slice(0, 20_000);
     // A phishing report never gets the «we received your request» mail.
@@ -257,6 +268,7 @@ export async function processPhishingEmailReport(
       analysis,
       fingerprint,
       mail: selected.mail,
+      notJunk,
       bundled: caseTicketId !== input.ticketId,
     });
     const formality = input.thankYou
@@ -278,7 +290,8 @@ export async function processPhishingEmailReport(
           formality,
         )
       : null;
-    if (input.thankYou && thanks?.enabled && frame?.enabled) {
+    // «Kein Junk» needs no thank-you: Microsoft already confirmed it.
+    if (!notJunk && input.thankYou && thanks?.enabled && frame?.enabled) {
       const values = { ticketNumber: caseTicketNumber };
       await queueSecurityNotice(admin, {
         tenantId: input.tenantId,

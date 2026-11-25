@@ -271,6 +271,9 @@ export default function PhishingCaseScreen() {
             {detail.verdict ? (
               <Text style={styles.badge}>{VERDICT_LABELS[detail.verdict]}</Text>
             ) : null}
+            {analysis.notJunk ? (
+              <Text style={styles.badge}>Als «Kein Junk» gemeldet</Text>
+            ) : null}
             {analysis.simulation ? (
               <Text style={[styles.badge, styles.badgeOk]}>
                 Phishing-Simulation · {analysis.simulation}

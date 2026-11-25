@@ -79,6 +79,8 @@ export type PhishingAnalysis = {
   level: RiskLevel;
   /** Provider of an agreed phishing simulation (awareness training), if any. */
   simulation: string | null;
+  /** Reported with Outlook «Kein Junk» (released from the junk folder). */
+  notJunk?: boolean;
 };
 
 const MAX_DEPTH = 6;
@@ -1312,5 +1314,6 @@ export function storedAnalysis(analysis: PhishingAnalysis): Record<string, unkno
     attachments: analysis.attachments.slice(0, 30),
     findings: analysis.findings.slice(0, 100),
     simulation: analysis.simulation,
+    notJunk: analysis.notJunk === true,
   };
 }

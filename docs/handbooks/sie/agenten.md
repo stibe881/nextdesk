@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-24
+updated: 2026-11-25
 ---
 
 # Handbuch für Agenten
@@ -2552,6 +2552,12 @@ einer fremden Domain kommen, und Links, die eine «.ch»-Adresse nur vortäusche
 (z. B. `hr-abteilung.ch-secure.com`). Bei hohem Risiko soll das Urteil
 innerhalb von 30 Minuten fallen, bei mittlerem innerhalb von 4 Stunden,
 sonst innerhalb eines Tages.
+
+**«Kein Junk»-Meldungen** (in Outlook **Melden → Kein Junk**: Die Person hat
+eine Mail aus dem Junk-Ordner freigegeben) tragen das Kennzeichen **Als «Kein
+Junk» gemeldet** und werden ohne Alarmierung als **Harmlos** abgelegt. Stuft
+die Analyse die Mail als hohes Risiko ein, bleibt der Fall zur Beurteilung
+offen. Ändern Sie bei Zweifel das Urteil im Fall.
 
 **Phishing-Simulationen** (vereinbartes Awareness-Training, z. B. von
 Hornetsecurity) erkennt nextDesk an den Kopfzeilen des Anbieters zusammen mit

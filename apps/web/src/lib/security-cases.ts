@@ -97,6 +97,8 @@ export type SecurityCaseDetail = {
     sendingIp: string | null;
     /** Provider of an agreed phishing simulation (awareness training). */
     simulation: string | null;
+    /** Reported with Outlook «Kein Junk» (released from the junk folder). */
+    notJunk: boolean;
     auth: { spf: string; dkim: string; dmarc: string };
     findings: { severity: string; message: string }[];
     links: { href: string; text: string | null; host: string | null }[];
@@ -393,6 +395,7 @@ export function parseSecurityDetail(value: unknown): SecurityCaseDetail | null {
       date: str(analysis.date),
       sendingIp: str(analysis.sendingIp),
       simulation: str(analysis.simulation),
+      notJunk: analysis.notJunk === true,
       auth: {
         spf: str(auth.spf) ?? "unknown",
         dkim: str(auth.dkim) ?? "unknown",
