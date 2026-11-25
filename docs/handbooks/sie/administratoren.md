@@ -1287,7 +1287,9 @@ Behoben), **Text** und den **betroffenen Diensten**. Mit **Update erfassen**
 ergänzen Sie den Verlauf; jedes Update ändert Zustand und Text, der bisherige
 Verlauf bleibt sichtbar. Ist **Auf der öffentlichen Statusseite zeigen und
 Abonnenten informieren** aktiv, erscheint die Meldung auf der öffentlichen
-Statusseite (aktuelle Meldungen und die der letzten 14 Tage mit Verlauf).
+Statusseite (aktuelle Meldungen oben, die der letzten 14 Tage mit Verlauf
+ganz unten in einem eingeklappten Bereich; kommende und laufende Wartungen
+stehen ganz oben).
 Alle Meldungen erscheinen ausserdem als Banner im Portal und beim Erfassen
 eines Tickets. Aus einer Monitoring-Störung veröffentlichen Agenten die
 Meldung direkt mit **Öffentliche Meldung**; sie ist dann mit der Störung

@@ -270,50 +270,82 @@ function IncidentTimeline({ updates }: { updates: PublicIncident["updates"] }) {
 /** Aktuelle und in den letzten 14 Tagen gelöste Störungsmeldungen. */
 export function PublicIncidentList({
   incidents,
+  part = "all",
 }: {
   incidents: readonly PublicIncident[];
+  /** «current»: nur aktuelle, «past»: nur gelöste (eingeklappt), sonst beide. */
+  part?: "all" | "current" | "past";
 }) {
   if (incidents.length === 0) return null;
   const current = incidents.filter((incident) => incident.state !== "resolved");
   const past = incidents.filter((incident) => incident.state === "resolved");
+  const articles = (items: readonly PublicIncident[]) => (
+    <>
+      {items.map((incident, index) => (
+        <article
+          className={`status-incident status-incident--${incident.state}`}
+          key={`${incident.title}-${incident.startsAt}-${index}`}
+        >
+          <div className="status-incident__heading">
+            <h3>{incident.title}</h3>
+            <IncidentStatePill state={incident.state} />
+          </div>
+          <p className="status-incident__meta">
+            Seit {dateTimeLabel(incident.startsAt)}
+            {incident.resolvedAt
+              ? ` · behoben ${dateTimeLabel(incident.resolvedAt)}`
+              : ` · aktualisiert ${dateTimeLabel(incident.updatedAt)}`}
+          </p>
+          <p>{incident.body}</p>
+          {incident.serviceNames.length > 0 ? (
+            <p className="status-incident__services">
+              Betroffene Dienste: {incident.serviceNames.join(", ")}
+            </p>
+          ) : null}
+          <IncidentTimeline updates={incident.updates} />
+        </article>
+      ))}
+    </>
+  );
   const group = (
     title: string,
     items: readonly PublicIncident[],
     id: string,
+    collapsed = false,
   ) =>
-    items.length === 0 ? null : (
+    items.length === 0 ? null : collapsed ? (
+      <details className="status-incident__group status-incident__past">
+        <summary>
+          <h2 id={id}>
+            {title} ({items.length})
+          </h2>
+        </summary>
+        {articles(items)}
+      </details>
+    ) : (
       <section aria-labelledby={id} className="status-incident__group">
         <h2 id={id}>{title}</h2>
-        {items.map((incident, index) => (
-          <article
-            className={`status-incident status-incident--${incident.state}`}
-            key={`${incident.title}-${incident.startsAt}-${index}`}
-          >
-            <div className="status-incident__heading">
-              <h3>{incident.title}</h3>
-              <IncidentStatePill state={incident.state} />
-            </div>
-            <p className="status-incident__meta">
-              Seit {dateTimeLabel(incident.startsAt)}
-              {incident.resolvedAt
-                ? ` · behoben ${dateTimeLabel(incident.resolvedAt)}`
-                : ` · aktualisiert ${dateTimeLabel(incident.updatedAt)}`}
-            </p>
-            <p>{incident.body}</p>
-            {incident.serviceNames.length > 0 ? (
-              <p className="status-incident__services">
-                Betroffene Dienste: {incident.serviceNames.join(", ")}
-              </p>
-            ) : null}
-            <IncidentTimeline updates={incident.updates} />
-          </article>
-        ))}
+        {articles(items)}
       </section>
     );
+  const showCurrent = part !== "past";
+  const showPast = part !== "current";
+  const hasAny =
+    (showCurrent && current.length > 0) || (showPast && past.length > 0);
+  if (!hasAny) return null;
   return (
     <div className="status-incident__list">
-      {group("Aktuelle Störungen", current, "status-incidents-current")}
-      {group("Störungen der letzten 14 Tage", past, "status-incidents-past")}
+      {showCurrent
+        ? group("Aktuelle Störungen", current, "status-incidents-current")
+        : null}
+      {showPast
+        ? group(
+            "Störungen der letzten 14 Tage",
+            past,
+            "status-incidents-past",
+            true,
+          )
+        : null}
     </div>
   );
 }

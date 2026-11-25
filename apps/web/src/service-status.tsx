@@ -2054,18 +2054,7 @@ export function ServiceStatus({
 
       {!loading && overview && publicPayload ? (
         <>
-          <StatusPresentation payload={publicPayload} />
-          <PublicIncidentList incidents={publicPayload.incidents} />
-          {overview.canManage ? (
-            <IncidentMessagesPanel
-              onChanged={() => void refreshOverview()}
-              services={overview.services.map((service) => ({
-                id: service.id,
-                name: service.name,
-              }))}
-              tenantId={tenantId}
-            />
-          ) : null}
+          {/* Kommende und laufende Wartungen sowie aktuelle Störungen oben. */}
           {overview.canManage ? (
             <MaintenanceList
               canManagePublication={overview.canManagePublication}
@@ -2076,6 +2065,23 @@ export function ServiceStatus({
               }
               extending={maintenanceSaving}
               services={overview.services}
+            />
+          ) : (
+            <PublicMaintenanceList maintenances={publicPayload.maintenances} />
+          )}
+          <PublicIncidentList
+            incidents={publicPayload.incidents}
+            part="current"
+          />
+          <StatusPresentation payload={publicPayload} />
+          {overview.canManage ? (
+            <IncidentMessagesPanel
+              onChanged={() => void refreshOverview()}
+              services={overview.services.map((service) => ({
+                id: service.id,
+                name: service.name,
+              }))}
+              tenantId={tenantId}
             />
           ) : null}
           {overview.canManage ? (
@@ -2276,6 +2282,7 @@ export function ServiceStatus({
               services={overview.services}
             />
           ) : null}
+          <PublicIncidentList incidents={publicPayload.incidents} part="past" />
         </>
       ) : null}
     </section>
@@ -2486,9 +2493,10 @@ export function PublicServiceStatusPage({
               </header>
               <StatusSubscriptionPanel publicId={publicId} />
             </div>
-            <PublicIncidentList incidents={payload.incidents} />
-            <StatusPresentation payload={payload} publicView />
             <PublicMaintenanceList maintenances={payload.maintenances} />
+            <PublicIncidentList incidents={payload.incidents} part="current" />
+            <StatusPresentation payload={payload} publicView />
+            <PublicIncidentList incidents={payload.incidents} part="past" />
             <p className="public-service-status__footer">
               Bereitgestellt mit nextDesk
             </p>

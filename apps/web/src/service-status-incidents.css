@@ -246,3 +246,29 @@
 .service-insights__table-wrap {
   overflow-x: auto;
 }
+
+.status-incident__past > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.status-incident__past > summary::-webkit-details-marker {
+  display: none;
+}
+
+.status-incident__past > summary h2 {
+  display: inline;
+  margin: 0;
+  font-size: 18px;
+}
+
+.status-incident__past > summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 1.2em;
+  color: var(--muted);
+}
+
+.status-incident__past[open] > summary::before {
+  content: "▾";
+}
