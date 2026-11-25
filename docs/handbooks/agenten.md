@@ -69,7 +69,8 @@ Mehr dazu unter «Ticketliste».
 1. Öffne in der Navigation **Tickets**.
 2. Öffne **Filter & Sortierung**.
 3. Gib einen Suchbegriff ein oder wähle Status (mehrere gleichzeitig möglich), Priorität, Agent (_Mir zugewiesen_, _Nicht zugewiesen_) oder Abteilung.
-4. Mit **Filter zurücksetzen** stellst du alles zurück.
+4. Mit **Alle Arten**, **Eintritte**, **Austritte** und **Mutationen** neben **Offen / Erledigt / Alle** zeigst du nur eine Art. 
+5. Mit **Filter zurücksetzen** stellst du alles zurück.
 
 Mehr dazu unter «Ticketliste».
 
@@ -1607,7 +1608,7 @@ Mehr dazu unter «Eintritte und Austritte».
 
 1. Öffne unter **Planung und Betrieb** die **Eintritte**.
 2. Klicke rechts im Suchfeld auf das Filter-Symbol.
-3. Wähle unter **Eintrittsdatum** und/oder **Eintrittsmeldung eingegangen** ein Datum **Von** und/oder **Bis**. Die Liste und die Zahlen bei **Offen**, **Erledigt** und **Alle** passen sich sofort an; die Zahl am Filter-Symbol zeigt, wie viele Filter aktiv sind.
+3. Wähle unter **Datum des Ein- oder Austritts** und/oder **Meldung eingegangen** ein Datum **Von** und/oder **Bis**. Beides gilt für Eintritte, Austritte und Mutationen. Die Liste und die Zahlen bei **Offen**, **Erledigt** und **Alle** passen sich sofort an; die Zahl am Filter-Symbol zeigt, wie viele Filter aktiv sind.
 4. Mit **Filter zurücksetzen** siehst du wieder alle Eintritte.
 
 Mehr dazu unter «Eintritte und Austritte».

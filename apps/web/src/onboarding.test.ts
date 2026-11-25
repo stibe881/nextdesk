@@ -156,4 +156,45 @@ describe("Eintritte zuweisen", () => {
       assignOptions(agents, ["a"], "x", "Xaver").map((p) => p.displayName),
     ).toEqual(["Nicht zugewiesen", "Xaver", "Anna"]);
   });
+
+  it("filtert nach Art des Vorgangs", () => {
+    const mixed = [
+      {
+        employeeName: "A",
+        organisationUnit: null,
+        location: null,
+        managerName: "",
+        ictResponsibleName: "",
+        kind: "onboarding",
+        tasks: [],
+      },
+      {
+        employeeName: "B",
+        organisationUnit: null,
+        location: null,
+        managerName: "",
+        ictResponsibleName: "",
+        kind: "offboarding",
+        tasks: [],
+      },
+      {
+        employeeName: "C",
+        organisationUnit: null,
+        location: null,
+        managerName: "",
+        ictResponsibleName: "",
+        tasks: [],
+      },
+    ];
+    expect(
+      filterEntries(mixed, "all", "", undefined, "offboarding").map(
+        (e) => e.employeeName,
+      ),
+    ).toEqual(["B"]);
+    expect(
+      filterEntries(mixed, "all", "", undefined, "onboarding").map(
+        (e) => e.employeeName,
+      ),
+    ).toEqual(["A", "C"]);
+  });
 });
