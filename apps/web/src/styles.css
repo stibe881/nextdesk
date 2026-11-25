@@ -23657,6 +23657,8 @@ body.app-dialog-open {
 
 .ticket-trash__search:focus-within {
   border-color: var(--accent, #4f46e5);
+}
+
 /* Verschachtelte Lager-Panels (z. B. «Regeln für künftige Quellen» unter
    «Reservation anlegen») brauchen Abstand zum vorherigen Block. */
 .inventory__panel > .inventory__panel {
