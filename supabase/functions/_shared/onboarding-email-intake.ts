@@ -143,6 +143,32 @@ async function removeSourceTicket(
   }
 }
 
+/** Entfernt die Vorlagenaufgabe «Gerät bereitstellen» des neuen Eintritts. */
+async function removeGenericDeviceTask(
+  admin: Admin,
+  tenantId: string,
+  entryId: string,
+): Promise<void> {
+  try {
+    const { data: templates } = await admin
+      .from("onboarding_template_tasks")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("task_key", "device");
+    const ids = (templates ?? []).map((row: { id: string }) => row.id);
+    if (ids.length === 0) return;
+    await admin
+      .from("onboarding_tasks")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("entry_id", entryId)
+      .eq("status", "open")
+      .in("template_task_id", ids);
+  } catch {
+    // Die Aufgabe bleibt dann bestehen.
+  }
+}
+
 /**
  * Eine zweite Mail zum selben Eintritt (gleiche Person, gleiches Datum) ist ein
  * Duplikat. Das Ticket kommt in den Papierkorb (90 Tage wiederherstellbar) und
@@ -261,6 +287,9 @@ export async function processOnboardingEmailTicketIntake(
     } catch {
       // Ohne Abteilung bleiben alle Agenten zuweisbar.
     }
+    // Das allgemeine «Gerät bereitstellen» entfällt: Die Meldung nennt die
+    // konkrete ICT-Ausstattung (eigene Aufgabe) oder keine.
+    await removeGenericDeviceTask(admin, input.tenantId, String(row.entry_id));
     // Die Eintrittsmeldung bleibt beim Eintritt; das Ticket (mit Anhang) entfällt.
     await storeSourceDocument(admin, input.tenantId, String(row.entry_id), pdf);
     await removeSourceTicket(admin, input.tenantId, input.ticketId);
