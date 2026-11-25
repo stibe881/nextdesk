@@ -126,6 +126,7 @@ import { recordRecentItem } from "@/lib/recent-items";
 import { draftRestoredLabel, pickNewestDraft } from "@/lib/recent-items-model";
 import { tn } from "@/lib/formality";
 import { mentionedAgentIds } from "@/lib/ticket-mentions";
+import { withoutInlineMarkers } from "@/lib/inline-markers";
 import {
   parseTicketSplitNote,
   ticketSplitNoteText,
@@ -6456,7 +6457,8 @@ const useStyles = makeThemedStyles((c) => ({
 }));
 
 /** Older e-mail tickets carry the signature under «E-Mail-Signatur». */
-function withoutEmailSignature(description: string): string {
+function withoutEmailSignature(raw: string): string {
+  const description = withoutInlineMarkers(raw);
   const index = description.indexOf("\n\nE-Mail-Signatur\n");
   return index < 0 ? description : description.slice(0, index).trimEnd();
 }

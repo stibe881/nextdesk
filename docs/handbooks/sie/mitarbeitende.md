@@ -134,7 +134,7 @@ Sie können auch direkt auf die E-Mail des Supports antworten. Mehr dazu unter
 
 1. Öffnen Sie das Ticket und schreiben Sie Ihre Nachricht in **Ihre
    Nachricht**.
-2. Fügen Sie einen Screenshot oder ein kopiertes Bild mit Ctrl+V (Mac: Cmd+V) direkt ins Nachrichtenfeld ein, ziehen Sie eine Datei hinein oder klicken Sie unten im Feld auf die Büroklammer. Erlaubt sind unter anderem PDF, Office-Dokumente, TXT, CSV, PNG
+2. Fügen Sie einen Screenshot oder ein kopiertes Bild mit Ctrl+V (Mac: Cmd+V) an der Stelle des Cursors in Ihren Text ein und schreiben Sie danach weiter. Andere Dateien ziehen Sie ins Feld oder wählen sie über die Büroklammer unten im Feld. Erlaubt sind unter anderem PDF, Office-Dokumente, TXT, CSV, PNG
    und JPG.
 3. Klicken Sie auf **Nachricht senden**.
 

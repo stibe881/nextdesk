@@ -477,3 +477,20 @@ Deno.test("Zusammengeführt: eigene Überschrift, Erklärung und keine Bewertung
     throw new Error("Die Zusammenführungs-Mail lädt nicht zum Antworten ein");
   }
 });
+
+Deno.test("eingefügte Bilder erscheinen an ihrer Stelle im Text (cid)", () => {
+  const id = "6f1c2b8e-1d2a-4b3c-9d4e-5f6a7b8c9d0e";
+  const other = "7f1c2b8e-1d2a-4b3c-9d4e-5f6a7b8c9d0e";
+  const html = renderCustomerTicketEmail({
+    attachmentNotice: false,
+    branding,
+    kind: "agent_reply",
+    subject: "VPN",
+    text: `Vorher\n[[nextdesk-inline-image:${id}]]\nNachher [[nextdesk-inline-image:${other}]]`,
+    inlineImages: { [id]: `nd-${id}` },
+    ticketNumber: "ICT-2026-000011",
+  });
+  if (!html.includes(`src="cid:nd-${id}"`)) throw new Error("Bild fehlt");
+  if (html.includes("nextdesk-inline-image")) throw new Error("Platzhalter sichtbar");
+  if (html.includes(other)) throw new Error("Fremdes Bild eingebunden");
+});

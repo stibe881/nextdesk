@@ -69,6 +69,11 @@ type CustomerTicketEmailInput = {
   kind: CustomerTicketEmailKind;
   subject: string;
   text: string;
+  /**
+   * Im Text eingefügte Bilder: Anhang-ID → Content-ID des mitgeschickten
+   * Inline-Anhangs. Platzhalter ohne Eintrag verschwinden.
+   */
+  inlineImages?: Readonly<Record<string, string>>;
   /** Omitted for notifications without a ticket (e.g. shop, infrastructure). */
   ticketNumber: string | null;
   /** Overrides the highlighted first line (e.g. the notification title). */
@@ -306,7 +311,14 @@ function tint(hex: string, share: number): string {
     .toUpperCase()}`;
 }
 
-function messageHtml(value: string, secondaryColor: string): string {
+const INLINE_IMAGE_MARKER =
+  /\[\[nextdesk-inline-image:([0-9a-f-]{36})\]\]/giu;
+
+function messageHtml(
+  value: string,
+  secondaryColor: string,
+  inlineImages: Readonly<Record<string, string>> = {},
+): string {
   const paragraphs = value
     .replace(/\r\n?/g, "\n")
     .trim()
@@ -314,7 +326,15 @@ function messageHtml(value: string, secondaryColor: string): string {
     .filter(Boolean);
   const rendered = paragraphs.map(
     (paragraph) =>
-      `<p style="margin:0 0 16px;color:${secondaryColor};font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:25px;mso-line-height-rule:exactly;">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`,
+      `<p style="margin:0 0 16px;color:${secondaryColor};font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:25px;mso-line-height-rule:exactly;">${escapeHtml(paragraph)
+        .replace(/\n/g, "<br>")
+        .replace(INLINE_IMAGE_MARKER, (_marker, id: string) => {
+          const contentId = inlineImages[id.toLowerCase()];
+          // Content-IDs stammen aus nextDesk (nd-<uuid>), nie aus Eingaben.
+          return contentId && /^nd-[0-9a-f-]{36}$/u.test(contentId)
+            ? `<img src="cid:${contentId}" alt="" width="560" style="display:block;width:100%;max-width:560px;height:auto;margin:8px 0;border:0;">`
+            : "";
+        })}</p>`,
   );
   return (
     rendered.join("") ||
@@ -607,7 +627,7 @@ export function renderCustomerTicketEmail(
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="${tint(branding.primaryColor, 0.06)}" style="border:1px solid ${tint(branding.primaryColor, 0.25)};border-left:6px solid ${branding.primaryColor};border-radius:12px;background-color:${tint(branding.primaryColor, 0.06)};">
               <tr><td style="padding:20px 24px 6px;">
                 <p style="margin:0 0 12px;color:${branding.primaryColor};${FONT}font-size:15px;font-weight:700;line-height:22px;mso-line-height-rule:exactly;">${escapeHtml(copy.intro)}</p>
-                ${messageHtml(input.text, branding.secondaryColor)}
+                ${messageHtml(input.text, branding.secondaryColor, input.inlineImages)}
               </td></tr>
               <tr><td style="padding:0 24px 18px;color:#607089;${FONT}font-size:13px;line-height:19px;">${escapeHtml(copy.replyHint)}</td></tr>
             </table>

@@ -1,3 +1,4 @@
+import { withoutInlineMarkers } from "@/lib/inline-markers";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
@@ -678,7 +679,7 @@ function BubbleGroup({
                 accessible
                 accessibilityLabel={`${group.authorName}, ${messageTime(
                   comment.createdAt,
-                )}${viaEmail ? ", per E-Mail" : ""}: ${comment.body}`}
+                )}${viaEmail ? ", per E-Mail" : ""}: ${withoutInlineMarkers(comment.body)}`}
                 style={[
                   styles.bubble,
                   isOutgoing ? styles.bubbleOutgoing : styles.bubbleIncoming,
@@ -695,7 +696,7 @@ function BubbleGroup({
                     isOutgoing && styles.bubbleTextOutgoing,
                   ]}
                 >
-                  {comment.body}
+                  {withoutInlineMarkers(comment.body)}
                 </Text>
                 <MessageAttachmentList
                   attachments={attachmentsByComment[comment.id] ?? []}
@@ -758,7 +759,7 @@ function InternalGroup({
           accessible
           accessibilityLabel={`Interne Notiz von ${group.authorName}, ${messageTime(
             comment.createdAt,
-          )}: ${comment.body}`}
+          )}: ${withoutInlineMarkers(comment.body)}`}
           key={comment.id}
           style={styles.internalNote}
         >
@@ -771,7 +772,7 @@ function InternalGroup({
             </View>
           ) : null}
           <Text selectable style={styles.internalBody}>
-            {comment.body}
+            {withoutInlineMarkers(comment.body)}
           </Text>
           <MessageAttachmentList
             attachments={attachmentsByComment[comment.id] ?? []}

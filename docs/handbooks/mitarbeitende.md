@@ -133,7 +133,7 @@ Du kannst auch direkt auf die E-Mail des Supports antworten. Mehr dazu unter
 ### Wie hänge ich eine Datei an ein Ticket an?
 
 1. Öffne das Ticket und schreibe deine Nachricht in **Deine Nachricht**.
-2. Füge einen Screenshot oder ein kopiertes Bild mit Ctrl+V (Mac: Cmd+V) direkt ins Nachrichtenfeld ein, ziehe eine Datei hinein oder klicke unten im Feld auf die Büroklammer.
+2. Füge einen Screenshot oder ein kopiertes Bild mit Ctrl+V (Mac: Cmd+V) an der Stelle des Cursors in deinen Text ein und schreibe danach weiter. Andere Dateien ziehst du ins Feld oder wählst sie über die Büroklammer unten im Feld.
    Erlaubt sind unter anderem PDF, Office-Dokumente, TXT, CSV, PNG und JPG.
 3. Klicke auf **Nachricht senden**.
 
