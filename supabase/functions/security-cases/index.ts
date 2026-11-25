@@ -264,6 +264,42 @@ async function statusId(admin: Client, tenantId: string, key: string): Promise<s
   return text((data as Row | null)?.id);
 }
 
+/**
+ * Status des Fall-Tickets nachführen. Ein Ticket im Status «Neu» lässt sich
+ * erst ändern, wenn es einer Person zugewiesen ist (Regel in
+ * enforce_ticket_status_rules); ist es noch niemandem zugewiesen, übernimmt
+ * es die Person, die das Urteil fällt bzw. den Fall abschliesst. Bisher wurde
+ * ein Fehler hier still ignoriert: Der Fall war abgeschlossen, das Ticket
+ * blieb offen (Teamführung, SLA).
+ */
+async function setCaseTicketStatus(
+  admin: Client,
+  tenantId: string,
+  ticketId: string,
+  key: "closed" | "in_progress",
+  actorId: string,
+): Promise<void> {
+  const status = await statusId(admin, tenantId, key);
+  if (!status) return;
+  const { data: ticket } = await admin.from("tickets").select("assigned_agent_id")
+    .eq("id", ticketId).eq("tenant_id", tenantId).maybeSingle();
+  const unassigned = !text((ticket as Row | null)?.assigned_agent_id);
+  const first = await admin.from("tickets")
+    .update({ status_id: status, ...(unassigned ? { assigned_agent_id: actorId } : {}) })
+    .eq("id", ticketId).eq("tenant_id", tenantId)
+    .setHeader("x-nextdesk-actor-id", actorId);
+  if (!first.error) return;
+  // Zuweisung nicht möglich (z. B. Team): Status allein versuchen.
+  const second = unassigned
+    ? await admin.from("tickets").update({ status_id: status })
+      .eq("id", ticketId).eq("tenant_id", tenantId)
+      .setHeader("x-nextdesk-actor-id", actorId)
+    : first;
+  if (second.error) {
+    console.error("security_case_ticket_status_failed", second.error.code ?? "unknown");
+  }
+}
+
 async function templatesFor(admin: Client, tenantId: string) {
   const { data } = await admin.from("security_action_templates")
     .select("verdict, label, sort_order").eq("tenant_id", tenantId)
@@ -631,12 +667,13 @@ async function setVerdict(
     state,
     closed_at: state === "closed" ? now : null,
   }).eq("ticket_id", action.ticketId).eq("tenant_id", action.tenantId);
-  const status = await statusId(admin, action.tenantId, state === "closed" ? "closed" : "in_progress");
-  if (status) {
-    await admin.from("tickets").update({ status_id: status })
-      .eq("id", action.ticketId).eq("tenant_id", action.tenantId)
-      .setHeader("x-nextdesk-actor-id", actorId);
-  }
+  await setCaseTicketStatus(
+    admin,
+    action.tenantId,
+    action.ticketId,
+    state === "closed" ? "closed" : "in_progress",
+    actorId,
+  );
   await admin.from("ticket_events").insert({
     ticket_id: action.ticketId,
     actor_id: actorId,
@@ -790,12 +827,7 @@ async function handle(
       const now = new Date().toISOString();
       await admin.from("security_cases").update({ state: "closed", closed_at: now })
         .eq("ticket_id", action.ticketId).eq("tenant_id", action.tenantId);
-      const status = await statusId(admin, action.tenantId, "closed");
-      if (status) {
-        await admin.from("tickets").update({ status_id: status })
-          .eq("id", action.ticketId).eq("tenant_id", action.tenantId)
-          .setHeader("x-nextdesk-actor-id", actorId);
-      }
+      await setCaseTicketStatus(admin, action.tenantId, action.ticketId, "closed", actorId);
       await admin.from("ticket_events").insert({
         ticket_id: action.ticketId,
         actor_id: actorId,

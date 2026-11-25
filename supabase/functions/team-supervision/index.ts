@@ -346,6 +346,8 @@ async function overview(request: Request, admin: Admin, action: Action, actorId:
         "id, ticket_number, subject, department_id, assigned_agent_id, created_at, first_responded_at, resolution_due_at, sla_paused_at, status:ticket_statuses!inner(label, is_closed), priority:ticket_priorities(label, sort_order)",
       )
       .is("deleted_at", null)
+      // Phishing-/Junk-Fälle bearbeitet das Sicherheitsteam unter «Phishing / Junk».
+      .eq("is_security_case", false)
       .eq("tenant_id", action.tenantId)
       .in("department_id", scope.departmentIds)
       .eq("status.is_closed", false)
@@ -356,6 +358,8 @@ async function overview(request: Request, admin: Admin, action: Action, actorId:
       .from("tickets")
       .select("assigned_agent_id")
       .is("deleted_at", null)
+      // Phishing-/Junk-Fälle bearbeitet das Sicherheitsteam unter «Phishing / Junk».
+      .eq("is_security_case", false)
       .eq("tenant_id", action.tenantId)
       .in("department_id", scope.departmentIds)
       .gte("resolved_at", new Date(now - 30 * 86_400_000).toISOString())
@@ -1299,6 +1303,8 @@ async function liveBoard(request: Request, admin: Admin, action: Action, actorId
         "id, ticket_number, subject, department_id, assigned_agent_id, created_at, resolution_due_at, sla_paused_at, status:ticket_statuses!inner(is_closed)",
       )
       .is("deleted_at", null)
+      // Phishing-/Junk-Fälle bearbeitet das Sicherheitsteam unter «Phishing / Junk».
+      .eq("is_security_case", false)
       .eq("tenant_id", action.tenantId)
       .in("department_id", scope.departmentIds)
       .eq("status.is_closed", false)
