@@ -144,6 +144,42 @@ async function removeSourceTicket(
 }
 
 /**
+ * Eine zweite Mail zum selben Eintritt (gleiche Person, gleiches Datum) ist ein
+ * Duplikat. Das Ticket kommt in den Papierkorb (90 Tage wiederherstellbar) und
+ * erscheint nicht in der Ticketliste; der Vorgang wird protokolliert.
+ */
+async function trashDuplicateTicket(
+  admin: Admin,
+  input: IntakeInput,
+  existingEntryId: string,
+): Promise<void> {
+  try {
+    const { data } = await admin
+      .from("tickets")
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by: input.actorId,
+      })
+      .eq("id", input.ticketId)
+      .eq("tenant_id", input.tenantId)
+      .is("deleted_at", null)
+      .select("id");
+    if (!Array.isArray(data) || data.length === 0) return;
+    await admin.from("audit_logs").insert({
+      tenant_id: input.tenantId,
+      actor_id: input.actorId,
+      action: "onboarding.duplicate_mail_trashed",
+      entity_type: "onboarding_entry",
+      entity_id: existingEntryId,
+      severity: "info",
+      metadata: { ticketNumber: input.ticketNumber },
+    });
+  } catch {
+    // Bei einem Fehler bleibt das Ticket sichtbar.
+  }
+}
+
+/**
  * Erkennt die Eintrittsmeldung der Personal-App (PDF-Anhang) und legt daraus
  * einen Eintritt mit Checkliste an. Läuft nach dem Anlegen des Mail-Tickets und
  * wirft nie: Bei jedem Fehler bleibt das Ticket unverändert bestehen.
@@ -202,7 +238,10 @@ export async function processOnboardingEmailTicketIntake(
     );
     const row = Array.isArray(rows) ? rows[0] : null;
     if (error || !row) return "failed";
-    if (row.created !== true) return "duplicate";
+    if (row.created !== true) {
+      await trashDuplicateTicket(admin, input, String(row.entry_id));
+      return "duplicate";
+    }
     // Der Eintritt gehört zur Abteilung des Mail-Tickets; zuweisen lässt er
     // sich an die Agenten ihrer Teams.
     try {
