@@ -77,6 +77,8 @@ export type PhishingAnalysis = {
   findings: Finding[];
   score: number;
   level: RiskLevel;
+  /** Provider of an agreed phishing simulation (awareness training), if any. */
+  simulation: string | null;
 };
 
 const MAX_DEPTH = 6;
@@ -699,6 +701,35 @@ function finding(code: string, severity: Severity, message: string): Finding {
   return { code, severity, message };
 }
 
+/** Words in a display name or local part that claim an internal function. */
+const INTERNAL_ROLE =
+  /\b(?:hr|human[ -]?resources|personal(?:abteilung|dienst|wesen)?|lohn(?:buchhaltung|abteilung)?|gehalt|payroll|buchhaltung|finanz(?:en|abteilung)?|kreditoren|it(?:-|\s)?(?:abteilung|support|service|team)?|helpdesk|service ?desk|support|informatik|admin(?:istrator|istration)?|postmaster|geschäftsleitung|geschaeftsleitung|geschäftsführung|direktion|ceo|cfo|sekretariat|empfang)\b/i;
+
+/** Whether a sender name or address claims to be an internal department. */
+export function claimsInternalRole(name: string | null, address: string | null): boolean {
+  const local = address?.split("@")[0]?.replace(/[._-]+/g, " ") ?? "";
+  const label = `${name ?? ""} ${local}`;
+  return INTERNAL_ROLE.test(label) || /\bihre?\s+(?:abteilung|[a-zäöü]+-abteilung)\b/i.test(label);
+}
+
+/**
+ * A host that shows a country or company ending in the middle of its name
+ * («hr-abteilung.ch-secure.com», «post.ch.login.top»): the real domain is
+ * the last part, the visible «.ch» is decoration.
+ */
+export function fakeEndingInHost(host: string): string | null {
+  const ascii = host.toLowerCase().replace(/\.$/, "");
+  const org = organizationalDomain(ascii);
+  if (!org) return null;
+  const match = /\.(ch|li|de|at|com|net|org)(?=[.-][a-z0-9])/.exec(ascii);
+  if (!match) return null;
+  // The shown ending starts before the registrable domain and differs from
+  // the real one (shop.ch-online.ch is a genuine .ch address).
+  if (match.index >= ascii.length - org.length) return null;
+  if (org.endsWith(`.${match[1]}`)) return null;
+  return `.${match[1]}`;
+}
+
 export function analyzeHeaders(
   headers: MailHeader[],
   referenceDomains: readonly string[] = [],
@@ -762,6 +793,18 @@ export function analyzeHeaders(
       "display_name_spoof",
       "high",
       `Der Anzeigename enthält die Adresse ${nameAddress}, gesendet wurde aber von ${from.address ?? "einer anderen Adresse"}.`,
+    ));
+  }
+  if (
+    fromDomain &&
+    referenceDomains.length > 0 &&
+    !referenceDomains.some((own) => sameOrganization(own.toLowerCase(), fromDomain)) &&
+    claimsInternalRole(from.name, from.address)
+  ) {
+    findings.push(finding(
+      "internal_role_external",
+      "high",
+      `Der Absender gibt sich als interne Stelle aus («${(from.name ?? from.address ?? "").slice(0, 80)}»), die Mail kommt aber von der fremden Domain ${unicodeHost(fromDomain)}.`,
     ));
   }
   if (fromDomain) {
@@ -944,6 +987,16 @@ export function analyzeLink(
         }).`,
       ));
     }
+    const fakeEnding = fakeEndingInHost(host);
+    if (fakeEnding) {
+      // «.ch-secure.com» is a deliberate trick, «.ch.example.com» may be a
+      // regional subdomain.
+      findings.push(finding(
+        "fake_domain_ending",
+        host.toLowerCase().includes(`${fakeEnding}-`) ? "high" : "medium",
+        `${unicodeHost(host)} täuscht eine «${fakeEnding}»-Adresse vor; die eigentliche Domain ist ${organizationalDomain(host) ?? host}.`,
+      ));
+    }
     const tld = host.split(".").pop() ?? "";
     if (SUSPICIOUS_TLDS.has(tld)) {
       findings.push(finding("suspicious_tld", "low", `Häufig missbrauchte Endung «.${tld}».`));
@@ -1067,6 +1120,24 @@ export function riskScore(findings: readonly Finding[]): { score: number; level:
 }
 
 /** Analyses one (already selected) original mail. */
+/**
+ * Agreed phishing simulation (awareness training): Hornetsecurity / IT-Seal.
+ * Two independent signals must agree so a forged header alone is not
+ * enough: the provider's marker headers (X-ITSeal*, or the X-Disclaimer of
+ * the simulation) and the sending server as seen by Microsoft
+ * (X-Forefront-Antispam-Report PTR …hornetsecurity.com, set on receipt).
+ */
+export function detectSimulation(headers: readonly MailHeader[]): string | null {
+  const value = (name: string) =>
+    headers.filter((entry) => entry.name.toLowerCase() === name).map((entry) => entry.value);
+  const marker = headers.some((entry) => entry.name.toLowerCase().startsWith("x-itseal")) ||
+    value("x-disclaimer").some((text) => /hornetsecurity/i.test(text) && /simulat/i.test(text));
+  const server = value("x-forefront-antispam-report").some((text) =>
+    /PTR:[a-z0-9.-]*\.hornetsecurity\.com\b/i.test(text)
+  );
+  return marker && server ? "Hornetsecurity" : null;
+}
+
 export function analyzeMail(
   mail: ParsedMail,
   options: { source: PhishingSource; referenceDomains?: readonly string[] },
@@ -1080,7 +1151,23 @@ export function analyzeMail(
     ...links.flatMap((link) => link.findings),
     ...attachments.flatMap((attachment) => attachment.findings),
   ];
-  return { source: options.source, headers, links, attachments, findings, ...riskScore(findings) };
+  const simulation = detectSimulation(mail.headers);
+  if (simulation) {
+    findings.unshift({
+      code: "phishing_simulation",
+      severity: "info",
+      message: `Phishing-Simulation von ${simulation} (vereinbartes Awareness-Training).`,
+    });
+  }
+  return {
+    source: options.source,
+    headers,
+    links,
+    attachments,
+    findings,
+    ...riskScore(findings),
+    simulation,
+  };
 }
 
 /**
@@ -1224,5 +1311,6 @@ export function storedAnalysis(analysis: PhishingAnalysis): Record<string, unkno
     links: analysis.links.slice(0, 50),
     attachments: analysis.attachments.slice(0, 30),
     findings: analysis.findings.slice(0, 100),
+    simulation: analysis.simulation,
   };
 }

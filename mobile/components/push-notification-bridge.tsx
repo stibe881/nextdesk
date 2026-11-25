@@ -1,4 +1,6 @@
 import * as Notifications from "expo-notifications";
+import { registerBadgePushTask } from "@/lib/badge-push";
+import { isSilentPush } from "@/lib/badge-push-model";
 import { type Href, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, AppState, Platform, type AppStateStatus } from "react-native";
@@ -54,12 +56,15 @@ if (Platform.OS === "ios") {
     },
   ]).catch(() => undefined);
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
+    handleNotification: async (notification) => {
+      const silent = isSilentPush(notification.request.content);
+      return {
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: !silent,
+        shouldShowList: !silent,
+      };
+    },
   });
 }
 
@@ -159,7 +164,10 @@ export function PushNotificationBridge() {
       if (route.feature && !enabled(route.feature)) {
         Alert.alert(
           "Nicht verfügbar",
-          tn("Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet oder dir fehlt die Berechtigung.","Diese Funktion ist in Ihrem Arbeitsbereich nicht freigeschaltet oder Ihnen fehlt die Berechtigung."),
+          tn(
+            "Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet oder dir fehlt die Berechtigung.",
+            "Diese Funktion ist in Ihrem Arbeitsbereich nicht freigeschaltet oder Ihnen fehlt die Berechtigung.",
+          ),
         );
         return;
       }
@@ -187,14 +195,18 @@ export function PushNotificationBridge() {
   useEffect(() => {
     if (Platform.OS !== "android") return;
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldPlaySound: false,
-        shouldSetBadge: false,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
+      handleNotification: async (notification) => {
+        const silent = isSilentPush(notification.request.content);
+        return {
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+          shouldShowBanner: !silent,
+          shouldShowList: !silent,
+        };
+      },
     });
     void syncAppBadge();
+    void registerBadgePushTask();
     const received = Notifications.addNotificationReceivedListener(
       () => void syncAppBadge(),
     );
@@ -273,7 +285,8 @@ export function PushNotificationBridge() {
       })();
     });
 
-    let previousAppState: AppStateStatus = AppState.currentState;
+    let previousAppState: AppStateStatus =
+      (AppState.currentState as AppStateStatus | null | undefined) ?? "active";
     void syncAppBadge();
     // Eine Mitteilung im Vordergrund: Zahl neu lesen (der Server hat sie gerade angelegt).
     const receivedSubscription = Notifications.addNotificationReceivedListener(

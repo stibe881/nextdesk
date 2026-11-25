@@ -57,6 +57,55 @@ export type SensorInput = {
   serviceIds: string[] | null;
 };
 
+export const SNMP_AUTH_PROTOCOLS = ["md5", "sha", "sha224", "sha256", "sha384", "sha512"] as const;
+export const SNMP_PRIV_PROTOCOLS = ["des", "aes", "aes256b", "aes256r"] as const;
+
+/**
+ * SNMP credential as entered. A missing secret (`null`) keeps the stored one;
+ * the database rejects the save when none is stored.
+ */
+export type SnmpInput =
+  | { version: "v2c"; community: string | null }
+  | {
+    version: "v3";
+    user: string;
+    authProtocol: (typeof SNMP_AUTH_PROTOCOLS)[number] | null;
+    authKey: string | null;
+    privProtocol: (typeof SNMP_PRIV_PROTOCOLS)[number] | null;
+    privKey: string | null;
+  };
+
+function secret(value: unknown, min: number): string | null | false {
+  if (value === null || value === undefined || value === "") return null;
+  // deno-lint-ignore no-control-regex
+  if (typeof value !== "string" || /[\u0000-\u001f\u007f]/.test(value)) return false;
+  return value.length >= min && value.length <= 128 ? value : false;
+}
+
+/** Validates SNMP credentials; a string is the message for the person. */
+export function parseSnmpInput(value: unknown): SnmpInput | string {
+  if (!isObject(value)) return "Die SNMP-Zugangsdaten sind ungültig.";
+  if (value.version === "v2c") {
+    const community = secret(value.community, 1);
+    if (community === false) return "Die Community ist ungültig (höchstens 128 Zeichen).";
+    return { version: "v2c", community };
+  }
+  if (value.version !== "v3") return "Bitte SNMP v2c oder v3 wählen.";
+  const user = typeof value.user === "string" ? value.user.trim() : "";
+  if (!user || user.length > 64) return "Bitte den SNMPv3-Benutzer angeben (höchstens 64 Zeichen).";
+  const optional = <T extends string>(raw: unknown, list: readonly T[]): T | null | false =>
+    raw === null || raw === undefined || raw === "" ? null : list.includes(raw as T) ? (raw as T) : false;
+  const authProtocol = optional(value.authProtocol, SNMP_AUTH_PROTOCOLS);
+  const privProtocol = optional(value.privProtocol, SNMP_PRIV_PROTOCOLS);
+  if (authProtocol === false || privProtocol === false) return "Das gewählte Verfahren ist nicht bekannt.";
+  if (privProtocol && !authProtocol) return "Verschlüsselung gibt es nur zusammen mit Authentifizierung.";
+  const authKey = authProtocol ? secret(value.authKey, 8) : null;
+  const privKey = privProtocol ? secret(value.privKey, 8) : null;
+  if (authKey === false) return "Der Authentifizierungsschlüssel braucht 8 bis 128 Zeichen.";
+  if (privKey === false) return "Der Verschlüsselungsschlüssel braucht 8 bis 128 Zeichen.";
+  return { version: "v3", user, authProtocol, authKey, privProtocol, privKey };
+}
+
 export type Action =
   | { type: "overview"; tenantId: string }
   | { type: "device"; tenantId: string; assetId: string }
@@ -85,10 +134,15 @@ export type Action =
   | { type: "interfaces"; tenantId: string; jobId: string }
   | { type: "availability"; tenantId: string; range: AvailabilityRange }
   | { type: "events"; tenantId: string; range: EventRange }
+  | { type: "saveGroup"; tenantId: string; groupId: string | null; name: string; parentId: string | null }
+  | { type: "deleteGroup"; tenantId: string; groupId: string }
+  | { type: "assignGroup"; tenantId: string; assetIds: string[]; groupId: string | null }
   | { type: "simulate"; tenantId: string; assetId: string; sensorId: string | null; minutes: number }
   | { type: "connections"; tenantId: string; assetId: string }
   | { type: "refreshConnections"; tenantId: string; assetId: string }
   | { type: "addDevice"; tenantId: string; device: NewDevice }
+  | { type: "saveSnmp"; tenantId: string; assetId: string | null; agentId: string | null; credential: SnmpInput }
+  | { type: "deleteSnmp"; tenantId: string; assetId: string | null; agentId: string | null }
   | { type: "summary"; tenantId: string }
   | { type: "deviceTicket"; tenantId: string; assetId: string };
 
@@ -495,6 +549,40 @@ export function parseAction(value: unknown): Action | string | null {
     case "interfaces": {
       const jobId = uuid(value.jobId);
       return jobId ? { type: "interfaces", tenantId, jobId } : null;
+    }
+    case "saveGroup": {
+      const name = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";
+      if (!name) return "Bitte einen Namen für die Kategorie angeben.";
+      if (name.length > 80) return "Der Name ist zu lang (höchstens 80 Zeichen).";
+      const optional = (raw: unknown) => raw === null || raw === undefined || raw === "" ? null : uuid(raw);
+      const groupId = optional(value.groupId);
+      const parentId = optional(value.parentId);
+      if ((value.groupId && !groupId) || (value.parentId && !parentId)) return null;
+      if (groupId && groupId === parentId) return "Eine Kategorie kann nicht ihre eigene Unterkategorie sein.";
+      return { type: "saveGroup", tenantId, groupId, name, parentId };
+    }
+    case "deleteGroup": {
+      const groupId = uuid(value.groupId);
+      return groupId ? { type: "deleteGroup", tenantId, groupId } : null;
+    }
+    case "assignGroup": {
+      if (!Array.isArray(value.assetIds) || value.assetIds.length === 0 || value.assetIds.length > 500) {
+        return "Bitte mindestens ein Gerät wählen (höchstens 500).";
+      }
+      const assetIds = value.assetIds.map(uuid);
+      if (assetIds.some((id) => id === null)) return null;
+      const groupId = value.groupId === null || value.groupId === undefined || value.groupId === "" ? null : uuid(value.groupId);
+      if (value.groupId && !groupId) return null;
+      return { type: "assignGroup", tenantId, assetIds: [...new Set(assetIds as string[])], groupId };
+    }
+    case "saveSnmp":
+    case "deleteSnmp": {
+      const assetId = value.assetId ? uuid(value.assetId) : null;
+      const agentId = value.agentId ? uuid(value.agentId) : null;
+      if ((assetId === null) === (agentId === null)) return null;
+      if (value.type === "deleteSnmp") return { type: "deleteSnmp", tenantId, assetId, agentId };
+      const credential = parseSnmpInput(value.credential);
+      return typeof credential === "string" ? credential : { type: "saveSnmp", tenantId, assetId, agentId, credential };
     }
     case "events": {
       const range = EVENT_RANGES.includes(value.range as EventRange) ? (value.range as EventRange) : null;

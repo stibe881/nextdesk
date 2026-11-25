@@ -85,9 +85,14 @@ const FEATURE_CATALOG = {
     "Wiederkehrende Wartungs- und Kontrollaufgaben planen.",
     "ticketing",
   ],
+  "projects.management": [
+    "Projekte",
+    "Projekte mit Phasen, Meilensteinen, Aufgaben, Zeitplan, Budget und Auslastung.",
+    "ticketing",
+  ],
   "event.spaces": [
-    "Raumplanung",
-    "Veranstaltungsräume und Raumaufträge verwalten.",
+    "Anlässe",
+    "Anlässe planen: Räume, Einrichtung und Technik.",
     "ticketing",
   ],
   "onboarding.entries": [

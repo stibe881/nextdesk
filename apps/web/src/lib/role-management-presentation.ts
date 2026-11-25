@@ -22,7 +22,7 @@ const GROUPS: ReadonlyArray<{
   {
     id: "planning",
     label: "Planung",
-    prefixes: ["event", "event_space", "onboarding"],
+    prefixes: ["event", "event_space", "onboarding", "project"],
   },
   {
     id: "workplace",
@@ -109,7 +109,7 @@ const PERMISSION_HINTS: Readonly<Record<string, string>> = {
     "Richtet Ticketregeln, Triage, Lieferanten und Abläufe ein.",
   "contracts.manage": "Sieht und pflegt alle Verträge und Lizenzen.",
   "department.manage": "Legt Abteilungen an und ändert sie.",
-  "event.spaces.manage": "Verwaltet Räume und bearbeitet Raumaufträge.",
+  "event.spaces.manage": "Verwaltet Räume und bearbeitet Anlässe.",
   "event.spaces.request": "Kann Veranstaltungsräume reservieren lassen.",
   "inventory.adjust": "Korrigiert Bestände von Hand, z. B. nach Schwund.",
   "inventory.count.close":
@@ -128,6 +128,9 @@ const PERMISSION_HINTS: Readonly<Record<string, string>> = {
   "platform.support_access.request":
     "Erlaubt dem Plattform-Support befristet und protokolliert Zugriff.",
   "platform.tenants.manage": "Verwaltet Mandanten der gesamten Plattform.",
+  "project.create": "Legt neue Projekte an und leitet sie.",
+  "project.manage": "Bearbeitet alle Projekte und pflegt die Projektvorlagen.",
+  "project.read": "Sieht alle Projekte, auch ohne Projektmitglied zu sein.",
   "report.read": "Sieht Berichte und Auswertungen.",
   "role.manage": "Erstellt Rollen und weist sie Personen zu.",
   "service_tasks.execute": "Erledigt fällige Serviceaufgaben.",

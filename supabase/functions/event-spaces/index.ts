@@ -115,6 +115,11 @@ type Action =
     ticketId: string;
   }
   | {
+    type: "sourceDocument";
+    tenantId: string;
+    requestId: string;
+  }
+  | {
     type: "updateTaskStatus";
     tenantId: string;
     taskId: string;
@@ -440,9 +445,12 @@ function parseAction(value: unknown): Action | null {
         isUuid(value.spaceId) &&
         isUuid(value.agentId) &&
         occurrences?.length === 1 &&
+        // Ende nach dem Beginn, höchstens 24 Stunden (0391).
+        Date.parse(occurrences[0]!.endsAt) >
+          Date.parse(occurrences[0]!.startsAt) &&
         Date.parse(occurrences[0]!.endsAt) -
-              Date.parse(occurrences[0]!.startsAt) ===
-          30 * 60 * 1_000 &&
+              Date.parse(occurrences[0]!.startsAt) <=
+          24 * 60 * 60 * 1_000 &&
         hasOnlyKeys(value, [
           "type",
           "tenantId",
@@ -460,6 +468,17 @@ function parseAction(value: unknown): Action | null {
         agentId: value.agentId.toLowerCase(),
         startsAt: occurrences[0]!.startsAt,
         endsAt: occurrences[0]!.endsAt,
+      }
+      : null;
+  }
+  if (value.type === "sourceDocument") {
+    return isUuid(value.tenantId) &&
+        isUuid(value.requestId) &&
+        hasOnlyKeys(value, ["type", "tenantId", "requestId"])
+      ? {
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        requestId: value.requestId.toLowerCase(),
       }
       : null;
   }
@@ -570,7 +589,7 @@ function databaseFailure(error: DatabaseError): never {
       throw new HttpError(
         503,
         "event_space_service_unavailable",
-        "Die Raumplanung ist derzeit nicht verfügbar.",
+        "Die Anlässe sind derzeit nicht verfügbar.",
       );
     default:
       throw new HttpError(
@@ -903,7 +922,7 @@ async function conflictSummary(admin: AdminClient, input: RequestInput) {
     throw new HttpError(
       409,
       "event_space_conflict_check_too_broad",
-      msg("Zu viele bestehende Raumaufträge überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", msg("Zu viele bestehende Raumaufträge überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", "Zu viele bestehende Raumaufträge überlappen diesen Zeitraum. Bitte planen Sie einen kürzeren Zeitraum oder eine kleinere Serie.")),
+      msg("Zu viele bestehende Anlässe überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", msg("Zu viele bestehende Anlässe überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", "Zu viele bestehende Anlässe überlappen diesen Zeitraum. Bitte planen Sie einen kürzeren Zeitraum oder eine kleinere Serie.")),
     );
   }
   const possible = (candidates ?? []).filter(
@@ -1010,7 +1029,7 @@ async function navigationSummary(
     throw new HttpError(
       403,
       "event_space_permission_denied",
-      msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.")),
+      msg("Für die Anlässe fehlt dir die erforderliche Berechtigung.", msg("Für die Anlässe fehlt dir die erforderliche Berechtigung.", "Für die Anlässe fehlt Ihnen die erforderliche Berechtigung.")),
     );
   }
   const { count, error } = await admin
@@ -1039,7 +1058,7 @@ async function listWorkspace(
     throw new HttpError(
       403,
       "event_space_permission_denied",
-      msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.")),
+      msg("Für die Anlässe fehlt dir die erforderliche Berechtigung.", msg("Für die Anlässe fehlt dir die erforderliche Berechtigung.", "Für die Anlässe fehlt Ihnen die erforderliche Berechtigung.")),
     );
   }
   const from = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
@@ -1061,7 +1080,7 @@ async function listWorkspace(
     admin
       .from("event_space_requests")
       .select(
-        "id, space_id, title, organizer, remarks, expected_participants, starts_at, ends_at, responsible_user_id, assigned_agent_id, status, recurrence_kind, series_id, series_index, conflicts_acknowledged, intake_source, room_reservation_requested, phone_number",
+        "id, space_id, title, organizer, remarks, expected_participants, starts_at, ends_at, responsible_user_id, assigned_agent_id, status, recurrence_kind, series_id, series_index, conflicts_acknowledged, intake_source, room_reservation_requested, phone_number, source_document_path",
       )
       .eq("tenant_id", tenantId)
       .gte("starts_at", from)
@@ -1258,7 +1277,7 @@ async function listWorkspace(
         .filter((row: Row) => typeof row.id === "string")
         .map((row: Row) => ({
           id: String(row.id),
-          title: typeof row.title === "string" ? row.title : "Raumauftrag",
+          title: typeof row.title === "string" ? row.title : "Anlass",
           organizer: typeof row.organizer === "string" ? row.organizer : null,
           remarks: typeof row.remarks === "string" ? row.remarks : null,
           assignedAgent: typeof row.assigned_agent_id === "string"
@@ -1331,7 +1350,7 @@ async function listWorkspace(
     requests: requestRows.map((row) => ({
       id: String(row.id),
       spaceId: String(row.space_id),
-      title: typeof row.title === "string" ? row.title : "Raumauftrag",
+      title: typeof row.title === "string" ? row.title : "Anlass",
       organizer: typeof row.organizer === "string" ? row.organizer : null,
       remarks: typeof row.remarks === "string" ? row.remarks : null,
       expectedParticipants: typeof row.expected_participants === "number"
@@ -1358,6 +1377,8 @@ async function listWorkspace(
       intakeSource: row.intake_source === "email_ticket"
         ? "email_ticket"
         : "manual",
+      hasSourceDocument: typeof row.source_document_path === "string" &&
+        row.source_document_path.length > 0,
       status: String(row.status),
       recurrence: String(row.recurrence_kind),
       seriesId: typeof row.series_id === "string" ? row.series_id : null,
@@ -1424,7 +1445,7 @@ async function createRequest(
     throw new HttpError(
       500,
       "event_space_operation_failed",
-      "Der Raumauftrag konnte nicht vollständig erstellt werden.",
+      "Der Anlass konnte nicht vollständig erstellt werden.",
     );
   }
   if (createdCount === 0) {
@@ -1443,7 +1464,7 @@ async function createRequest(
     throw new HttpError(
       500,
       "event_space_operation_failed",
-      "Der Raumauftrag konnte nicht vollständig erstellt werden.",
+      "Der Anlass konnte nicht vollständig erstellt werden.",
     );
   }
   return { createdCount };
@@ -1469,7 +1490,7 @@ async function updateRequestStatus(
     throw new HttpError(
       404,
       "event_space_request_not_found",
-      "Der Raumauftrag ist nicht mehr verfügbar.",
+      "Der Anlass ist nicht mehr verfügbar.",
     );
   }
   await audit(
@@ -1505,7 +1526,7 @@ async function assignResponsible(
     throw new HttpError(
       404,
       "event_space_request_not_found",
-      "Der Raumauftrag ist nicht mehr verfügbar.",
+      "Der Anlass ist nicht mehr verfügbar.",
     );
   }
   await audit(
@@ -1579,7 +1600,7 @@ async function assignAgent(
     throw new HttpError(
       404,
       "event_space_request_not_found",
-      "Der Raumauftrag ist nicht mehr verfügbar.",
+      "Der Anlass ist nicht mehr verfügbar.",
     );
   }
   await audit(
@@ -1615,7 +1636,7 @@ async function deleteRequest(
     throw new HttpError(
       404,
       "event_space_request_not_found",
-      "Der Raumauftrag ist nicht mehr verfügbar.",
+      "Der Anlass ist nicht mehr verfügbar.",
     );
   }
   await audit(
@@ -1661,6 +1682,55 @@ async function resolveEmailIntake(
       "Der Raum oder die benötigte Technik ist im gewünschten Zeitraum nicht verfügbar.",
     );
   }
+}
+
+/** Signierte, kurz gültige Adresse der Bestellung (PDF) eines Anlasses. */
+async function sourceDocumentUrl(
+  client: CallerClient,
+  admin: AdminClient,
+  tenantId: string,
+  requestId: string,
+) {
+  await requireMembership(client, tenantId);
+  const [canRequest, canManage] = await Promise.all([
+    hasPermission(client, tenantId, "event.spaces.request"),
+    hasPermission(client, tenantId, "event.spaces.manage"),
+  ]);
+  if (!canRequest && !canManage) {
+    throw new HttpError(
+      403,
+      "event_space_permission_denied",
+      msg(
+        "Für die Anlässe fehlt dir die erforderliche Berechtigung.",
+        "Für die Anlässe fehlt Ihnen die erforderliche Berechtigung.",
+      ),
+    );
+  }
+  const { data, error } = await admin
+    .from("event_space_requests")
+    .select("source_document_path")
+    .eq("tenant_id", tenantId)
+    .eq("id", requestId)
+    .maybeSingle();
+  if (error) databaseFailure(error);
+  if (!data || typeof data.source_document_path !== "string") {
+    throw new HttpError(
+      404,
+      "document_not_found",
+      "Zu diesem Anlass ist keine Bestellung (PDF) gespeichert.",
+    );
+  }
+  const signed = await admin.storage
+    .from("event-space-documents")
+    .createSignedUrl(data.source_document_path, 120, { download: false });
+  if (signed.error || !signed.data?.signedUrl) {
+    throw new HttpError(
+      502,
+      "document_unavailable",
+      "Die Bestellung (PDF) konnte nicht geöffnet werden.",
+    );
+  }
+  return { url: signed.data.signedUrl };
 }
 
 async function retryEmailTicketIntake(
@@ -1803,7 +1873,7 @@ const handler = withSupabase(
         throw new HttpError(
           403,
           "event_spaces_feature_disabled",
-          msg(msg("Die Raumplanung ist für dich nicht eingeschaltet.", "Die Raumplanung ist für Sie nicht eingeschaltet."), "Die Raumplanung ist für Sie nicht eingeschaltet."),
+          msg(msg("Die Anlässe sind für dich nicht eingeschaltet.", "Die Anlässe sind für Sie nicht eingeschaltet."), "Die Anlässe sind für Sie nicht eingeschaltet."),
         );
       }
       if (action.type === "listWorkspace") {
@@ -1982,6 +2052,16 @@ const handler = withSupabase(
           action.endsAt,
         );
         return json(request, { data: { resolved: true } });
+      }
+      if (action.type === "sourceDocument") {
+        return json(request, {
+          data: await sourceDocumentUrl(
+            context.supabase,
+            context.supabaseAdmin,
+            action.tenantId,
+            action.requestId,
+          ),
+        });
       }
       if (action.type === "retryEmailTicketIntake") {
         return json(request, {

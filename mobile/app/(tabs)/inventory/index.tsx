@@ -33,6 +33,7 @@ import {
   type MobileInventoryItem,
   type MobileInventoryOverview,
 } from "@/lib/inventory";
+import { areaEndOptions } from "@/lib/inventory-area";
 import { useInventoryItemImages } from "@/lib/inventory-images";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
@@ -89,6 +90,10 @@ export default function InventoryScreen() {
   const [receiptLocationId, setReceiptLocationId] = useState<string | null>(
     null,
   );
+  // Last place of an area («G10.2.1» to «G10.2.4»); only for a receipt.
+  const [receiptEndLocationId, setReceiptEndLocationId] = useState<
+    string | null
+  >(null);
   const [receiptRequestId, setReceiptRequestId] = useState("");
   // Separate id: a receipt and an issue of the same sheet are two bookings.
   const [issueRequestId, setIssueRequestId] = useState("");
@@ -172,6 +177,13 @@ export default function InventoryScreen() {
   const canBook = canReceive || canIssue;
   const bookingBusy = receiptSaving || issueSaving;
   const locations = overview?.locations ?? [];
+  // The area end only counts while it still fits the chosen start place.
+  const areaOptions = areaEndOptions(locations, receiptLocationId);
+  const areaEnd =
+    receiptEndLocationId &&
+    areaOptions.some((location) => location.id === receiptEndLocationId)
+      ? receiptEndLocationId
+      : null;
 
   const openReceipt = (item: MobileInventoryItem) => {
     setNotice("");
@@ -184,6 +196,7 @@ export default function InventoryScreen() {
     setReceiptLocationId(
       matching?.id ?? (locations.length === 1 ? locations[0].id : null),
     );
+    setReceiptEndLocationId(null);
     setReceiptRequestId(newInventoryRequestId());
     setIssueRequestId(newInventoryRequestId());
     setReceiptItem(item);
@@ -281,11 +294,22 @@ export default function InventoryScreen() {
         tenantId,
         itemId: receiptItem.id,
         locationId: receiptLocationId,
+        endLocationId: areaEnd,
         quantity,
         clientRequestId: receiptRequestId,
       });
+      const startName = locations.find(
+        (location) => location.id === receiptLocationId,
+      )?.name;
+      const endName = locations.find(
+        (location) => location.id === areaEnd,
+      )?.name;
       setNotice(
-        `${quantityFormat.format(quantity)} ${receiptItem.unit} «${receiptItem.name}» eingebucht.`,
+        `${quantityFormat.format(quantity)} ${receiptItem.unit} «${receiptItem.name}» ${
+          areaEnd && startName && endName
+            ? `auf ${startName}–${endName} `
+            : ""
+        }eingebucht.`,
       );
       setReceiptItem(null);
       void load(true);
@@ -662,7 +686,10 @@ export default function InventoryScreen() {
                               accessibilityRole="radio"
                               accessibilityState={{ selected }}
                               key={location.id}
-                              onPress={() => setReceiptLocationId(location.id)}
+                              onPress={() => {
+                                setReceiptLocationId(location.id);
+                                setReceiptEndLocationId(null);
+                              }}
                               style={[
                                 styles.locationChip,
                                 selected && styles.locationChipSelected,
@@ -674,8 +701,8 @@ export default function InventoryScreen() {
                                   selected && styles.locationChipTextSelected,
                                 ]}
                               >
-                                {location.code
-                                  ? `${location.name} (${location.code})`
+                                {location.warehouseName
+                                  ? `${location.name} · ${location.warehouseName}`
                                   : location.name}
                               </Text>
                             </Pressable>
@@ -684,6 +711,47 @@ export default function InventoryScreen() {
                       </View>
                     )}
                   </View>
+
+                  {canReceive && areaOptions.length > 0 ? (
+                    <View style={styles.field}>
+                      <Text style={styles.fieldLabel}>
+                        Bis Lagerplatz (Bereich, optional)
+                      </Text>
+                      <Text style={styles.itemMeta}>
+                        Mehrere Plätze gelten als ein Lagerplatz: Die Menge wird
+                        einmal gebucht, und alle Plätze sind belegt, bis der
+                        Bestand ausgebucht ist. Nur beim Einbuchen.
+                      </Text>
+                      <View style={styles.locationList}>
+                        {[null, ...areaOptions].map((location) => {
+                          const selected = (location?.id ?? null) === areaEnd;
+                          return (
+                            <Pressable
+                              accessibilityRole="radio"
+                              accessibilityState={{ selected }}
+                              key={location?.id ?? "single"}
+                              onPress={() =>
+                                setReceiptEndLocationId(location?.id ?? null)
+                              }
+                              style={[
+                                styles.locationChip,
+                                selected && styles.locationChipSelected,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.locationChipText,
+                                  selected && styles.locationChipTextSelected,
+                                ]}
+                              >
+                                {location ? location.name : "Nur dieser Platz"}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
 
                   {receiptError ? (
                     <View style={styles.errorCard}>

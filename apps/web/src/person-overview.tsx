@@ -586,7 +586,13 @@ export function PersonOverview({
                                 <td>
                                   <button
                                     className="person-ticket-link"
+                                    disabled={!ticket.readable}
                                     onClick={() => onOpenTicket(ticket.id)}
+                                    title={
+                                      ticket.readable
+                                        ? undefined
+                                        : `Nur für das Team ${ticket.teamName ?? "des Tickets"} sichtbar`
+                                    }
                                     type="button"
                                   >
                                     <span className="person-ticket-number">
@@ -597,6 +603,12 @@ export function PersonOverview({
                                       {[
                                         ticket.categoryName,
                                         ticket.priorityLabel,
+                                        ticket.teamName
+                                          ? `Team ${ticket.teamName}`
+                                          : null,
+                                        ticket.readable
+                                          ? null
+                                          : "nur für dieses Team zu öffnen",
                                       ]
                                         .filter(Boolean)
                                         .join(" · ")}

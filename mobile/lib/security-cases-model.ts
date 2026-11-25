@@ -95,6 +95,8 @@ export type SecurityCaseDetail = {
     subject: string | null;
     date: string | null;
     sendingIp: string | null;
+    /** Provider of an agreed phishing simulation (awareness training). */
+    simulation: string | null;
     auth: { spf: string; dkim: string; dmarc: string };
     findings: { severity: string; message: string }[];
     links: { href: string; text: string | null; host: string | null }[];
@@ -136,6 +138,17 @@ export type SecurityCaseDetail = {
     status: "succeeded" | "failed";
     createdAt: string | null;
   }[];
+  /** The reported mail as received (only stored for newer reports). */
+  originalMail: {
+    subject: string | null;
+    from: string | null;
+    to: string | null;
+    cc: string | null;
+    date: string | null;
+    headers: { name: string; value: string }[];
+    /** Readable text: the text part, else the HTML without markup. */
+    text: string;
+  } | null;
 };
 
 export const INDICATOR_LABELS: Record<string, string> = {
@@ -255,6 +268,7 @@ export function parseSecurityDetail(value: unknown): SecurityCaseDetail | null {
       subject: str(analysis.subject),
       date: str(analysis.date),
       sendingIp: str(analysis.sendingIp),
+      simulation: str(analysis.simulation),
       auth: {
         spf: str(auth.spf) ?? "unknown",
         dkim: str(auth.dkim) ?? "unknown",
@@ -309,6 +323,34 @@ export function parseSecurityDetail(value: unknown): SecurityCaseDetail | null {
         ? [{ id, kind, value }]
         : [];
     }),
+    originalMail: isRecord(body.originalMail)
+      ? {
+          subject: str(body.originalMail.subject),
+          from: str(body.originalMail.from),
+          to: str(body.originalMail.to),
+          cc: str(body.originalMail.cc),
+          date: str(body.originalMail.date),
+          headers: list(body.originalMail.headers).flatMap((row) => {
+            const name = str(row.name);
+            return name
+              ? [
+                  {
+                    name,
+                    value: typeof row.value === "string" ? row.value : "",
+                  },
+                ]
+              : [];
+          }),
+          text: readableMailText(
+            typeof body.originalMail.text === "string"
+              ? body.originalMail.text
+              : "",
+            typeof body.originalMail.html === "string"
+              ? body.originalMail.html
+              : "",
+          ),
+        }
+      : null,
     measures: list(body.measures).flatMap((row) => {
       const id = str(row.id);
       return id
@@ -386,4 +428,292 @@ export function authTone(value: string): "ok" | "bad" | "warn" {
   if (value === "pass") return "ok";
   if (value === "fail" || value === "permerror") return "bad";
   return "warn";
+}
+
+const ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+};
+
+/**
+ * The mail body as plain text for the app. Links are shown defanged, so the
+ * text can be read safely and nothing in it is tappable.
+ */
+export function readableMailText(text: string, html: string): string {
+  let body = text.trim();
+  if (!body && html) {
+    body = html
+      .replace(/<(script|style|head)\b[\s\S]*?<\/\1\s*>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|tr|li|h[1-6]|table)\s*>/gi, "\n")
+      .replace(/<li\b[^>]*>/gi, "• ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (entity, code: string) => {
+        if (code.startsWith("#x"))
+          return String.fromCodePoint(parseInt(code.slice(2), 16) || 32);
+        if (code.startsWith("#"))
+          return String.fromCodePoint(parseInt(code.slice(1), 10) || 32);
+        return ENTITIES[code.toLowerCase()] ?? entity;
+      });
+  }
+  return defangUrls(
+    body
+      .replace(/\r\n?/g, "\n")
+      .replace(/[ \t\u00a0]+/g, " ")
+      .replace(/ *\n */g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
+  ).slice(0, 20000);
+}
+
+/** «https://evil.com» → «hxxps://evil[.]com»: readable, never a link. */
+export function defangUrls(value: string): string {
+  return value.replace(
+    /\b(h)(tt)(ps?:\/\/)([^\s<>"']+)/gi,
+    (_m, h, _tt, rest, target: string) =>
+      `${h}xx${rest}${target.replace(/\./g, "[.]")}`,
+  );
+}
+
+function refang(value: string): string {
+  return value.replace(/\[\.\]/g, ".").replace(/^hxxp/i, "http");
+}
+
+function hostOfLink(href: string): string | null {
+  const match = /^[a-z]+:\/\/([^/?#:]+)/i.exec(refang(href).trim());
+  return match ? match[1]!.toLowerCase() : null;
+}
+
+/** Last two labels (three for co.uk-like endings): the registrable domain. */
+function baseDomain(host: string | null): string | null {
+  if (!host) return null;
+  const labels = host.toLowerCase().replace(/\.$/, "").split(".");
+  if (labels.length < 2) return null;
+  const second = labels[labels.length - 2]!;
+  const take =
+    labels.length > 2 &&
+    ["co", "com", "org", "net", "ac", "gv"].includes(second)
+      ? 3
+      : 2;
+  return labels.slice(-take).join(".");
+}
+
+function domainOfAddress(address: string | null): string | null {
+  const at = address?.lastIndexOf("@") ?? -1;
+  return address && at > 0 ? address.slice(at + 1).toLowerCase() : null;
+}
+
+const INTERNAL_ROLE =
+  /\b(?:hr|human resources|personal(?:abteilung|dienst|wesen)?|lohn(?:buchhaltung|abteilung)?|payroll|buchhaltung|finanz(?:en|abteilung)?|it(?:-abteilung|-support|-service)?|helpdesk|service ?desk|support|informatik|admin(?:istrator)?|postmaster|geschäftsleitung|geschäftsführung|direktion|ceo|sekretariat)\b/i;
+
+export type CaseAssessment = {
+  /** Suggested verdict; null when the facts do not point anywhere. */
+  suggestion: SecurityVerdict | null;
+  headline: string;
+  /** Plain reasons, strongest first. */
+  reasons: { tone: "bad" | "warn" | "ok"; text: string }[];
+};
+
+/**
+ * A plain-language assessment for the verdict: what speaks for phishing and
+ * what speaks against it, from the analysis, the known indicators and the
+ * domains of the reporting people (their own organisation).
+ */
+export function assessCase(detail: SecurityCaseDetail): CaseAssessment {
+  const reasons: CaseAssessment["reasons"] = [];
+  const analysis = detail.analysis;
+  const ownDomains = new Set(
+    detail.reporters
+      .map((reporter) => baseDomain(domainOfAddress(reporter.email)))
+      .filter((domain): domain is string => Boolean(domain)),
+  );
+  const senderDomain = domainOfAddress(analysis.from);
+  const senderBase = baseDomain(senderDomain);
+  const external = Boolean(
+    senderBase && ownDomains.size && !ownDomains.has(senderBase),
+  );
+  let strong = 0;
+  let weak = 0;
+
+  if (detail.iocHits.length) {
+    strong += 2;
+    reasons.push({
+      tone: "bad",
+      text: `Enthält ${detail.iocHits.length === 1 ? "einen Indikator" : `${detail.iocHits.length} Indikatoren`} aus früheren, bestätigten Fällen (${detail.iocHits
+        .slice(0, 2)
+        .map((hit) => `${INDICATOR_LABELS[hit.kind] ?? hit.kind} ${hit.value}`)
+        .join(", ")}).`,
+    });
+  }
+  const label = `${analysis.fromName ?? ""} ${(analysis.from ?? "").split("@")[0]?.replace(/[._-]+/g, " ") ?? ""}`;
+  if (
+    external &&
+    (INTERNAL_ROLE.test(label) || /\bihre?\s+\S*abteilung\b/i.test(label))
+  ) {
+    strong += 1;
+    reasons.push({
+      tone: "bad",
+      text: `Gibt sich als interne Stelle aus («${(analysis.fromName ?? analysis.from ?? "").slice(0, 60)}»), kommt aber von der fremden Domain ${senderDomain}.`,
+    });
+  } else if (external && senderDomain) {
+    reasons.push({
+      tone: "warn",
+      text: `Absender von ausserhalb (${senderDomain}).`,
+    });
+  }
+  if (
+    analysis.replyTo &&
+    senderBase &&
+    baseDomain(domainOfAddress(analysis.replyTo)) !== senderBase
+  ) {
+    strong += 1;
+    reasons.push({
+      tone: "bad",
+      text: `Antworten gehen an eine andere Adresse (${analysis.replyTo}).`,
+    });
+  }
+  const linkHosts = [
+    ...new Set(
+      analysis.links
+        .map((link) => hostOfLink(link.href))
+        .filter((host): host is string => Boolean(host)),
+    ),
+  ];
+  const foreignLinks = linkHosts.filter((host) => {
+    const base = baseDomain(host);
+    return base && base !== senderBase && !ownDomains.has(base);
+  });
+  const fakeEnding = linkHosts.find((host) => {
+    const base = baseDomain(host) ?? "";
+    const match = /\.(ch|li|de|at|com)(?=-)/.exec(host);
+    return (
+      match &&
+      match.index < host.length - base.length &&
+      !base.endsWith(`.${match[1]}`)
+    );
+  });
+  if (fakeEnding) {
+    strong += 1;
+    reasons.push({
+      tone: "bad",
+      text: `Link täuscht eine Schweizer oder bekannte Adresse vor: ${fakeEnding.replace(/\./g, "[.]")} gehört in Wirklichkeit zu ${(baseDomain(fakeEnding) ?? "").replace(/\./g, "[.]")}.`,
+    });
+  } else if (foreignLinks.length) {
+    weak += 1;
+    reasons.push({
+      tone: "warn",
+      text: `Links führen auf ${foreignLinks.length === 1 ? "eine fremde Domain" : `${foreignLinks.length} fremde Domains`} (${foreignLinks
+        .slice(0, 2)
+        .map((host) => (baseDomain(host) ?? host).replace(/\./g, "[.]"))
+        .join(", ")}).`,
+    });
+  }
+  if (
+    analysis.links.some((link) =>
+      /(login|signin|verif|konto|passw|anmeld|formular|update|secure)/i.test(
+        refang(link.href),
+      ),
+    )
+  ) {
+    weak += 1;
+    reasons.push({
+      tone: "warn",
+      text: "Ein Link führt zu einer Anmelde-, Formular- oder Bestätigungsseite: typisch für das Abgreifen von Zugangsdaten.",
+    });
+  }
+  const failed = (["spf", "dkim", "dmarc"] as const).filter((key) =>
+    ["fail", "permerror", "softfail"].includes(analysis.auth[key]),
+  );
+  if (failed.length) {
+    weak += 1;
+    reasons.push({
+      tone: "warn",
+      text: `${failed.map((key) => key.toUpperCase()).join(", ")} fehlgeschlagen: Der Absender ist technisch nicht sauber bestätigt.`,
+    });
+  } else if (
+    analysis.auth.spf === "pass" &&
+    analysis.auth.dkim === "pass" &&
+    analysis.auth.dmarc === "pass"
+  ) {
+    reasons.push({
+      tone: external ? "warn" : "ok",
+      text: external
+        ? "SPF, DKIM und DMARC bestanden. Das bestätigt nur, dass die Mail wirklich von dieser Domain kommt, nicht, dass sie vertrauenswürdig ist."
+        : "SPF, DKIM und DMARC bestanden.",
+    });
+  }
+  const riskyAttachments = analysis.attachments.filter((file) =>
+    /\.(exe|scr|js|vbs|hta|iso|img|lnk|html?|zip|rar|7z|docm|xlsm|one|svg)$/i.test(
+      file.filename,
+    ),
+  );
+  if (riskyAttachments.length) {
+    strong += 1;
+    reasons.push({
+      tone: "bad",
+      text: `Riskanter Anhang: ${riskyAttachments
+        .slice(0, 2)
+        .map((file) => file.filename)
+        .join(", ")}.`,
+    });
+  }
+  if (detail.campaign && detail.campaign.reporters > 1) {
+    weak += 1;
+    reasons.push({
+      tone: "warn",
+      text: `Von ${detail.campaign.reporters} Personen gemeldet (${detail.campaign.reports} Meldungen): eine Kampagne.`,
+    });
+  }
+  const unsubscribe = detail.originalMail?.headers.some(
+    (entry) => entry.name.toLowerCase() === "list-unsubscribe",
+  );
+  if (unsubscribe && strong === 0) {
+    reasons.push({
+      tone: "ok",
+      text: "Enthält einen Abmeldelink (Newsletter- oder Werbeversand).",
+    });
+  }
+  if (
+    !external &&
+    senderBase &&
+    ownDomains.has(senderBase) &&
+    failed.length === 0
+  ) {
+    reasons.push({
+      tone: "ok",
+      text: `Absender aus der eigenen Organisation (${senderDomain}).`,
+    });
+  }
+
+  const highFindings = analysis.findings.filter(
+    (finding) => finding.severity === "high",
+  ).length;
+  let suggestion: SecurityVerdict | null;
+  let headline: string;
+  if (strong >= 2 || (strong >= 1 && (weak >= 1 || highFindings > 0))) {
+    suggestion = "phishing";
+    headline = "Wahrscheinlich Phishing";
+  } else if (strong === 1 || weak >= 2 || analysis.level === "high") {
+    suggestion = "phishing";
+    headline = "Verdächtig, eher Phishing";
+  } else if (unsubscribe || (external && weak <= 1)) {
+    suggestion = "spam";
+    headline = unsubscribe ? "Eher Werbung (Spam)" : "Unklar, eher Spam";
+  } else if (reasons.every((reason) => reason.tone === "ok")) {
+    suggestion = "harmless";
+    headline = "Keine Hinweise auf Phishing";
+  } else {
+    suggestion = null;
+    headline = "Unklar: bitte die Mail ansehen";
+  }
+  reasons.sort(
+    (left, right) =>
+      ["bad", "warn", "ok"].indexOf(left.tone) -
+      ["bad", "warn", "ok"].indexOf(right.tone),
+  );
+  return { suggestion, headline, reasons };
 }

@@ -286,6 +286,30 @@ export function inventoryWebLink(baseUrl: string, itemId: string): string {
   return url.toString();
 }
 
+/** App link of a storage location: opens the stock list at this location. */
+export function inventoryLocationDeepLink(locationId: string): string {
+  return `${APP_SCHEME}://inventory?location=${encodeURIComponent(locationId.toLowerCase())}`;
+}
+
+/** Web link of a storage location: the web app opens the stock at this location. */
+export function inventoryLocationWebLink(
+  baseUrl: string,
+  locationId: string,
+): string {
+  const url = new URL(baseUrl);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("inventoryLocation", locationId.toLowerCase());
+  return url.toString();
+}
+
+/** «?inventoryLocation=<uuid>» from a storage location label link, if valid. */
+export function inventoryLocationIdFromSearch(search: string): string | null {
+  const value =
+    new URLSearchParams(search).get("inventoryLocation")?.trim() ?? "";
+  return UUID_PATTERN.test(value) ? value.toLowerCase() : null;
+}
+
 /** «?inventory=<uuid>» from a stock article label link, if valid. */
 export function inventoryIdFromSearch(search: string): string | null {
   const value = new URLSearchParams(search).get("inventory")?.trim() ?? "";
@@ -375,6 +399,38 @@ export function inventoryLabelItem(
         : null,
     ].filter(present),
     qrText: inventoryWebLink(baseUrl, item.id),
+  };
+}
+
+export type LabelInventoryLocation = {
+  id: string;
+  /** The location itself, e.g. «WSICT.01.02»; the only large text on the label. */
+  name: string;
+  /** Warehouse of the location, shown as a small line when present. */
+  warehouseName?: string | null;
+};
+
+/**
+ * Label of a storage location: the location in large bold type and a QR code
+ * that opens it. The remark of a location is never printed.
+ */
+export function inventoryLocationLabelItem(
+  location: LabelInventoryLocation,
+  mode: LabelQrMode,
+  baseUrl: string,
+): LabelItem {
+  return {
+    key: `inventory-location:${location.id}`,
+    title: location.name.trim() || "Lagerort",
+    meta: [
+      present(location.warehouseName)
+        ? `Lager: ${location.warehouseName.trim()}`
+        : null,
+    ].filter(present),
+    qrText:
+      mode === "app"
+        ? inventoryLocationDeepLink(location.id)
+        : inventoryLocationWebLink(baseUrl, location.id),
   };
 }
 

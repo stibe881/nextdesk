@@ -29,19 +29,18 @@ export type SplitPayloadChild = {
   agentId: string | null;
 };
 
-/** A new child prefilled from the parent ticket. */
+/**
+ * A new child prefilled from the parent ticket. The note «Aufgeteilt aus
+ * Ticket …» is added by the server, which knows the numbers of all parts.
+ */
 export function newSplitChild(
   key: string,
   parent: { ticketNumber: string; subject: string; description: string },
 ): SplitDraftChild {
-  const reference = `Teil von Ticket ${parent.ticketNumber}\n\n`;
   return {
     key,
     subject: parent.subject.slice(0, SPLIT_SUBJECT_MAX),
-    description: `${reference}${parent.description}`.slice(
-      0,
-      SPLIT_DESCRIPTION_MAX,
-    ),
+    description: parent.description.slice(0, SPLIT_DESCRIPTION_MAX),
     departmentId: "",
     teamId: "",
     agentId: "",

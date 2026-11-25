@@ -21,6 +21,10 @@ const messagesByCode = (): Readonly<Record<string, string>> => ({
     tn("Die anfragende Person wurde nicht gefunden. Bitte wähle sie erneut aus.", "Die anfragende Person wurde nicht gefunden. Bitte wählen Sie sie erneut aus."),
   assigned_agent_invalid:
     "Diese Person kann diesem Ticket nicht zugewiesen werden.",
+  assigned_agent_team_mismatch:
+    tn("Das Team wurde nicht geändert, weil die zugewiesene Person diesem Team nicht angehört. Ändere zuerst die Zuweisung oder füge die Person dem Team hinzu.", "Das Team wurde nicht geändert, weil die zugewiesene Person diesem Team nicht angehört. Ändern Sie zuerst die Zuweisung oder fügen Sie die Person dem Team hinzu."),
+  assigned_team_invalid:
+    "Dieses Team gehört nicht zur Abteilung des Tickets oder ist nicht mehr aktiv.",
   ticket_agents_lookup_failed:
     tn("Die verfügbaren Agenten konnten nicht geladen werden. Bitte versuche es erneut.", "Die verfügbaren Agenten konnten nicht geladen werden. Bitte versuchen Sie es erneut."),
   ticket_update_failed:

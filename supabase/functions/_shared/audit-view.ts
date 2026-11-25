@@ -64,6 +64,7 @@ export const AUDIT_AREAS: readonly AuditArea[] = [
     label: "Tickets",
     prefixes: [
       "ticket.",
+      "project.",
       "tickets.",
       "ticketing.",
       "ticket_handover_notes.",
@@ -219,6 +220,9 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "ticket.csv_exported": "Tickets als CSV exportiert",
   "ticket.csv_imported": "Tickets aus CSV importiert",
   "ticket.pdf_exported": "Ticket als PDF exportiert",
+  "project.created": "Projekt angelegt",
+  "project.deleted": "Projekt gelöscht",
+  "project.guest_invited": "Gast in ein Projekt eingeladen",
   "ticket.template.applied": "Ticketvorlage angewendet",
   "ticket.approval.requested": "Genehmigung angefordert",
   "ticket.approval.decided": "Genehmigung entschieden",
@@ -350,9 +354,9 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   // Shop
   "shop.order.submitted": "Shop-Bestellung aufgegeben",
   // Raumbuchungen & Onboarding
-  "event_spaces.request.created": "Raumanfrage erstellt",
-  "event_spaces.request.details_updated": "Raumanfrage geändert",
-  "event_spaces.email_ticket_intake.created": "Raumanfrage aus E-Mail erstellt",
+  "event_spaces.request.created": "Anlass erstellt",
+  "event_spaces.request.details_updated": "Anlass geändert",
+  "event_spaces.email_ticket_intake.created": "Anlass aus E-Mail erstellt",
   "onboarding.entry.created": "Onboarding erfasst",
 };
 

@@ -136,6 +136,11 @@ export type MobileTicketDetail = {
   requesterName: string | null;
   requesterContact: TicketRequester | null;
   assignedAgentId: string | null;
+  /** Team the ticket is assigned to (teams of the ticket's department). */
+  assignedTeamId: string | null;
+  teamOptions: { id: string; name: string }[];
+  /** «Tickets zuweisen»: team and agent may be changed. */
+  canAssign: boolean;
   resolvedAt: string | null;
   /** Creation time; files stored with the ticket belong to the request. */
   createdAt: string | null;
@@ -156,6 +161,12 @@ export type MobileTicketDetail = {
   canClose: boolean;
   canWriteInternalNotes: boolean;
   canCommentExternal: boolean;
+  /** Personen über zusammengeführte Tickets (mindestens 1). */
+  affectedPeople: number;
+  /** Anzahl der in dieses Ticket zusammengeführten Tickets. */
+  mergedTicketCount: number;
+  /** Haupt-Ticket, wenn dieses Ticket zusammengeführt wurde. */
+  mergedInto: { id: string; ticketNumber: string } | null;
   drafts: MobileTicketDraft[];
 };
 
@@ -748,6 +759,20 @@ export async function loadMobileTicketDetail(
       typeof record.assigned_agent_id === "string"
         ? record.assigned_agent_id
         : null,
+    assignedTeamId:
+      typeof record.assigned_team_id === "string"
+        ? record.assigned_team_id
+        : null,
+    teamOptions: Array.isArray(data.teams)
+      ? data.teams.flatMap((team: unknown) => {
+          if (typeof team !== "object" || team === null) return [];
+          const row = team as { id?: unknown; name?: unknown };
+          return typeof row.id === "string" && typeof row.name === "string"
+            ? [{ id: row.id, name: row.name }]
+            : [];
+        })
+      : [],
+    canAssign: data.canAssign === true,
     resolvedAt:
       typeof record.resolved_at === "string" ? record.resolved_at : null,
     createdAt: typeof record.created_at === "string" ? record.created_at : null,
@@ -767,7 +792,25 @@ export async function loadMobileTicketDetail(
     canClose: data.canClose === true,
     canWriteInternalNotes: data.canWriteInternalNotes === true,
     canCommentExternal: data.canCommentExternal === true,
+    affectedPeople:
+      typeof data.affectedPeople === "number"
+        ? Math.max(1, data.affectedPeople)
+        : 1,
+    mergedTicketCount: Array.isArray(data.mergedTickets)
+      ? data.mergedTickets.length
+      : 0,
+    mergedInto: mergedIntoReference(data.mergedInto),
   };
+}
+
+function mergedIntoReference(
+  value: unknown,
+): { id: string; ticketNumber: string } | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as { id?: unknown; ticketNumber?: unknown };
+  return typeof row.id === "string" && typeof row.ticketNumber === "string"
+    ? { id: row.id, ticketNumber: row.ticketNumber }
+    : null;
 }
 
 export async function updateMobileTicket(input: {
@@ -795,6 +838,20 @@ export async function updateMobileTicket(input: {
   });
 }
 
+/** Assigns the ticket to a team of its department (null removes the team). */
+export async function updateMobileTicketTeam(input: {
+  tenantId: string;
+  ticketId: string;
+  teamId: string | null;
+}): Promise<void> {
+  await invokeNextDesk<unknown>("ticket-operations", {
+    type: "updateTicket",
+    tenantId: input.tenantId,
+    ticketId: input.ticketId,
+    assignedTeamId: input.teamId,
+  });
+}
+
 export async function updateMobileTicketCategory(input: {
   categoryId: string | null;
   subcategoryId: string | null;
@@ -816,6 +873,8 @@ export async function addMobileTicketComment(input: {
   visibility: TicketCommentVisibility;
   /** Files uploaded for this message (with the same visibility). */
   attachmentIds?: string[];
+  /** Mit «@Name» erwähnte Agenten: sie erhalten eine Mitteilung. */
+  mentionedUserIds?: string[];
 }): Promise<void> {
   const attachmentIds = input.attachmentIds ?? [];
   const body = messageBodyWithAttachments(input.body, attachmentIds.length);
@@ -824,14 +883,29 @@ export async function addMobileTicketComment(input: {
       "Die Nachricht muss zwischen 1 und 50'000 Zeichen lang sein.",
     );
   }
-  await invokeNextDesk<unknown>("ticket-operations", {
-    type: "addComment",
-    tenantId: input.tenantId,
-    ticketId: input.ticketId,
-    body,
-    visibility: input.visibility,
-    ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
-  });
+  const response = await invokeNextDesk<{ data?: { commentId?: unknown } }>(
+    "ticket-operations",
+    {
+      type: "addComment",
+      tenantId: input.tenantId,
+      ticketId: input.ticketId,
+      body,
+      visibility: input.visibility,
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+    },
+  );
+  const commentId = response?.data?.commentId;
+  const mentioned = input.mentionedUserIds ?? [];
+  if (typeof commentId === "string" && mentioned.length > 0) {
+    // Erwähnungen: die erwähnten Agenten erhalten eine Mitteilung.
+    await invokeNextDesk<unknown>("agent-workbench", {
+      type: "createMentions",
+      tenantId: input.tenantId,
+      ticketId: input.ticketId,
+      commentId,
+      mentionedUserIds: mentioned.slice(0, 50),
+    });
+  }
 }
 
 export async function saveMobileTicketDraft(input: {

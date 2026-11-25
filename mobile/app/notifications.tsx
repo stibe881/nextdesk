@@ -43,6 +43,7 @@ import {
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 import { tn } from "@/lib/formality";
+import { IncidentPushCard } from "@/components/incident-push-card";
 
 const CATEGORY_DETAILS: readonly {
   key: PushCategory;
@@ -54,8 +55,8 @@ const CATEGORY_DETAILS: readonly {
     label: "Mir zugewiesene Tickets",
     get description() {
       return tn(
-        "Wenn dir ein Ticket neu zugeteilt wird.",
-        "Wenn Ihnen ein Ticket neu zugeteilt wird.",
+        "Wenn dir ein Ticket oder eine Projektaufgabe neu zugeteilt wird oder du einem Projekt hinzugefügt wirst.",
+        "Wenn Ihnen ein Ticket oder eine Projektaufgabe neu zugeteilt wird oder Sie einem Projekt hinzugefügt werden.",
       );
     },
   },
@@ -711,6 +712,8 @@ export default function NotificationsScreen() {
               </Pressable>
             ) : null}
           </View>
+
+          <IncidentPushCard />
 
           {status?.featureEnabled && status.apnsConfigured ? (
             <>

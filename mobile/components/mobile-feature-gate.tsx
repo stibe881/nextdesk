@@ -389,7 +389,9 @@ export function MobileFeatureUnavailableScreen({
                 ? "Überwachung"
                 : feature === "ipam.management"
                   ? "IP-Adressen"
-                  : "Ticketdetail";
+                  : feature === "projects.management"
+                    ? "Projekte"
+                    : "Ticketdetail";
   return (
     <ScreenContainer className="px-5">
       <View style={styles.centered}>

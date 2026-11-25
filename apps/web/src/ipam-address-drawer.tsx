@@ -1,4 +1,5 @@
 import { Pencil, Ticket, Unlock, X } from "lucide-react";
+import { ProjectLinkCard } from "./project-link-card";
 import { useCallback, useEffect, useState } from "react";
 import { CustomFieldsEditor } from "./ipam-forms";
 import type { UndoAction } from "./ipam-ui";
@@ -280,6 +281,16 @@ export function IpamAddressDrawer({
                     ))}
                 </ul>
               </section>
+            ) : null}
+
+            {record ? (
+              <ProjectLinkCard
+                compact
+                heading="Projekte"
+                targetId={record.id}
+                targetKind="ipam_address"
+                tenantId={tenantId}
+              />
             ) : null}
 
             <section className="ipam-box">

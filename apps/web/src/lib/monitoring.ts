@@ -46,7 +46,55 @@ export type MonitoringIncident = {
   maintenance: boolean;
 };
 
+/** Stored SNMP credentials without the secrets. */
+export type MonitoringSnmpSummary = {
+  version: "v2c" | "v3";
+  user: string | null;
+  authProtocol: string | null;
+  privProtocol: string | null;
+  updatedAt: string | null;
+};
+
+const SNMP_PROTOCOL_LABELS: Record<string, string> = {
+  md5: "MD5",
+  sha: "SHA-1",
+  sha224: "SHA-224",
+  sha256: "SHA-256",
+  sha384: "SHA-384",
+  sha512: "SHA-512",
+  des: "DES",
+  aes: "AES-128",
+  aes256b: "AES-256 (Blumenthal)",
+  aes256r: "AES-256 (Reeder)",
+};
+
+export function snmpProtocolLabel(protocol: string): string {
+  return SNMP_PROTOCOL_LABELS[protocol] ?? protocol;
+}
+
+/** «SNMP v3 · Benutzer nextdesk · SHA-256 / AES-128»; never shows a secret. */
+export function snmpSummaryLabel(
+  summary: MonitoringSnmpSummary | null | undefined,
+): string {
+  if (!summary) return "Keine Zugangsdaten in nextDesk";
+  if (summary.version === "v2c") return "SNMP v2c · Community gespeichert";
+  const parts = [`SNMP v3 · Benutzer ${summary.user ?? "?"}`];
+  if (summary.authProtocol) {
+    parts.push(
+      [summary.authProtocol, summary.privProtocol]
+        .filter((value): value is string => !!value)
+        .map(snmpProtocolLabel)
+        .join(" / "),
+    );
+  } else {
+    parts.push("ohne Authentifizierung");
+  }
+  return parts.join(" · ");
+}
+
 export type MonitoringAgent = {
+  /** Default SNMP credentials of the probe kept in nextDesk. */
+  snmp?: MonitoringSnmpSummary | null;
   id: string;
   name: string;
   active: boolean;
@@ -63,6 +111,8 @@ export type MonitoringAgent = {
 export type MonitoringDeviceRow = {
   assetId: string;
   name: string;
+  /** Category or subcategory in the monitoring. */
+  groupId?: string | null;
   category: string | null;
   /** Own name of the kind (category «other»). */
   categoryLabel?: string | null;
@@ -93,10 +143,14 @@ export type MonitoringDeviceRow = {
 
 export type MonitoringOverview = {
   canManage: boolean;
+  /** Only tenant administrators set SNMP credentials. */
+  canManageSnmp?: boolean;
   totals: Record<MonitoringState, number>;
   deviceCount: number;
   sensorCount: number;
   devices: MonitoringDeviceRow[];
+  /** Categories of the devices (one level of subcategories). */
+  groups?: MonitoringGroup[];
   agents: MonitoringAgent[];
   /** Newest published installation package of the probe. */
   probePackage?: { version: string; builtAt: string; size: number } | null;
@@ -135,6 +189,9 @@ export type MonitoringSensor = {
 
 export type MonitoringDeviceDetail = {
   canManage: boolean;
+  canManageSnmp?: boolean;
+  /** SNMP credentials of the device kept in nextDesk. */
+  snmp?: MonitoringSnmpSummary | null;
   device: {
     assetId: string;
     name: string;
@@ -148,7 +205,7 @@ export type MonitoringDeviceDetail = {
     incident: MonitoringIncident | null;
   };
   /** Services of the status page a sensor can be linked to. */
-  serviceOptions?: { id: string; name: string }[];
+  serviceOptions?: { id: string; name: string; category?: string | null }[];
   /** Own device kinds of the tenant (for editing). */
   kinds?: string[];
   sensors: MonitoringSensor[];
@@ -232,6 +289,134 @@ export function portLinkText(port: MonitoringPort): string {
   if (port.deviceCount > 8)
     return `${port.deviceCount} Geräte (Uplink oder Trunk)`;
   return port.deviceCount > 0 ? `${port.deviceCount} unbekannte Geräte` : "–";
+}
+
+export type MonitoringGroup = {
+  id: string;
+  name: string;
+  /** Null for a category, the category for a subcategory. */
+  parentId: string | null;
+};
+
+export type DeviceSection<T> = {
+  /** Group id, or «» for devices without category. */
+  key: string;
+  label: string;
+  /** 0 = category, 1 = subcategory, 2 = below that … */
+  depth: number;
+  /** Ids of the categories above, outermost first. */
+  ancestors: string[];
+  /** Devices of the section and of everything below it. */
+  total: number;
+  devices: T[];
+};
+
+export const NO_GROUP_LABEL = "Ohne Kategorie";
+
+/** Levels of categories: «Ort → Netzwerk → Switch → Etage». */
+export const MAX_GROUP_DEPTH = 4;
+
+/** «Standort Baar → Netzwerk → Switch» for a group id. */
+export function groupPath(
+  groups: readonly MonitoringGroup[],
+  groupId: string | null | undefined,
+): string | null {
+  const names: string[] = [];
+  let current = groups.find((entry) => entry.id === groupId);
+  while (current && names.length < 10) {
+    names.unshift(current.name);
+    const parentId = current.parentId;
+    current = parentId
+      ? groups.find((entry) => entry.id === parentId)
+      : undefined;
+  }
+  return names.length ? names.join(" → ") : null;
+}
+
+/** The tree in reading order: every category followed by what is below it. */
+export function orderedGroups(
+  groups: readonly MonitoringGroup[],
+): (MonitoringGroup & { depth: number; ancestors: string[] })[] {
+  const byName = (a: MonitoringGroup, b: MonitoringGroup) =>
+    a.name.localeCompare(b.name, "de", { numeric: true, sensitivity: "base" });
+  const known = new Set(groups.map((group) => group.id));
+  const walk = (
+    parentId: string | null,
+    ancestors: string[],
+  ): (MonitoringGroup & { depth: number; ancestors: string[] })[] =>
+    ancestors.length >= 10
+      ? []
+      : groups
+          .filter((group) =>
+            parentId === null
+              ? group.parentId === null || !known.has(group.parentId)
+              : group.parentId === parentId,
+          )
+          .sort(byName)
+          .flatMap((group) => [
+            { ...group, depth: ancestors.length, ancestors },
+            ...walk(group.id, [...ancestors, group.id]),
+          ]);
+  return walk(null, []);
+}
+
+/**
+ * The device list in sections: a category with its own devices, then the
+ * categories below it; devices without category last. Without any category
+ * there is one section without heading. Empty sections are left out, a
+ * category stays as heading when only categories below it hold devices.
+ */
+export function deviceSections<T extends { groupId?: string | null }>(
+  devices: readonly T[],
+  groups: readonly MonitoringGroup[],
+): DeviceSection<T>[] {
+  if (!groups.length) {
+    return [
+      {
+        key: "",
+        label: "",
+        depth: 0,
+        ancestors: [],
+        total: devices.length,
+        devices: [...devices],
+      },
+    ];
+  }
+  const known = new Set(groups.map((group) => group.id));
+  const of = (id: string) => devices.filter((device) => device.groupId === id);
+  const sections: DeviceSection<T>[] = [];
+  const ordered = orderedGroups(groups);
+  for (const group of ordered) {
+    const own = of(group.id);
+    const total =
+      own.length +
+      ordered
+        .filter((child) => child.ancestors.includes(group.id))
+        .reduce((sum, child) => sum + of(child.id).length, 0);
+    if (!total) continue;
+    sections.push({
+      key: group.id,
+      label: group.name,
+      depth: group.depth,
+      ancestors: group.ancestors,
+      total,
+      devices: own,
+    });
+  }
+  const rest = devices.filter(
+    (device) => !device.groupId || !known.has(device.groupId),
+  );
+  if (rest.length) {
+    sections.push({
+      key: "",
+      label: NO_GROUP_LABEL,
+      depth: 0,
+      ancestors: [],
+      total: rest.length,
+      devices: rest,
+    });
+  }
+  return sections;
 }
 
 export type EventRange = "24h" | "7d";
@@ -320,6 +505,39 @@ export function eventTime(iso: string, now: number): string {
   return sameDay
     ? time
     : `${at.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit" })} ${time}`;
+}
+
+/**
+ * Services under their category, filtered by a search text (name or
+ * category). Services without category come last.
+ */
+export function groupServiceOptions<
+  T extends { name: string; category?: string | null },
+>(
+  services: readonly T[],
+  search: string,
+): { category: string; services: T[] }[] {
+  const term = search.trim().toLowerCase();
+  const groups = new Map<string, T[]>();
+  for (const service of services) {
+    const category = service.category ?? "Ohne Kategorie";
+    if (
+      term &&
+      !service.name.toLowerCase().includes(term) &&
+      !category.toLowerCase().includes(term)
+    ) {
+      continue;
+    }
+    groups.set(category, [...(groups.get(category) ?? []), service]);
+  }
+  return [...groups.entries()]
+    .map(([category, entries]) => ({ category, services: entries }))
+    .sort(
+      (a, b) =>
+        Number(a.category === "Ohne Kategorie") -
+          Number(b.category === "Ohne Kategorie") ||
+        a.category.localeCompare(b.category, "de"),
+    );
 }
 
 export type AvailabilityRange = "7d" | "30d" | "1y";

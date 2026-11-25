@@ -20,6 +20,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type ScrollViewInstance,
 } from "react-native";
 
 import { GlobalSearch } from "@/components/global-search";
@@ -75,7 +76,6 @@ import {
   loadLocalHomeLayout,
   syncHomeLayout,
 } from "@/lib/home-layout-storage";
-import { listRecentTicketIds } from "@/lib/mobile-private-state";
 import {
   listWatchedTicketIds,
   setTicketWatched,
@@ -202,7 +202,7 @@ export default function HomeScreen() {
     ReadonlySet<string>
   >(() => new Set());
   const focusLoadInFlight = useRef("");
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   // Each person arranges their own home screen (order and visible sections).
   const [homeLayout, setHomeLayout] = useState<HomeLayout>(DEFAULT_HOME_LAYOUT);
   const [homeLayoutUserId, setHomeLayoutUserId] = useState<string | null>(null);
@@ -565,11 +565,6 @@ export default function HomeScreen() {
     }, [brandingTenantId, loadBranding, recoveryEpoch]),
   );
 
-  // Zuletzt geöffnete Tickets dieses Kontos (nur IDs, lokal gespeichert).
-  const [recentTicketState, setRecentTicketState] = useState<{
-    ids: string[];
-    tenantId: string;
-  } | null>(null);
   const [watchState, setWatchState] = useState<{
     ids: string[];
     tenantId: string;
@@ -583,14 +578,12 @@ export default function HomeScreen() {
       void (async () => {
         try {
           const userId = await getMobileUserId();
-          const ids = await listRecentTicketIds({ userId, tenantId });
-          if (!cancelled) setRecentTicketState({ ids, tenantId });
           const watched = await listWatchedTicketIds(userId).catch(() => null);
           if (!cancelled && watched) {
             setWatchState({ ids: watched, tenantId, userId });
           }
         } catch {
-          if (!cancelled) setRecentTicketState({ ids: [], tenantId });
+          // Ohne beobachtete Tickets bleibt die Markierung leer.
         }
       })();
       return () => {
@@ -598,10 +591,6 @@ export default function HomeScreen() {
       };
     }, [tenantId]),
   );
-  const recentTicketIds =
-    recentTicketState && recentTicketState.tenantId === tenantId
-      ? recentTicketState.ids
-      : NO_TICKET_IDS;
   const watchedIds =
     watchState && watchState.tenantId === tenantId
       ? watchState.ids
@@ -795,11 +784,8 @@ export default function HomeScreen() {
     () =>
       isFocusScope(ticketScope)
         ? (visibleAgentMetrics?.ticketIds?.[ticketScope] ?? [])
-        : ticketScope === "all"
-          ? // Zuletzt geöffnete Tickets, die nicht in der Liste stehen, werden nachgeladen.
-            recentTicketIds.slice(0, 5)
-          : [],
-    [recentTicketIds, ticketScope, visibleAgentMetrics],
+        : [],
+    [ticketScope, visibleAgentMetrics],
   );
   const missingFocusIds = useMemo(() => {
     const known = new Set([
@@ -859,14 +845,15 @@ export default function HomeScreen() {
         .filter((ticket): ticket is MobileTicket => ticket !== undefined);
     }
     if (ticketScope === "all") {
-      // Ohne Filter nur die fünf zuletzt geöffneten Tickets.
-      const byId = new Map(
-        [...extraTickets, ...tickets].map((ticket) => [ticket.id, ticket]),
+      // Ohne gewählte Kachel: die nicht zugewiesenen Tickets (darum muss sich
+      // jemand kümmern); gibt es keine, die offenen. «Zuletzt angesehen»
+      // zeigt die zuletzt geöffneten Tickets bereits.
+      const unassigned = tickets.filter(
+        (ticket) => ticket.unassigned && !ticket.resolved,
       );
-      return recentTicketIds
-        .map((id) => byId.get(id))
-        .filter((ticket): ticket is MobileTicket => ticket !== undefined)
-        .slice(0, 5);
+      return unassigned.length > 0
+        ? unassigned
+        : tickets.filter((ticket) => !ticket.resolved);
     }
     return tickets.filter((ticket) => {
       if (ticketScope === "mine") return ticket.assignedToCurrentUser;
@@ -875,6 +862,11 @@ export default function HomeScreen() {
       return true;
     });
   })();
+  const defaultListLabel = tickets.some(
+    (ticket) => ticket.unassigned && !ticket.resolved,
+  )
+    ? "Nicht zugewiesen"
+    : "Offen";
   const visibleTickets = scopedTickets.filter(
     (ticket) => !undoDelete.hiddenIds.has(ticket.id),
   );
@@ -1121,15 +1113,14 @@ export default function HomeScreen() {
           <View>
             <Text style={[styles.sectionTitle, tokenStyles.foreground]}>
               {ticketScope === "all"
-                ? "Zuletzt geöffnet"
+                ? defaultListLabel
                 : ticketScopeLabels[ticketScope]}
             </Text>
             <Text style={[styles.sectionSub, tokenStyles.muted]}>
               {ticketScope === "all"
-                ? tn(
-                    "Die fünf Tickets, die du zuletzt geöffnet hast",
-                    "Die fünf Tickets, die Sie zuletzt geöffnet haben",
-                  )
+                ? defaultListLabel === "Nicht zugewiesen"
+                  ? `${visibleTickets.length} ${visibleTickets.length === 1 ? "Ticket wartet" : "Tickets warten"} auf eine Zuweisung`
+                  : `${visibleTickets.length} offene Tickets · keines ist ohne Zuweisung`
                 : focusLoading
                   ? "Passende Tickets werden geladen …"
                   : ticketScope === "resolution"
@@ -1168,10 +1159,7 @@ export default function HomeScreen() {
           <View style={[styles.emptyList, tokenStyles.card]}>
             <Text style={[styles.emptyText, tokenStyles.muted]}>
               {ticketScope === "all"
-                ? tn(
-                    "Du hast noch kein Ticket geöffnet.",
-                    "Sie haben noch kein Ticket geöffnet.",
-                  )
+                ? "Keine offenen Tickets."
                 : "Keine passenden Tickets vorhanden."}
             </Text>
             <Pressable

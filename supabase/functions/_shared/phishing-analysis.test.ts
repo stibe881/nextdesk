@@ -3,10 +3,13 @@ import {
   analyzeHeaders,
   analyzeLink,
   analyzeMail,
+  claimsInternalRole,
   decodeEncodedWords,
   defang,
+  detectSimulation,
   detectLookalike,
   extractLinks,
+  fakeEndingInHost,
   organizationalDomain,
   parseHeaderBlock,
   parseInlineForward,
@@ -448,5 +451,55 @@ Deno.test("support mailbox as report address only counts marked subjects", async
   const alias = { ...settings, reportAddress: "phishing@example.ch" } as typeof settings;
   if (!isPhishingReportMail(alias, { ...base, recipients: ["phishing@example.ch"], subject: "WG: Rechnung" })) {
     throw new Error("separate report alias must always count");
+  }
+});
+
+Deno.test("Interne Stelle von fremder Domain wird erkannt", () => {
+  const headers = parseHeaderBlock(
+    "From: Ihre HR-Abteilung <hr_abteilung@hr-abteilung.zuerick.ch>\r\n" +
+      "Subject: Lohnangaben bestätigen\r\n",
+  );
+  const own = analyzeHeaders(headers, ["sonnenberg-baar.ch"]);
+  assert(own.findings.some((entry) => entry.code === "internal_role_external"), "own.findings.some((entry) => entry.code === 'inter");
+  // Without known own domains the check stays silent.
+  const unknown = analyzeHeaders(headers, []);
+  assert(!unknown.findings.some((entry) => entry.code === "internal_role_external"), "!unknown.findings.some((entry) => entry.code === '");
+  // The own HR department is fine.
+  const internal = analyzeHeaders(
+    parseHeaderBlock("From: HR-Abteilung <hr@sonnenberg-baar.ch>\r\n"),
+    ["sonnenberg-baar.ch"],
+  );
+  assert(!internal.findings.some((entry) => entry.code === "internal_role_external"), "!internal.findings.some((entry) => entry.code === ");
+  assert(claimsInternalRole(null, "it-support@example.com"), "claimsInternalRole(null, 'it-support@example.com')");
+  assert(!claimsInternalRole("Digitec Galaxus", "info@digitec.ch"), "!claimsInternalRole('Digitec Galaxus', 'info@digit");
+});
+
+Deno.test("Vorgetäuschte Domain-Endung im Link wird erkannt", () => {
+  equal(fakeEndingInHost("hr-abteilung.ch-secure.com"), ".ch", "Endung");
+  equal(fakeEndingInHost("post.ch.login.top"), ".ch", "Endung");
+  equal(fakeEndingInHost("www.post.ch"), null, "Endung");
+  equal(fakeEndingInHost("shop.ch-online.ch"), null, "Endung");
+  equal(fakeEndingInHost("login.microsoft.com"), null, "Endung");
+  const link = analyzeLink("https://hr-abteilung.ch-secure.com/form.php", null);
+  const hit = link.findings.find((entry) => entry.code === "fake_domain_ending");
+  equal(hit?.severity, "high", "hit?.severity");
+});
+
+Deno.test("agreed phishing simulation (Hornetsecurity) is recognised only with both signals", () => {
+  const server = {
+    name: "x-forefront-antispam-report",
+    value: "CIP:94.100.132.73;CTRY:DE;SFV:NSPM;PTR:awareness-mta.hornetsecurity.com;CAT:NONE;",
+  };
+  const marker = { name: "x-itseal", value: "29441468e52c0b232a" };
+  const disclaimer = {
+    name: "x-disclaimer",
+    value: "This email was set up by Hornetsecurity GmbH to simulate phishing attacks on your company.",
+  };
+  if (detectSimulation([server, marker]) !== "Hornetsecurity") throw new Error("itseal not detected");
+  if (detectSimulation([server, disclaimer]) !== "Hornetsecurity") throw new Error("disclaimer not detected");
+  // A forged marker without the provider's server is not trusted.
+  if (detectSimulation([marker, disclaimer]) !== null) throw new Error("forged marker accepted");
+  if (detectSimulation([{ ...server, value: "PTR:mail.evil-hornetsecurity.com.example;" }, marker]) !== null) {
+    throw new Error("look-alike server accepted");
   }
 });

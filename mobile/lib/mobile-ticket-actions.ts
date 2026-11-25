@@ -5,6 +5,7 @@ import {
 } from "@/lib/nextdesk-client";
 import type { MobileTicket } from "@/lib/nextdesk-tickets";
 import { tn } from "./formality";
+import { parseMergePreview, type MergePreview } from "./ticket-merge-preview";
 
 export function followUpTitle(ticket: MobileTicket): string {
   return (
@@ -260,4 +261,108 @@ export async function setTicketWatched(input: {
     ticketId: input.ticketId,
     watching: input.watching,
   });
+}
+
+/**
+ * Führt Tickets in ein Haupt-Ticket zusammen (wie im Web): Die übrigen
+ * Tickets werden gelöst und verweisen auf das Haupt-Ticket. Zählt Erfolge
+ * und Fehlschläge; ein einzelner Fehler bricht nicht ab.
+ */
+export async function mergeTicketsInto(
+  tenantId: string,
+  primaryTicketId: string,
+  ticketIds: readonly string[],
+): Promise<{ merged: number; failed: number; lastError: string | null }> {
+  let merged = 0;
+  let failed = 0;
+  let lastError: string | null = null;
+  for (const ticketId of ticketIds) {
+    if (ticketId === primaryTicketId) continue;
+    try {
+      await invokeNextDesk("ticket-operations", {
+        type: "markMerged",
+        tenantId,
+        ticketId,
+        primaryTicketId,
+        source: "bulk",
+      });
+      merged += 1;
+    } catch (error) {
+      failed += 1;
+      lastError = error instanceof Error ? error.message : null;
+    }
+  }
+  return { merged, failed, lastError };
+}
+
+/**
+ * Vorschau einer Zusammenführung: vorgeschlagenes Haupt-Ticket und was
+ * übernommen wird. Ohne Haupt-Ticket liefert der Server nur den Vorschlag.
+ */
+export async function loadMergePreview(
+  tenantId: string,
+  ticketIds: readonly string[],
+  primaryTicketId: string | null,
+): Promise<MergePreview | null> {
+  const response = await invokeNextDesk<{ data?: unknown }>(
+    "ticket-operations",
+    {
+      type: "mergePreview",
+      tenantId,
+      ticketId: primaryTicketId ?? ticketIds[0],
+      ticketIds: [...ticketIds],
+      primaryTicketId,
+    },
+  );
+  return parseMergePreview(response?.data);
+}
+
+/**
+ * Leitet die ursprüngliche Mail (oder eine Nachricht) des Tickets an
+ * beliebige Adressen weiter. Die anfragende Person erhält nichts; in der
+ * Unterhaltung erscheint eine interne Notiz «Weitergeleitet an …».
+ */
+export async function forwardTicket(input: {
+  tenantId: string;
+  ticketId: string;
+  emails: string[];
+  message: string;
+  sourceCommentId?: string | null;
+}): Promise<number> {
+  const response = await invokeNextDesk<{ data?: { forwarded?: unknown } }>(
+    "ticket-operations",
+    {
+      type: "forwardTicket",
+      tenantId: input.tenantId,
+      ticketId: input.ticketId,
+      emails: input.emails,
+      message: input.message,
+      sourceCommentId: input.sourceCommentId ?? null,
+    },
+  );
+  const count = Number(response?.data?.forwarded);
+  return Number.isFinite(count) ? count : input.emails.length;
+}
+
+const FORWARD_EMAIL = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
+
+/** «a@b.ch; c@d.ch, …» → gültige und ungültige Adressen. */
+export function parseForwardRecipients(value: string): {
+  emails: string[];
+  invalid: string[];
+} {
+  const parts = value
+    .split(/[\s,;]+/)
+    .map((part) => part.trim().replace(/^<|>$/g, ""))
+    .filter(Boolean);
+  return {
+    emails: [
+      ...new Set(
+        parts
+          .filter((part) => FORWARD_EMAIL.test(part))
+          .map((part) => part.toLowerCase()),
+      ),
+    ],
+    invalid: parts.filter((part) => !FORWARD_EMAIL.test(part)),
+  };
 }

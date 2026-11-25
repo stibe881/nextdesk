@@ -16,11 +16,13 @@ const response = {
       reservationHoldDays: 14,
     },
     departments: [{ id: "dep-1", name: "ICT", returnLocationId: null }],
-    locations: [
+    locations: [{ id: "loc-1", name: "WSICT.01.01", active: true }],
+    warehouses: [
       {
-        id: "loc-1",
-        name: "Lager",
+        id: "wh-1",
+        name: "Lager Bern",
         active: true,
+        placeCount: 3,
         countIntervalDays: 90,
         lastCountedAt: null,
         nextCountDue: "2026-12-01",
@@ -48,7 +50,14 @@ describe("inventory automation", () => {
   it("parses the server response", () => {
     const parsed = parseInventoryAutomation(response);
     expect(parsed?.settings.reservationHoldDays).toBe(14);
-    expect(parsed?.locations[0]?.nextCountDue).toBe("2026-12-01");
+    expect(parsed?.warehouses[0]?.nextCountDue).toBe("2026-12-01");
+    expect(parsed?.warehouses[0]?.placeCount).toBe(3);
+    // The reminder is per warehouse: a place carries no interval of its own.
+    expect(parsed?.locations[0]).toEqual({
+      id: "loc-1",
+      name: "WSICT.01.01",
+      active: true,
+    });
     expect(parsed?.reorderRequests.map((row) => row.id)).toEqual(["req-1"]);
     expect(parseInventoryAutomation({ data: {} })).toBeNull();
   });
@@ -65,7 +74,8 @@ describe("inventory automation", () => {
     if (!parsed) throw new Error("parse failed");
     const draft = draftFromAutomation(parsed);
     draft.departmentLocations["dep-1"] = "loc-1";
-    draft.countIntervals["loc-1"] = "";
+    expect(Object.keys(draft.countIntervals)).toEqual(["wh-1"]);
+    draft.countIntervals["wh-1"] = "";
     expect(saveRequest("tenant", draft)).toEqual({
       body: {
         type: "saveInventoryAutomation",
@@ -77,7 +87,7 @@ describe("inventory automation", () => {
           reservationHoldDays: 14,
         },
         departmentLocations: [{ departmentId: "dep-1", locationId: "loc-1" }],
-        countIntervals: [{ locationId: "loc-1", days: null }],
+        countIntervals: [{ warehouseId: "wh-1", days: null }],
       },
     });
     draft.reservationHoldDays = "0";

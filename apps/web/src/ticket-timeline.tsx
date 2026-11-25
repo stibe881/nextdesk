@@ -44,6 +44,16 @@ export function TicketTimeline({
     (longest, gap) => Math.max(longest, gap.durationMs),
     0,
   );
+  // Rot nur, wenn in der Lücke eine SLA-Frist verletzt wurde; sonst ist sie
+  // ein Hinweis (orange).
+  const gapBreachesSla = (gap: { start: number; end: number }) =>
+    timeline.entries.some(
+      (entry) =>
+        entry.kind === "sla_due" &&
+        entry.tone === "danger" &&
+        entry.time >= gap.start &&
+        entry.time <= gap.end,
+    );
   const position = (value: number) => `${timelinePosition(timeline, value)}%`;
   const width = (start: number, end: number) =>
     `${Math.max(0.8, timelinePosition(timeline, end) - timelinePosition(timeline, start))}%`;
@@ -121,7 +131,7 @@ export function TicketTimeline({
         {sequence.map((item) =>
           item.type === "gap" ? (
             <li
-              className={`ticket-timeline__gap ticket-timeline__gap--${item.gap.reason}`}
+              className={`ticket-timeline__gap ticket-timeline__gap--${item.gap.reason}${gapBreachesSla(item.gap) ? " ticket-timeline__gap--breach" : ""}`}
               key={item.gap.id}
             >
               <AlertTriangle aria-hidden="true" size={15} />

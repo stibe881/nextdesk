@@ -22,8 +22,11 @@ export type MobileInventoryItem = {
 
 export type MobileInventoryLocation = {
   id: string;
+  /** The location itself (its code as typed), e.g. «WSICT.01.02». */
   name: string;
   code: string | null;
+  /** Name of the warehouse (Lager) the location belongs to, if any. */
+  warehouseName: string | null;
 };
 
 export type MobileInventoryOverview = {
@@ -103,6 +106,17 @@ export async function loadMobileInventory(
       })
     : [];
   const summary = isRecord(data.summary) ? data.summary : {};
+  const warehouseNames = new Map<string, string>(
+    Array.isArray(data.warehouses)
+      ? data.warehouses.flatMap((entry): [string, string][] =>
+          isRecord(entry) &&
+          typeof entry.id === "string" &&
+          typeof entry.name === "string"
+            ? [[entry.id, entry.name]]
+            : [],
+        )
+      : [],
+  );
   const locations = Array.isArray(data.locations)
     ? data.locations
         .flatMap((entry): MobileInventoryLocation[] =>
@@ -115,6 +129,10 @@ export async function loadMobileInventory(
                   id: entry.id,
                   name: entry.name,
                   code: typeof entry.code === "string" ? entry.code : null,
+                  warehouseName:
+                    typeof entry.warehouseId === "string"
+                      ? (warehouseNames.get(entry.warehouseId) ?? null)
+                      : null,
                 },
               ]
             : [],
@@ -146,6 +164,8 @@ export async function postMobileInventoryReceipt(input: {
   tenantId: string;
   itemId: string;
   locationId: string;
+  /** Last place of an area («G10.2.1» to «G10.2.4»); the quantity is booked once. */
+  endLocationId?: string | null;
   quantity: number;
   clientRequestId: string;
 }): Promise<void> {
@@ -155,6 +175,7 @@ export async function postMobileInventoryReceipt(input: {
     movementType: "receipt",
     itemId: input.itemId,
     toLocationId: input.locationId,
+    ...(input.endLocationId ? { toLocationEndId: input.endLocationId } : {}),
     quantity: input.quantity,
     clientRequestId: input.clientRequestId,
   });

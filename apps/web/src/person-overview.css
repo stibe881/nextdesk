@@ -925,3 +925,13 @@ button.person-mini-list__item:disabled {
   display: grid;
   min-width: 0;
 }
+
+/* Ticket eines anderen Teams: sichtbar, aber nicht zu öffnen. */
+.person-ticket-link:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+.person-ticket-link:disabled:hover strong {
+  color: inherit;
+  text-decoration: none;
+}

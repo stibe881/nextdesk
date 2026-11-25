@@ -16,6 +16,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { currentUserId } from "@/lib/incidents";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import {
+  assessCase,
   askReportersClicked,
   assignSecurityCase,
   AUTH_LABELS,
@@ -67,6 +68,8 @@ export default function PhishingCaseScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [pickAgent, setPickAgent] = useState(false);
+  const [mailExpanded, setMailExpanded] = useState(false);
+  const [showHeaders, setShowHeaders] = useState(false);
 
   const load = useCallback(
     async (pull = false) => {
@@ -216,6 +219,7 @@ export default function PhishingCaseScreen() {
 
   const analysis = detail.analysis;
   const open = detail.state !== "closed";
+  const assessment = assessCase(detail);
   const doneCount = detail.actions.filter((entry) => entry.doneAt).length;
   const assignedName =
     agents.find((agent) => agent.id === detail.assignedAgentId)?.name ??
@@ -267,6 +271,11 @@ export default function PhishingCaseScreen() {
             {detail.verdict ? (
               <Text style={styles.badge}>{VERDICT_LABELS[detail.verdict]}</Text>
             ) : null}
+            {analysis.simulation ? (
+              <Text style={[styles.badge, styles.badgeOk]}>
+                Phishing-Simulation · {analysis.simulation}
+              </Text>
+            ) : null}
           </View>
           <Text style={styles.titleSmall}>
             {detail.subject ?? analysis.subject ?? "(ohne Betreff)"}
@@ -298,7 +307,10 @@ export default function PhishingCaseScreen() {
           <View style={styles.errorCard}>
             <Ionicons color={colors.error} name="warning-outline" size={19} />
             <Text style={styles.errorText}>
-              {tn("Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset erzwingen und Gerät scannen kannst du im Web unter «Kontext und Massnahmen».", "Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset erzwingen und Gerät scannen können Sie im Web unter «Kontext und Massnahmen».")}
+              {tn(
+                "Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset erzwingen und Gerät scannen kannst du im Web unter «Kontext und Massnahmen».",
+                "Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset erzwingen und Gerät scannen können Sie im Web unter «Kontext und Massnahmen».",
+              )}
             </Text>
           </View>
         ) : null}
@@ -340,9 +352,220 @@ export default function PhishingCaseScreen() {
           </View>
         ) : null}
 
+        {open || detail.state === "triage" ? (
+          <View
+            style={[
+              styles.card,
+              { gap: 8 },
+              assessment.suggestion === "phishing"
+                ? { borderColor: colors.error, borderWidth: 1 }
+                : null,
+            ]}
+          >
+            <Text style={styles.cardTitle}>Einschätzung</Text>
+            <Text style={[styles.kvValue, { fontWeight: "800" }]}>
+              {assessment.headline}
+            </Text>
+            {assessment.reasons.map((reason, index) => (
+              <View
+                key={index}
+                style={[styles.kv, { alignItems: "flex-start" }]}
+              >
+                <Ionicons
+                  color={
+                    reason.tone === "bad"
+                      ? colors.error
+                      : reason.tone === "warn"
+                        ? colors.warning
+                        : colors.success
+                  }
+                  name={
+                    reason.tone === "bad"
+                      ? "alert-circle"
+                      : reason.tone === "warn"
+                        ? "warning-outline"
+                        : "checkmark-circle-outline"
+                  }
+                  size={18}
+                />
+                <Text style={styles.kvValue}>{reason.text}</Text>
+              </View>
+            ))}
+            <Text style={styles.muted}>
+              {tn(
+                "Automatische Einschätzung aus Absender, Links, Prüfungen und früheren Fällen. Lies im Zweifel die Mail unten.",
+                "Automatische Einschätzung aus Absender, Links, Prüfungen und früheren Fällen. Lesen Sie im Zweifel die Mail unten.",
+              )}
+            </Text>
+          </View>
+        ) : null}
+
+        {(() => {
+          const mail = detail.originalMail;
+          if (!mail) {
+            return (
+              <View style={[styles.card, { gap: 6 }]}>
+                <Text style={styles.cardTitle}>Gemeldete Mail</Text>
+                <Text style={styles.muted}>
+                  Für diese Meldung ist der Inhalt der Mail nicht gespeichert
+                  (nur bei neueren Meldungen). Betreff:{" "}
+                  {analysis.subject ?? detail.subject ?? "(ohne Betreff)"}
+                </Text>
+              </View>
+            );
+          }
+          const long = mail.text.length > 900;
+          const shown =
+            long && !mailExpanded ? `${mail.text.slice(0, 900)} …` : mail.text;
+          return (
+            <View style={[styles.card, { gap: 8 }]}>
+              <Text style={styles.cardTitle}>Gemeldete Mail</Text>
+              {[
+                ["Betreff", mail.subject ?? analysis.subject],
+                [
+                  "Von",
+                  mail.from ??
+                    [analysis.fromName, analysis.from]
+                      .filter(Boolean)
+                      .join(" · "),
+                ],
+                ["An", mail.to],
+                ["Cc", mail.cc],
+              ]
+                .filter(([, value]) => value)
+                .map(([label, value]) => (
+                  <View key={label} style={styles.kv}>
+                    <Text style={styles.kvLabel}>{label}</Text>
+                    <Text selectable style={styles.kvValue}>
+                      {value}
+                    </Text>
+                  </View>
+                ))}
+              <View
+                style={{
+                  borderColor: colors.border,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  padding: 12,
+                }}
+              >
+                <Text selectable style={styles.kvValue}>
+                  {shown || "Die Mail enthält keinen lesbaren Text."}
+                </Text>
+              </View>
+              <Text style={styles.muted}>
+                Links sind entschärft (hxxp, [.]) und nicht antippbar; Bilder
+                und Anhänge werden nicht geladen.
+              </Text>
+              <View style={styles.badgeRow}>
+                {long ? (
+                  <Pressable
+                    onPress={() => setMailExpanded((value) => !value)}
+                    style={[styles.button, styles.buttonSecondary]}
+                  >
+                    <Text style={styles.buttonSecondaryText}>
+                      {mailExpanded
+                        ? "Weniger anzeigen"
+                        : "Ganze Mail anzeigen"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {mail.headers.length ? (
+                  <Pressable
+                    onPress={() => setShowHeaders((value) => !value)}
+                    style={[styles.button, styles.buttonSecondary]}
+                  >
+                    <Text style={styles.buttonSecondaryText}>
+                      {showHeaders
+                        ? "Kopfzeilen ausblenden"
+                        : `Kopfzeilen (${mail.headers.length})`}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              {showHeaders ? (
+                <Text
+                  selectable
+                  style={[styles.muted, { fontFamily: "Menlo" }]}
+                >
+                  {mail.headers
+                    .map((entry) => `${entry.name}: ${entry.value}`)
+                    .join("\n")}
+                </Text>
+              ) : null}
+            </View>
+          );
+        })()}
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Analyse</Text>
+          {[
+            [
+              "Absender",
+              [analysis.fromName, analysis.from].filter(Boolean).join(" · "),
+            ],
+            ["Antwort an", analysis.replyTo],
+            ["Return-Path", analysis.returnPath],
+            ["Sende-IP", analysis.sendingIp],
+          ]
+            .filter(([, value]) => value)
+            .map(([label, value]) => (
+              <View key={label} style={styles.kv}>
+                <Text style={styles.kvLabel}>{label}</Text>
+                <Text style={styles.kvValue}>{value}</Text>
+              </View>
+            ))}
+          <View style={styles.badgeRow}>
+            {(["spf", "dkim", "dmarc"] as const).map((key) => {
+              const value = analysis.auth[key];
+              const tone = authTone(value);
+              return (
+                <Text
+                  key={key}
+                  style={[
+                    styles.badge,
+                    tone === "ok"
+                      ? styles.badgeOk
+                      : tone === "bad"
+                        ? styles.badgeBad
+                        : styles.badgeWarn,
+                  ]}
+                >
+                  {key.toUpperCase()} {AUTH_LABELS[value] ?? value}
+                </Text>
+              );
+            })}
+          </View>
+          {analysis.findings.map((finding, index) => (
+            <Text key={index} style={styles.kvValue}>
+              • {finding.message}
+            </Text>
+          ))}
+          {analysis.links.length ? (
+            <Text style={styles.muted}>
+              Links (entschärft, nicht anklickbar):{"\n"}
+              {analysis.links.map((link) => link.href).join("\n")}
+            </Text>
+          ) : null}
+          {analysis.attachments.length ? (
+            <Text style={styles.muted}>
+              Anhänge:{" "}
+              {analysis.attachments.map((file) => file.filename).join(", ")}
+            </Text>
+          ) : null}
+        </View>
+
         {detail.state === "triage" ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Urteil fällen</Text>
+            {assessment.suggestion ? (
+              <Text style={styles.muted}>
+                {tn(
+                  `Vorschlag: ${VERDICT_LABELS[assessment.suggestion]} (markiert). Die Entscheidung triffst du.`,
+                  `Vorschlag: ${VERDICT_LABELS[assessment.suggestion]} (markiert). Die Entscheidung treffen Sie.`,
+                )}
+              </Text>
+            ) : null}
             <View style={styles.badgeRow}>
               {VERDICTS.map((entry) => (
                 <Pressable
@@ -352,6 +575,9 @@ export default function PhishingCaseScreen() {
                   style={[
                     styles.button,
                     entry === "harmless" ? styles.buttonSecondary : null,
+                    entry === assessment.suggestion
+                      ? { borderWidth: 3, borderColor: colors.text }
+                      : null,
                     busy ? styles.buttonDisabled : null,
                   ]}
                 >
@@ -441,7 +667,9 @@ export default function PhishingCaseScreen() {
               <Text key={entry.id} style={styles.muted}>
                 <Ionicons
                   accessibilityLabel={
-                    entry.status === "succeeded" ? "Erfolgreich" : "Fehlgeschlagen"
+                    entry.status === "succeeded"
+                      ? "Erfolgreich"
+                      : "Fehlgeschlagen"
                   }
                   color={
                     entry.status === "succeeded" ? colors.success : colors.error
@@ -552,64 +780,6 @@ export default function PhishingCaseScreen() {
                 Melder fragen: geklickt?
               </Text>
             </Pressable>
-          ) : null}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Analyse</Text>
-          {[
-            [
-              "Absender",
-              [analysis.fromName, analysis.from].filter(Boolean).join(" · "),
-            ],
-            ["Antwort an", analysis.replyTo],
-            ["Return-Path", analysis.returnPath],
-            ["Sende-IP", analysis.sendingIp],
-          ]
-            .filter(([, value]) => value)
-            .map(([label, value]) => (
-              <View key={label} style={styles.kv}>
-                <Text style={styles.kvLabel}>{label}</Text>
-                <Text style={styles.kvValue}>{value}</Text>
-              </View>
-            ))}
-          <View style={styles.badgeRow}>
-            {(["spf", "dkim", "dmarc"] as const).map((key) => {
-              const value = analysis.auth[key];
-              const tone = authTone(value);
-              return (
-                <Text
-                  key={key}
-                  style={[
-                    styles.badge,
-                    tone === "ok"
-                      ? styles.badgeOk
-                      : tone === "bad"
-                        ? styles.badgeBad
-                        : styles.badgeWarn,
-                  ]}
-                >
-                  {key.toUpperCase()} {AUTH_LABELS[value] ?? value}
-                </Text>
-              );
-            })}
-          </View>
-          {analysis.findings.map((finding, index) => (
-            <Text key={index} style={styles.kvValue}>
-              • {finding.message}
-            </Text>
-          ))}
-          {analysis.links.length ? (
-            <Text style={styles.muted}>
-              Links (entschärft, nicht anklickbar):{"\n"}
-              {analysis.links.map((link) => link.href).join("\n")}
-            </Text>
-          ) : null}
-          {analysis.attachments.length ? (
-            <Text style={styles.muted}>
-              Anhänge:{" "}
-              {analysis.attachments.map((file) => file.filename).join(", ")}
-            </Text>
           ) : null}
         </View>
 

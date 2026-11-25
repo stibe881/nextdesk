@@ -5,8 +5,9 @@ const CHUNK_SIZE = 100;
 
 export type ExpoMessage = {
   to: string;
-  title: string;
-  body: string;
+  /** Without title and body the message is data-only (no visible notification). */
+  title?: string;
+  body?: string;
   data?: Record<string, unknown>;
 };
 
@@ -35,15 +36,25 @@ export async function sendExpoPush(
           "content-type": "application/json",
         },
         body: JSON.stringify(
-          chunk.map((message) => ({
-            to: message.to,
-            title: message.title,
-            body: message.body,
-            sound: "default",
-            priority: "high",
-            channelId: "default",
-            ...(message.data ? { data: message.data } : {}),
-          })),
+          chunk.map((message) =>
+            message.title
+              ? {
+                to: message.to,
+                title: message.title,
+                body: message.body ?? "",
+                sound: "default",
+                priority: "high",
+                channelId: "default",
+                ...(message.data ? { data: message.data } : {}),
+              }
+              : {
+                // Data-only: the app handles it in the background task.
+                to: message.to,
+                priority: "high",
+                _contentAvailable: true,
+                data: message.data ?? {},
+              }
+          ),
         ),
         signal: AbortSignal.timeout(15_000),
       });

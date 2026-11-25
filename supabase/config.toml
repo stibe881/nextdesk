@@ -18,6 +18,10 @@ verify_jwt = true
 import_map = "./functions/deno.json"
 verify_jwt = false
 
+[functions.projects]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
 [functions.invite-tenant-member]
 import_map = "./functions/deno.json"
 verify_jwt = true
@@ -404,6 +408,10 @@ import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.intune-scheduled-sync]
+import_map = "./functions/deno.json"
+verify_jwt = false
+
+[functions.entra-directory-scheduled-sync]
 import_map = "./functions/deno.json"
 verify_jwt = false
 

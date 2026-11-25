@@ -75,6 +75,8 @@ type ManualProviderRun = {
   retry_of_run_id: string | null;
   root_run_id: string | null;
   attempt_no: number;
+  /** Täglicher automatischer Abgleich (nicht von Hand gestartet). */
+  scheduled: boolean;
 };
 
 type PendingApply = {
@@ -197,8 +199,20 @@ function parseManualProviderRun(value: unknown): ManualProviderRun | null {
     retry_of_run_id: value.retry_of_run_id,
     root_run_id: value.root_run_id,
     attempt_no: value.attempt_no,
+    scheduled: value.scheduled === true,
   };
 }
+
+/** Bezeichnung eines Laufs; der tägliche Abgleich heisst «automatisch». */
+function runLabel(run: ManualProviderRun): string {
+  if (run.scheduled && run.result_code === "provider_sync_succeeded") {
+    return "Automatischer Abgleich abgeschlossen";
+  }
+  return resultLabel(run.result_code);
+}
+
+/** Läufe, die ohne Aufklappen sichtbar sind. */
+const VISIBLE_RUNS = 3;
 
 function dateLabel(value: string | null): string {
   if (!value) return "Noch nie";
@@ -269,6 +283,7 @@ export function AssetIntuneSettings({ tenantId }: { tenantId: string }) {
   const [manualEnabled, setManualEnabled] = useState(false);
   const [runs, setRuns] = useState<LocalPreflightRun[]>([]);
   const [manualRuns, setManualRuns] = useState<ManualProviderRun[]>([]);
+  const [showAllRuns, setShowAllRuns] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingManual, setSavingManual] = useState(false);
@@ -668,14 +683,15 @@ export function AssetIntuneSettings({ tenantId }: { tenantId: string }) {
           >
             <div className="panel-heading">
               <div>
-                <p className="eyebrow">MANUELLER MICROSOFT-GRAPH-ABGLEICH</p>
+                <p className="eyebrow">MICROSOFT-GRAPH-ABGLEICH</p>
                 <h3 id="asset-intune-manual-heading">
-                  Intune-Assets bewusst abgleichen
+                  Intune-Assets abgleichen
                 </h3>
                 <p>
-                  Jeder Lauf wird einzeln ausgelöst. nextDesk liest nur
-                  technische Inventardaten und führt nie Microsoft-Schreib-,
-                  Lösch- oder Hintergrundoperationen aus.
+                  {tn(
+                    "Ist der Abgleich freigegeben, gleicht nextDesk die Intune-Geräte jede Nacht automatisch ab; zusätzlich kannst du hier einen Lauf von Hand starten. nextDesk liest nur technische Inventardaten und führt nie Microsoft-Schreib- oder Löschoperationen aus.",
+                    "Ist der Abgleich freigegeben, gleicht nextDesk die Intune-Geräte jede Nacht automatisch ab; zusätzlich können Sie hier einen Lauf von Hand starten. nextDesk liest nur technische Inventardaten und führt nie Microsoft-Schreib- oder Löschoperationen aus.",
+                  )}
                 </p>
               </div>
             </div>
@@ -690,25 +706,27 @@ export function AssetIntuneSettings({ tenantId }: { tenantId: string }) {
                   onChange={(event) => setManualEnabled(event.target.checked)}
                   type="checkbox"
                 />
-                Manuellen Microsoft-Graph-Abgleich für diesen Mandanten
-                freigeben
+                Microsoft-Graph-Abgleich für diesen Mandanten freigeben
               </label>
               <p className="asset-intune-settings__help">
                 Voraussetzung sind die gespeicherte Azure-SSO-Bindung, eine
                 separate mehrmandantenfähige Microsoft-Graph-Anwendung mit
                 <code>DeviceManagementManagedDevices.Read.All</code> und deren
                 Admin-Consent. Client-ID und Secret verbleiben ausschliesslich
-                serverseitig. Diese Freigabe startet keine automatische
-                Synchronisation.
+                serverseitig. Mit der Freigabe läuft der Abgleich jede Nacht
+                (gegen 03:10 Uhr) automatisch.
               </p>
               <div className="asset-intune-settings__status" role="status">
                 <ShieldCheck aria-hidden="true" size={17} />
                 <span>
-                  Letzter manueller Lauf:{" "}
-                  {dateLabel(manualConfiguration?.last_manual_sync_at ?? null)}
-                  {manualConfiguration?.last_manual_sync_result_code
-                    ? ` · ${resultLabel(manualConfiguration.last_manual_sync_result_code)}`
-                    : ""}
+                  Letzter Lauf:{" "}
+                  {manualRuns[0]
+                    ? `${dateLabel(manualRuns[0].started_at)} · ${runLabel(manualRuns[0])}`
+                    : `${dateLabel(manualConfiguration?.last_manual_sync_at ?? null)}${
+                        manualConfiguration?.last_manual_sync_result_code
+                          ? ` · ${resultLabel(manualConfiguration.last_manual_sync_result_code)}`
+                          : ""
+                      }`}
                 </span>
               </div>
               <div className="asset-intune-settings__actions">
@@ -796,59 +814,78 @@ export function AssetIntuneSettings({ tenantId }: { tenantId: string }) {
                 ausgeführt.
               </p>
             ) : (
-              <ul aria-label="Manuelle Intune-Abgleichshistorie">
-                {manualRuns.map((run) => (
-                  <li key={run.id}>
-                    <article>
-                      <div>
-                        <strong>{resultLabel(run.result_code)}</strong>
-                        <p>
-                          {dateLabel(run.started_at)} · Versuch {run.attempt_no}{" "}
-                          ·{" "}
-                          {run.mode === "dry_run"
-                            ? "Vorschau"
-                            : "Synchronisation"}
-                        </p>
-                        <p>
-                          Providerkontakt:{" "}
-                          {run.provider_contacted ? "ja" : "nein"} · Geräte:{" "}
-                          {run.devices_seen} ·{" "}
-                          {run.mode === "dry_run" ? "potenziell neu" : "neu"}:{" "}
-                          {run.assets_created} ·{" "}
-                          {run.mode === "dry_run"
-                            ? "potenziell aktualisiert"
-                            : "aktualisiert"}
-                          : {run.assets_updated} · übersprungen:{" "}
-                          {run.assets_skipped} · mehrdeutig:{" "}
-                          {run.ambiguous_devices}
-                        </p>
-                      </div>
-                      {retryable(run) ? (
-                        <button
-                          className="secondary-button"
-                          disabled={controlsDisabled}
-                          onClick={() => {
-                            if (run.mode === "synchronize") {
-                              setPendingApply({
-                                mode: "synchronize",
-                                retryOfRunId: run.id,
-                              });
-                            } else {
-                              void runProvider("dry_run", run.id);
-                            }
-                          }}
-                          type="button"
-                        >
-                          <RotateCcw aria-hidden="true" size={15} />
-                          {pendingProviderRun === `${run.mode}:${run.id}`
-                            ? "Wird wiederholt …"
-                            : "Bewusst wiederholen"}
-                        </button>
-                      ) : null}
-                    </article>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul aria-label="Intune-Abgleichshistorie">
+                  {(showAllRuns
+                    ? manualRuns
+                    : manualRuns.slice(0, VISIBLE_RUNS)
+                  ).map((run) => (
+                    <li key={run.id}>
+                      <article>
+                        <div>
+                          <strong>{runLabel(run)}</strong>
+                          <p>
+                            {dateLabel(run.started_at)} · Versuch{" "}
+                            {run.attempt_no} ·{" "}
+                            {run.mode === "dry_run"
+                              ? "Vorschau"
+                              : run.scheduled
+                                ? "Synchronisation (täglich, automatisch)"
+                                : "Synchronisation (von Hand)"}
+                          </p>
+                          <p>
+                            Providerkontakt:{" "}
+                            {run.provider_contacted ? "ja" : "nein"} · Geräte:{" "}
+                            {run.devices_seen} ·{" "}
+                            {run.mode === "dry_run" ? "potenziell neu" : "neu"}:{" "}
+                            {run.assets_created} ·{" "}
+                            {run.mode === "dry_run"
+                              ? "potenziell aktualisiert"
+                              : "aktualisiert"}
+                            : {run.assets_updated} · übersprungen:{" "}
+                            {run.assets_skipped} · mehrdeutig:{" "}
+                            {run.ambiguous_devices}
+                          </p>
+                        </div>
+                        {retryable(run) ? (
+                          <button
+                            className="secondary-button"
+                            disabled={controlsDisabled}
+                            onClick={() => {
+                              if (run.mode === "synchronize") {
+                                setPendingApply({
+                                  mode: "synchronize",
+                                  retryOfRunId: run.id,
+                                });
+                              } else {
+                                void runProvider("dry_run", run.id);
+                              }
+                            }}
+                            type="button"
+                          >
+                            <RotateCcw aria-hidden="true" size={15} />
+                            {pendingProviderRun === `${run.mode}:${run.id}`
+                              ? "Wird wiederholt …"
+                              : "Bewusst wiederholen"}
+                          </button>
+                        ) : null}
+                      </article>
+                    </li>
+                  ))}
+                </ul>
+                {manualRuns.length > VISIBLE_RUNS ? (
+                  <button
+                    aria-expanded={showAllRuns}
+                    className="text-button asset-intune-settings__more"
+                    onClick={() => setShowAllRuns((current) => !current)}
+                    type="button"
+                  >
+                    {showAllRuns
+                      ? "Weniger anzeigen"
+                      : `Ältere Läufe anzeigen (${manualRuns.length - VISIBLE_RUNS} weitere)`}
+                  </button>
+                ) : null}
+              </>
             )}
           </section>
 

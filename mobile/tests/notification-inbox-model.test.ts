@@ -186,6 +186,37 @@ describe("inboxRoute (dieselbe Tabelle wie Push)", () => {
   });
 });
 
+describe("Projekt-Mitteilungen", () => {
+  it("öffnen das Projekt bzw. die Aufgabe und nennen beide", () => {
+    const taskId = "30000000-0000-4000-8000-000000000003";
+    const assigned = item("project.task_assigned", {
+      projectId: id,
+      projectTitle: "Netzwerkumbau",
+      taskId,
+      taskTitle: "Switch tauschen",
+    });
+    expect(inboxRoute(assigned)).toEqual({
+      kind: "path",
+      path: `/projects/${id}/task/${taskId}`,
+      feature: "projects.management",
+    });
+    expect(inboxPresentation(assigned)).toMatchObject({
+      title: "Projektaufgabe zugewiesen",
+      detail: "Netzwerkumbau · Switch tauschen",
+    });
+    const added = item("project.member_added", {
+      projectId: id,
+      projectTitle: "Netzwerkumbau",
+    });
+    expect(inboxRoute(added)).toEqual({
+      kind: "path",
+      path: `/projects/${id}`,
+      feature: "projects.management",
+    });
+    expect(inboxPresentation(added).title).toBe("Zu einem Projekt hinzugefügt");
+  });
+});
+
 describe("inboxPresentation", () => {
   it("nennt Art und Objekt", () => {
     expect(inboxPresentation(item("ticket.assigned", {}, ticket))).toEqual({
@@ -246,5 +277,32 @@ describe("formatInboxTime", () => {
       formatInboxTime(new Date(2026, 10, 1, 8, 0).toISOString(), now),
     ).toBe("01.11.2026");
     expect(formatInboxTime("kaputt", now)).toBe("");
+  });
+});
+
+describe("wiederkehrende Ausfälle", () => {
+  const assetId = "40000000-0000-4000-8000-000000000004";
+  it("zeigt Gerät und Anzahl und öffnet das Gerät in der Überwachung", () => {
+    const notification = item("problem.recurring_detected", {
+      problemId: id,
+      assetId,
+      assetName: "SOBE-BAAR-CSW01",
+      alertCount: 7,
+    });
+    expect(inboxPresentation(notification)).toEqual({
+      title: "Wiederkehrende Ausfälle",
+      detail: "SOBE-BAAR-CSW01 · 7 Ausfälle in 30 Tagen · Fall eröffnet",
+      icon: "repeat-outline",
+    });
+    expect(inboxRoute(notification)).toEqual({
+      kind: "path",
+      path: `/monitoring/${assetId}`,
+    });
+  });
+  it("ohne Gerät: Hinweis auf die Web-App", () => {
+    const route = inboxRoute(
+      item("problem.recurring_detected", { assetName: "S108", alertCount: 4 }),
+    );
+    expect(route?.kind).toBe("message");
   });
 });

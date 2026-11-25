@@ -41,7 +41,7 @@ Deno.test("automation: settings are validated", () => {
       reservationHoldDays: 14,
     },
     departmentLocations: [{ departmentId: DEPARTMENT, locationId: null }],
-    countIntervals: [{ locationId: LOCATION, days: 90 }],
+    countIntervals: [{ warehouseId: LOCATION, days: 90 }],
   };
   assertEquals(parseAutomationAction(valid), {
     type: "saveInventoryAutomation",
@@ -53,7 +53,7 @@ Deno.test("automation: settings are validated", () => {
       reservationHoldDays: 14,
     },
     departmentLocations: [{ departmentId: DEPARTMENT, locationId: null }],
-    countIntervals: [{ locationId: LOCATION, days: 90 }],
+    countIntervals: [{ warehouseId: LOCATION, days: 90 }],
   });
   assertEquals(
     parseAutomationAction({
@@ -65,7 +65,26 @@ Deno.test("automation: settings are validated", () => {
   assertEquals(
     parseAutomationAction({
       ...valid,
-      countIntervals: [{ locationId: LOCATION, days: 3 }],
+      countIntervals: [{ warehouseId: LOCATION, days: 3 }],
+    }),
+    null,
+  );
+  // The reminder belongs to a warehouse; the old per-location key is refused.
+  assertEquals(
+    parseAutomationAction({
+      ...valid,
+      countIntervals: [{ locationId: LOCATION, days: 90 }],
+    }),
+    null,
+  );
+  // One interval per warehouse.
+  assertEquals(
+    parseAutomationAction({
+      ...valid,
+      countIntervals: [
+        { warehouseId: LOCATION, days: 90 },
+        { warehouseId: LOCATION.toUpperCase(), days: 30 },
+      ],
     }),
     null,
   );

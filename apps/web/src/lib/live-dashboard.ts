@@ -664,21 +664,31 @@ export async function loadLiveDashboard(
   const teamNames = new Map<string, string>();
   const requesterNames = new Map<string, string>();
   const ticketsWithContact = new Set<string>();
+  const ticketContactIds = new Map<string, string>();
+  const affectedPeople = new Map<string, number>();
   if (listedTicketIds.length > 0) {
-    const [teamRowsResult, teamsResult, requesterResult] = await Promise.all([
-      client
-        .from("tickets")
-        .select("id, assigned_team_id, sla_paused_at, requester_contact_id")
-        .in("id", listedTicketIds),
-      client.functions.invoke("ticket-agent-assignment", {
-        body: { tenantId: tenant.id, type: "listTeams" },
-      }),
-      // Requester names for the ticket cards (0250); best effort.
-      client.rpc("ticket_requester_names", {
-        p_tenant_id: tenant.id,
-        p_ticket_ids: listedTicketIds,
-      }),
-    ]);
+    const [teamRowsResult, teamsResult, requesterResult, mergedResult] =
+      await Promise.all([
+        client
+          .from("tickets")
+          .select("id, assigned_team_id, sla_paused_at, requester_contact_id")
+          .in("id", listedTicketIds),
+        client.functions.invoke("ticket-agent-assignment", {
+          body: { tenantId: tenant.id, type: "listTeams" },
+        }),
+        // Requester names for the ticket cards (0250); best effort.
+        client.rpc("ticket_requester_names", {
+          p_tenant_id: tenant.id,
+          p_ticket_ids: listedTicketIds,
+        }),
+        // Zusammengeführte Tickets je Haupt-Ticket für «N Personen betroffen».
+        client
+          .from("tickets")
+          .select("merged_into_ticket_id, requester_contact_id")
+          .in("merged_into_ticket_id", listedTicketIds)
+          .is("deleted_at", null)
+          .limit(500),
+      ]);
     for (const row of (requesterResult.data ?? []) as {
       ticket_id: string;
       requester_name: string | null;
@@ -697,8 +707,30 @@ export async function loadLiveDashboard(
       requester_contact_id?: string | null;
     }[]) {
       ticketTeamIds.set(row.id, row.assigned_team_id ?? null);
-      if (row.requester_contact_id) ticketsWithContact.add(row.id);
+      if (row.requester_contact_id) {
+        ticketsWithContact.add(row.id);
+        ticketContactIds.set(row.id, row.requester_contact_id);
+      }
       if (row.sla_paused_at) slaPausedAt.set(row.id, row.sla_paused_at);
+    }
+    const contactsByPrimary = new Map<string, Set<string>>();
+    for (const row of (mergedResult.data ?? []) as {
+      merged_into_ticket_id: string | null;
+      requester_contact_id: string | null;
+    }[]) {
+      if (!row.merged_into_ticket_id || !row.requester_contact_id) continue;
+      const contacts =
+        contactsByPrimary.get(row.merged_into_ticket_id) ??
+        new Set<string>(
+          [ticketContactIds.get(row.merged_into_ticket_id)].filter(
+            (id): id is string => Boolean(id),
+          ),
+        );
+      contacts.add(row.requester_contact_id);
+      contactsByPrimary.set(row.merged_into_ticket_id, contacts);
+    }
+    for (const [ticketId, contacts] of contactsByPrimary) {
+      if (contacts.size > 1) affectedPeople.set(ticketId, contacts.size);
     }
     for (const team of ticketTeamsFromResponse(teamsResult.data)) {
       teamNames.set(team.id, team.name);
@@ -745,6 +777,7 @@ export async function loadLiveDashboard(
       risk: due.risk,
       sla: due.label,
       slaPaused: pausedAt !== null,
+      affectedPeople: affectedPeople.get(ticket.id) ?? null,
       state: ticket.status_label,
       statusOrder: ticket.status_sort_order,
       subject: ticket.subject,

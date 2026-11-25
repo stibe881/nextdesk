@@ -3,6 +3,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -11,6 +12,8 @@ import {
   AlertTriangle,
   Archive,
   ArrowLeftRight,
+  ChevronDown,
+  ChevronRight,
   CircleCheck,
   ClipboardList,
   MapPin,
@@ -24,6 +27,7 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  Warehouse,
   X,
 } from "lucide-react";
 
@@ -33,7 +37,10 @@ import {
   type LabelBranding,
 } from "./asset-label-dialog";
 import { FormField, FormGrid } from "./form-kit";
-import { inventoryLabelItem } from "./lib/asset-labels";
+import {
+  inventoryLabelItem,
+  inventoryLocationLabelItem,
+} from "./lib/asset-labels";
 import { filterInventoryItems } from "./lib/inventory-search";
 import { InventoryAutomation } from "./inventory-automation";
 import { InventoryProcurement } from "./inventory-procurement";
@@ -90,15 +97,31 @@ export type InventoryItemSummary = {
   unit: string;
 };
 
+/** Lagerort (Lagerplatz): heisst wie sein Code, z. B. «WSICT.01.02». */
 type InventoryLocation = {
   active: boolean;
   code: string | null;
   id: string;
+  /** Anzeigename des Lagerorts (der Code, wie eingegeben). */
   name: string;
+  /** Optionale Bemerkung; erscheint nicht auf Etiketten. */
+  note: string | null;
+  /** Lager, zu dem der Lagerort gehört; null = ohne Lager. */
+  warehouseId: string | null;
+};
+
+/** Lager mit Standort; seine Lagerplätze sind Lagerorte. */
+type InventoryWarehouse = {
+  active: boolean;
+  id: string;
+  name: string;
+  site: string | null;
 };
 
 type InventoryEvent = {
   id: string;
+  /** Article of the movement; absent on older servers. */
+  itemId: string | null;
   itemName: string;
   locationName: string | null;
   occurredAt: string;
@@ -194,6 +217,7 @@ export type InventoryWorkspace = {
   locations: readonly InventoryLocation[];
   lowStockItems: readonly InventoryItemSummary[];
   permissions: InventoryPermissions;
+  warehouses: readonly InventoryWarehouse[];
   recentEvents: readonly InventoryEvent[];
   recentEventsHasMore: boolean;
   summary: InventorySummary;
@@ -231,12 +255,21 @@ type InventoryMovementType =
   | "adjustment_in"
   | "adjustment_out";
 
+/** Eingabe eines Lagerorts: der Code ist der Lagerort, die Bemerkung optional. */
+type LocationInput = {
+  code?: string;
+  /** Bemerkung; leer oder null löscht sie. */
+  note?: string | null;
+  /** Lager; null nimmt den Lagerort aus seinem Lager. */
+  warehouseId?: string | null;
+};
+
 type InventoryAction =
   | {
       type: "manageLocation";
       tenantId: string;
       operation: "create";
-      values: { code: string; name: string };
+      values: LocationInput & { code: string };
       clientRequestId: string;
     }
   | {
@@ -244,7 +277,29 @@ type InventoryAction =
       tenantId: string;
       locationId: string;
       operation: "update";
-      values: { code?: string; name?: string; active?: boolean };
+      values: LocationInput & { active?: boolean };
+      clientRequestId: string;
+    }
+  | {
+      type: "manageWarehouse";
+      tenantId: string;
+      operation: "create";
+      values: { name: string; site?: string | null };
+      clientRequestId: string;
+    }
+  | {
+      type: "manageWarehouse";
+      tenantId: string;
+      warehouseId: string;
+      operation: "update";
+      values: { name?: string; site?: string | null; active?: boolean };
+      clientRequestId: string;
+    }
+  | {
+      type: "manageWarehouse";
+      tenantId: string;
+      warehouseId: string;
+      operation: "archive";
       clientRequestId: string;
     }
   | {
@@ -303,6 +358,8 @@ type InventoryAction =
       quantity: number;
       fromLocationId?: string;
       toLocationId?: string;
+      /** Receipt on an area: last place of «G10.2.1» to «G10.2.4». */
+      toLocationEndId?: string;
       clientRequestId: string;
     }
   | {
@@ -374,7 +431,7 @@ const sectionGroups: readonly {
   { label: "Bestand", sections: ["Übersicht", "Artikel", "Lagerorte"] },
   {
     label: "Buchungen",
-    sections: ["Bewegungen", "Reservationen", "Inventur"],
+    sections: ["Bewegungen", "Inventur"],
   },
   { label: "Planung", sections: ["Beschaffung", "Automatik"] },
 ];
@@ -489,16 +546,44 @@ function parseDepartment(value: unknown): InventoryDepartment | null {
 
 function parseLocation(value: unknown): InventoryLocation | null {
   if (!isRecord(value)) return null;
-  if (!hasOnlyKeys(value, ["id", "name", "code", "active"])) return null;
+  if (
+    !hasOnlyKeys(value, ["id", "name", "code", "active", "note", "warehouseId"])
+  )
+    return null;
   return typeof value.id === "string" &&
     typeof value.name === "string" &&
     typeof value.active === "boolean" &&
-    (typeof value.code === "string" || value.code === null)
+    (typeof value.code === "string" || value.code === null) &&
+    (value.note === undefined ||
+      value.note === null ||
+      typeof value.note === "string") &&
+    (value.warehouseId === undefined ||
+      value.warehouseId === null ||
+      typeof value.warehouseId === "string")
     ? {
         active: value.active,
         code: nullableText(value.code),
         id: value.id,
         name: value.name,
+        note: typeof value.note === "string" ? nullableText(value.note) : null,
+        warehouseId:
+          typeof value.warehouseId === "string" ? value.warehouseId : null,
+      }
+    : null;
+}
+
+function parseWarehouse(value: unknown): InventoryWarehouse | null {
+  if (!isRecord(value)) return null;
+  if (!hasOnlyKeys(value, ["id", "name", "site", "active"])) return null;
+  return typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.active === "boolean" &&
+    (typeof value.site === "string" || value.site === null)
+    ? {
+        active: value.active,
+        id: value.id,
+        name: value.name,
+        site: nullableText(value.site),
       }
     : null;
 }
@@ -509,6 +594,7 @@ function parseEvent(value: unknown): InventoryEvent | null {
     !hasOnlyKeys(value, [
       "id",
       "type",
+      "itemId",
       "itemName",
       "occurredAt",
       "physicalDelta",
@@ -525,9 +611,11 @@ function parseEvent(value: unknown): InventoryEvent | null {
     typeof value.occurredAt === "string" &&
     physicalDelta !== null &&
     reservedDelta !== null &&
-    (typeof value.locationName === "string" || value.locationName === null)
+    (typeof value.locationName === "string" || value.locationName === null) &&
+    (value.itemId === undefined || typeof value.itemId === "string")
     ? {
         id: value.id,
+        itemId: typeof value.itemId === "string" ? value.itemId : null,
         itemName: value.itemName,
         locationName: nullableText(value.locationName),
         occurredAt: value.occurredAt,
@@ -1015,6 +1103,7 @@ export function parseInventoryWorkspace(
       "recentEventsHasMore",
       "lowStockItems",
       "departments",
+      "warehouses",
     ])
   )
     return null;
@@ -1061,12 +1150,25 @@ export function parseInventoryWorkspace(
     data.departments === undefined
       ? []
       : parseList(data.departments, parseDepartment);
-  if (!items || !locations || !recentEvents || !lowStockItems || !departments)
+  // Older servers do not know warehouses; then every place is «ohne Lager».
+  const warehouses =
+    data.warehouses === undefined
+      ? []
+      : parseList(data.warehouses, parseWarehouse);
+  if (
+    !items ||
+    !locations ||
+    !recentEvents ||
+    !lowStockItems ||
+    !departments ||
+    !warehouses
+  )
     return null;
   return {
     departments,
     items,
     locations,
+    warehouses,
     lowStockItems,
     permissions: {
       canAdjust: permissions.canAdjust,
@@ -1129,6 +1231,7 @@ function deltaLabel(value: number, unit: string): string {
 export function Inventory({
   createRequestId,
   focusItemId,
+  focusLocationId,
   labelBranding,
   onCreateRequestConsumed,
   onFocusConsumed,
@@ -1137,6 +1240,8 @@ export function Inventory({
   createRequestId?: number | undefined;
   /** Opens the article list showing only this article (QR label link). */
   focusItemId?: string | undefined;
+  /** Opens the article list showing only the stock at this storage location (QR label link). */
+  focusLocationId?: string | undefined;
   /** Tenant name and logo for printed labels. */
   labelBranding?: LabelBranding | undefined;
   onCreateRequestConsumed?: (requestId: number) => void;
@@ -1338,12 +1443,35 @@ export function Inventory({
     onFocusConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusItemId]);
+  // QR label of a storage location: only the stock at this location.
+  const [focusLocation, setFocusLocation] = useState<string | undefined>(
+    focusLocationId,
+  );
+  useEffect(() => {
+    if (!focusLocationId) return;
+    setFocusLocation(focusLocationId);
+    setActiveSection("Artikel");
+    onFocusConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusLocationId]);
+  const focusedLocation = focusLocation
+    ? workspace?.locations.find((location) => location.id === focusLocation)
+    : undefined;
+  // Overview and movement lists: open one article in the article list.
+  const openItem = useCallback((itemId: string) => {
+    setFocusLocation(undefined);
+    setFocusId(itemId);
+    setActiveSection("Artikel");
+  }, []);
   const currentItems = useMemo(
     () =>
       workspace?.items.filter(
-        (item) => item.active && (!focusId || item.id === focusId),
+        (item) =>
+          item.active &&
+          (!focusId || item.id === focusId) &&
+          (!focusedLocation || item.locationName === focusedLocation.name),
       ) ?? [],
-    [focusId, workspace],
+    [focusId, focusedLocation, workspace],
   );
 
   const onChanged = useCallback<InventoryChangedHandler>(
@@ -1480,7 +1608,12 @@ export function Inventory({
       {!loading && workspace ? (
         <div className="inventory__content" role="tabpanel">
           {activeSection === "Übersicht" ? (
-            <InventoryOverview workspace={workspace} />
+            <InventoryOverview
+              onOpen={setActiveSection}
+              onOpenItem={openItem}
+              tenantId={tenantId}
+              workspace={workspace}
+            />
           ) : null}
           {activeSection === "Artikel" ? (
             <InventoryItems
@@ -1490,10 +1623,14 @@ export function Inventory({
               createOpenRequestId={itemCreateRequestId}
               departments={workspace.departments}
               focused={Boolean(focusId)}
+              focusedLocationName={focusedLocation?.name}
               items={currentItems}
               labelBranding={labelBranding}
               locations={workspace.locations}
-              onShowAll={() => setFocusId(undefined)}
+              onShowAll={() => {
+                setFocusId(undefined);
+                setFocusLocation(undefined);
+              }}
               onChanged={onChanged}
               onImagesChanged={load}
               tenantId={tenantId}
@@ -1502,9 +1639,16 @@ export function Inventory({
           {activeSection === "Lagerorte" ? (
             <InventoryLocations
               canManage={workspace.permissions.canManage}
+              labelBranding={labelBranding}
               locations={workspace.locations}
               onChanged={onChanged}
+              onShowStock={(locationId) => {
+                setFocusId(undefined);
+                setFocusLocation(locationId);
+                setActiveSection("Artikel");
+              }}
               tenantId={tenantId}
+              warehouses={workspace.warehouses}
             />
           ) : null}
           {activeSection === "Bewegungen" ? (
@@ -1517,6 +1661,7 @@ export function Inventory({
               items={workspace.items}
               locations={workspace.locations}
               onChanged={onChanged}
+              onOpenItem={openItem}
               tenantId={tenantId}
             />
           ) : null}
@@ -1559,16 +1704,49 @@ export function Inventory({
   );
 }
 
-function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
+function InventoryOverview({
+  onOpen,
+  onOpenItem,
+  tenantId,
+  workspace,
+}: {
+  tenantId: string;
+  /** Opens a section of the stock module (the tiles are links). */
+  onOpen: (section: InventorySection) => void;
+  /** Opens one article in the article list. */
+  onOpenItem: (itemId: string) => void;
+  workspace: InventoryWorkspace;
+}) {
+  // Wie in der Artikelliste: Hat ein Artikel kein eigenes Bild, gilt das Bild
+  // des verknüpften Shop-Artikels.
+  const [shopImages, setShopImages] = useState<ReadonlyMap<
+    string,
+    ShopLink
+  > | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchShopLinks(tenantId)
+      .then((result) => {
+        if (!cancelled) setShopImages(result.linked);
+      })
+      .catch(() => {
+        // Ohne Shop-Modul gibt es nur die eigenen Lagerbilder.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
   return (
     <>
       <div className="inventory__metrics">
-        <article
-          className={`inventory__metric ${
+        <button
+          className={`inventory__metric inventory__metric--link ${
             workspace.summary.criticalItemCount > 0
               ? "inventory__metric--attention"
               : "inventory__metric--ok"
           }`}
+          onClick={() => onOpen("Artikel")}
+          type="button"
         >
           {workspace.summary.criticalItemCount > 0 ? (
             <AlertTriangle aria-hidden="true" size={19} />
@@ -1582,19 +1760,17 @@ function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
               ? "Artikel benötigen Aufmerksamkeit"
               : "Alles im grünen Bereich"}
           </small>
-        </article>
-        <article className="inventory__metric">
-          <PackageCheck aria-hidden="true" size={19} />
-          <span>Offene Reservationen</span>
-          <strong>{workspace.summary.openReservationCount}</strong>
-          <small>reduzieren den verfügbaren Bestand</small>
-        </article>
-        <article className="inventory__metric">
+        </button>
+        <button
+          className="inventory__metric inventory__metric--link"
+          onClick={() => onOpen("Inventur")}
+          type="button"
+        >
           <ClipboardList aria-hidden="true" size={19} />
           <span>Laufende Inventuren</span>
           <strong>{workspace.summary.activeCountSessionCount}</strong>
           <small>werden erst bewusst abgeschlossen</small>
-        </article>
+        </button>
       </div>
       <div className="inventory__grid">
         <section className="inventory__panel panel">
@@ -1606,16 +1782,30 @@ function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
             <AlertTriangle aria-hidden="true" size={20} />
           </div>
           {workspace.lowStockItems.length ? (
-            <ul className="inventory__list">
+            <ul className="inventory__list inventory__list--thumbs">
               {workspace.lowStockItems.map((item) => (
                 <li key={item.id}>
-                  <div>
+                  <InventoryItemImage
+                    canManage={false}
+                    fallbackImageUrl={
+                      shopImages?.get(item.id)?.imageUrl ?? null
+                    }
+                    item={item}
+                    onImagesChanged={async () => true}
+                    tenantId={tenantId}
+                  />
+                  <button
+                    className="inventory__item-link"
+                    onClick={() => onOpenItem(item.id)}
+                    title="Artikel öffnen"
+                    type="button"
+                  >
                     <strong>{item.name}</strong>
                     <small>
                       {item.locationName ?? "Ohne Lagerort"} · Mindestbestand{" "}
                       {quantity(item.minQuantity, item.unit)}
                     </small>
-                  </div>
+                  </button>
                   <b>{quantity(item.availableQuantity, item.unit)}</b>
                 </li>
               ))}
@@ -1635,6 +1825,7 @@ function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
           <InventoryEventList
             events={workspace.recentEvents.slice(0, 6)}
             items={workspace.items}
+            onOpenItem={onOpenItem}
           />
         </section>
       </div>
@@ -1766,6 +1957,7 @@ function InventoryItems({
   createOpenRequestId,
   departments,
   focused,
+  focusedLocationName,
   items,
   labelBranding,
   locations,
@@ -1784,6 +1976,8 @@ function InventoryItems({
   departments: readonly InventoryDepartment[];
   /** Only one article is shown (QR label link). */
   focused: boolean;
+  /** Only the stock at this storage location is shown (QR label link). */
+  focusedLocationName?: string | undefined;
   items: readonly InventoryItemSummary[];
   labelBranding?: LabelBranding | undefined;
   locations: readonly InventoryLocation[];
@@ -1873,23 +2067,7 @@ function InventoryItems({
   }, [canManage, createOpenRequestId, openEditor]);
   const loadShop = useCallback(async () => {
     try {
-      const context = await shopApi.context(tenantId);
-      const catalog = await shopApi.catalog(tenantId, context.canManage);
-      const linked = new Map<
-        string,
-        { name: string; active: boolean; kind: string; imageUrl: string | null }
-      >();
-      for (const entry of catalog) {
-        if (entry.inventoryItemId) {
-          linked.set(entry.inventoryItemId, {
-            name: entry.name,
-            active: entry.active,
-            kind: entry.kind,
-            imageUrl: entry.imageUrl ?? null,
-          });
-        }
-      }
-      setShop({ canManage: context.canManage, linked });
+      setShop(await fetchShopLinks(tenantId));
     } catch {
       // Ohne Shop-Modul bleibt die Spalte leer.
       setShop(null);
@@ -1966,7 +2144,16 @@ function InventoryItems({
       ) : null}
       {focused ? (
         <p className="inventory__focus-note" role="status">
-          Es wird nur der Artikel aus dem Etiketten-Link angezeigt.{" "}
+          Es wird nur dieser Artikel angezeigt.{" "}
+          <button className="text-button" onClick={onShowAll} type="button">
+            Alle Artikel anzeigen
+          </button>
+        </p>
+      ) : null}
+      {focusedLocationName ? (
+        <p className="inventory__focus-note" role="status">
+          Es werden nur die Artikel am Lagerort «{focusedLocationName}»
+          angezeigt.{" "}
           <button className="text-button" onClick={onShowAll} type="button">
             Alle Artikel anzeigen
           </button>
@@ -2170,6 +2357,7 @@ function InventoryItems({
                   <td className="inventory__num">
                     <span
                       className={`inventory__available${
+                        item.minQuantity > 0 &&
                         item.availableQuantity <= item.minQuantity
                           ? " inventory__available--low"
                           : ""
@@ -2251,6 +2439,74 @@ function InventoryItems({
  * Ausbuchen needs inventory.issue (role «Lagerverwaltung»); the server checks
  * the permission and the available stock again.
  */
+/** «G10.2.4» → Präfix «G10.2.», Zahl 4. Nur die letzte Zahl läuft im Bereich. */
+function splitPlaceName(
+  name: string,
+): { prefix: string; number: number } | null {
+  const match = /^(.*?)(\d+)$/.exec(name.trim());
+  if (!match) return null;
+  const number = Number(match[2]);
+  return Number.isSafeInteger(number) ? { prefix: match[1]!, number } : null;
+}
+
+/**
+ * Lagerplätze, die mit dem Startplatz einen Bereich bilden können: gleicher
+ * Namensanfang, nur die letzte Zahl höher (z. B. G10.2.1 → G10.2.2 …). Die
+ * Prüfung, dass alle Plätze dazwischen existieren, macht der Server.
+ */
+function areaEndOptions(
+  locations: readonly InventoryLocation[],
+  startId: string,
+): InventoryLocation[] {
+  const start = locations.find((location) => location.id === startId);
+  const first = start ? splitPlaceName(start.name) : null;
+  if (!start || !first) return [];
+  return locations
+    .filter((location) => {
+      if (!location.active || location.id === start.id) return false;
+      const parts = splitPlaceName(location.name);
+      return (
+        parts !== null &&
+        parts.prefix.toLowerCase() === first.prefix.toLowerCase() &&
+        parts.number > first.number
+      );
+    })
+    .sort(
+      (a, b) => splitPlaceName(a.name)!.number - splitPlaceName(b.name)!.number,
+    );
+}
+
+/** Optionales «bis»-Feld beim Einlagern: mehrere Plätze gelten als ein Lagerplatz. */
+function AreaEndField({
+  locations,
+  onChange,
+  startId,
+  value,
+}: {
+  locations: readonly InventoryLocation[];
+  onChange: (id: string) => void;
+  startId: string;
+  value: string;
+}) {
+  const options = areaEndOptions(locations, startId);
+  if (options.length === 0) return null;
+  return (
+    <FormField
+      hint="Mehrere Plätze gelten als ein Lagerplatz: Die Menge wird einmal gebucht, und alle Plätze sind belegt, bis der Bestand ausgebucht ist. Nur die letzte Zahl darf sich unterscheiden."
+      label="Bis Lagerplatz (Bereich, optional)"
+    >
+      <select onChange={(event) => onChange(event.target.value)} value={value}>
+        <option value="">Nur dieser Lagerplatz</option>
+        {options.map((location) => (
+          <option key={location.id} value={location.id}>
+            {location.name}
+          </option>
+        ))}
+      </select>
+    </FormField>
+  );
+}
+
 function InventoryBookingDialog({
   item,
   locations,
@@ -2273,6 +2529,7 @@ function InventoryBookingDialog({
       activeLocations.find((location) => location.name === item.locationName)
         ?.id ?? (activeLocations.length === 1 ? activeLocations[0]!.id : ""),
   );
+  const [endLocationId, setEndLocationId] = useState("");
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState("");
   const clientRequest = useClientRequestId(
@@ -2280,6 +2537,14 @@ function InventoryBookingDialog({
     `booking-${mode}-${item.id}`,
   );
   const issuing = mode === "issue";
+  // Ein Bereich gilt nur für ein Einlagern und nur, solange sein Ende noch passt.
+  const areaEnd =
+    !issuing &&
+    areaEndOptions(activeLocations, locationId).some(
+      (location) => location.id === endLocationId,
+    )
+      ? endLocationId
+      : "";
   const amount = Number(quantity);
   const validAmount =
     Number.isFinite(amount) &&
@@ -2330,11 +2595,18 @@ function InventoryBookingDialog({
         ...(issuing
           ? { fromLocationId: locationId }
           : { toLocationId: locationId }),
+        ...(areaEnd ? { toLocationEndId: areaEnd } : {}),
         clientRequestId: clientRequest.requestId(),
       },
       issuing
         ? `${amount} ${item.unit} «${item.name}» ausgebucht.`
-        : `${amount} ${item.unit} «${item.name}» eingebucht.`,
+        : areaEnd
+          ? `${amount} ${item.unit} «${item.name}» auf ${
+              activeLocations.find((place) => place.id === locationId)?.name
+            }–${
+              activeLocations.find((place) => place.id === areaEnd)?.name
+            } eingebucht.`
+          : `${amount} ${item.unit} «${item.name}» eingebucht.`,
     );
     setSaving(false);
     if (saved) {
@@ -2404,13 +2676,19 @@ function InventoryBookingDialog({
               <option value="">Lagerort wählen</option>
               {activeLocations.map((location) => (
                 <option key={location.id} value={location.id}>
-                  {location.code
-                    ? `${location.name} (${location.code})`
-                    : location.name}
+                  {location.name}
                 </option>
               ))}
             </select>
           </FormField>
+          {!issuing ? (
+            <AreaEndField
+              locations={activeLocations}
+              onChange={setEndLocationId}
+              startId={locationId}
+              value={areaEnd}
+            />
+          ) : null}
         </FormGrid>
         {problem ? (
           <p className="ticket-detail-message error" role="alert">
@@ -2454,7 +2732,9 @@ async function uploadInventoryItemImageFile(
     throw new Error("Die Verbindung zu nextDesk ist nicht konfiguriert.");
   }
   const contentType = file.type.trim().toLowerCase() as
-    "image/jpeg" | "image/png" | "image/webp";
+    | "image/jpeg"
+    | "image/png"
+    | "image/webp";
   const { data: createData, error: createError } =
     await supabase.functions.invoke<unknown>("inventory", {
       body: {
@@ -2495,6 +2775,33 @@ async function uploadInventoryItemImageFile(
   if (!parseInventoryItemImageCompletion(completeData, itemId)) {
     throw new Error("Ungültige Bildabschluss-Antwort.");
   }
+}
+
+type ShopLink = {
+  name: string;
+  active: boolean;
+  kind: string;
+  imageUrl: string | null;
+};
+
+/** Shop-Artikel, die mit einem Lagerartikel verknüpft sind (inkl. Shop-Bild). */
+async function fetchShopLinks(
+  tenantId: string,
+): Promise<{ canManage: boolean; linked: Map<string, ShopLink> }> {
+  const context = await shopApi.context(tenantId);
+  const catalog = await shopApi.catalog(tenantId, context.canManage);
+  const linked = new Map<string, ShopLink>();
+  for (const entry of catalog) {
+    if (entry.inventoryItemId) {
+      linked.set(entry.inventoryItemId, {
+        name: entry.name,
+        active: entry.active,
+        kind: entry.kind,
+        imageUrl: entry.imageUrl ?? null,
+      });
+    }
+  }
+  return { canManage: context.canManage, linked };
 }
 
 function InventoryItemImage({
@@ -2737,80 +3044,648 @@ function InventoryItemImage({
 
 function InventoryLocations({
   canManage,
+  labelBranding,
   locations,
   onChanged,
+  onShowStock,
   tenantId,
+  warehouses,
 }: {
   canManage: boolean;
+  labelBranding?: LabelBranding | undefined;
   locations: readonly InventoryLocation[];
   onChanged: InventoryChangedHandler;
+  onShowStock: (locationId: string) => void;
   tenantId: string;
+  warehouses: readonly InventoryWarehouse[];
 }) {
+  // Etiketten: ausgewählte Lagerorte und Druckdialog (wie bei den Assets).
+  const [labelSelection, setLabelSelection] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const [creatingWarehouse, setCreatingWarehouse] = useState(false);
+  const labelLocations = locations.filter(
+    (location) => location.active && labelSelection.has(location.id),
+  );
+  const activeLocations = locations.filter((location) => location.active);
+  const warehouseById = new Map(
+    warehouses.map((warehouse) => [warehouse.id, warehouse]),
+  );
+  const toggleLabels = (ids: readonly string[], checked: boolean) =>
+    setLabelSelection((current) => {
+      const next = new Set(current);
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  const byName = (left: InventoryLocation, right: InventoryLocation) =>
+    left.name.localeCompare(right.name, "de-CH", { numeric: true });
+  // Lagerplätze je Lager; «Ohne Lager» zuletzt. Archivierte Lager ohne Plätze
+  // entfallen; «Ohne Lager» erscheint, wenn es Plätze hat oder (für die
+  // Verwaltung) noch kein Lager existiert.
+  const orphans = locations
+    .filter(
+      (location) =>
+        location.warehouseId === null ||
+        !warehouseById.has(location.warehouseId),
+    )
+    .sort(byName);
+  const groups = warehouses
+    .map((warehouse) => ({
+      warehouse,
+      places: locations
+        .filter((location) => location.warehouseId === warehouse.id)
+        .sort(byName),
+    }))
+    .filter((group) => group.warehouse.active || group.places.length > 0);
+  const showOrphans =
+    orphans.length > 0 || (canManage && warehouses.length === 0);
+
   return (
     <section className="inventory__panel panel">
       <div className="panel-heading">
         <div>
           <span className="eyebrow">LAGERORTE</span>
-          <h2>Orte und Fächer</h2>
-          <p>Lagerorte sind unabhängig von Assetstandorten und Raumplanung.</p>
+          <h2>Lager und Lagerplätze</h2>
+          <p>
+            Ein Lager hat einen Standort und besteht aus Lagerplätzen. Der
+            Lagerplatz heisst wie sein Code, z. B. «WSICT.01.02», und steht so
+            auf der Etikette.
+          </p>
         </div>
-        <MapPin aria-hidden="true" size={21} />
+        {canManage ? (
+          <button
+            aria-expanded={creatingWarehouse}
+            className="secondary-button"
+            onClick={() => setCreatingWarehouse((open) => !open)}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={15} /> Lager erfassen
+          </button>
+        ) : null}
       </div>
-      {canManage ? (
-        <InventoryLocationCreateForm
+      {canManage && creatingWarehouse ? (
+        <InventoryWarehouseCreateForm
+          onCancel={() => setCreatingWarehouse(false)}
           onChanged={onChanged}
+          onDone={() => setCreatingWarehouse(false)}
           tenantId={tenantId}
         />
       ) : null}
-      {locations.length ? (
-        <ul className="inventory__location-grid">
-          {locations.map((location) => (
-            <InventoryLocationRow
+      {activeLocations.length > 0 ? (
+        <LabelSelectionBar
+          onClear={() => setLabelSelection(new Set())}
+          onPrint={() => setLabelDialogOpen(true)}
+          onSelectVisible={() =>
+            setLabelSelection(
+              new Set(activeLocations.map((location) => location.id)),
+            )
+          }
+          selectedCount={labelLocations.length}
+          visibleCount={activeLocations.length}
+        />
+      ) : null}
+      {labelDialogOpen ? (
+        <AssetLabelDialog
+          branding={labelBranding}
+          buildItems={(mode, baseUrl) =>
+            labelLocations.map((location) =>
+              inventoryLocationLabelItem(
+                {
+                  id: location.id,
+                  name: location.name,
+                  warehouseName:
+                    (location.warehouseId
+                      ? warehouseById.get(location.warehouseId)?.name
+                      : null) ?? null,
+                },
+                mode,
+                baseUrl,
+              ),
+            )
+          }
+          count={labelLocations.length}
+          onClose={() => setLabelDialogOpen(false)}
+        />
+      ) : null}
+      {groups.length === 0 && !showOrphans ? (
+        <EmptyInventoryState text="Es sind keine aktiven Lagerorte sichtbar." />
+      ) : (
+        <div className="inventory__stores">
+          {groups.map((group) => (
+            <InventoryStore
               canManage={canManage}
-              key={location.id}
-              location={location}
+              key={group.warehouse.id}
+              labelSelection={labelSelection}
               onChanged={onChanged}
+              onShowStock={onShowStock}
+              onToggleLabels={toggleLabels}
+              places={group.places}
               tenantId={tenantId}
+              warehouse={group.warehouse}
+              warehouses={warehouses}
             />
           ))}
-        </ul>
-      ) : (
-        <EmptyInventoryState
-          text={
-            canManage
-              ? "Noch keine Lagerorte. Erfasse zuerst einen Lagerort, bevor Bestand gebucht wird."
-              : "Es sind keine aktiven Lagerorte sichtbar."
-          }
-        />
+          {showOrphans ? (
+            <InventoryStore
+              canManage={canManage}
+              labelSelection={labelSelection}
+              onChanged={onChanged}
+              onShowStock={onShowStock}
+              onToggleLabels={toggleLabels}
+              places={orphans}
+              tenantId={tenantId}
+              warehouse={null}
+              warehouses={warehouses}
+            />
+          ) : null}
+        </div>
       )}
     </section>
+  );
+}
+
+/** Ein Lager als Karte: Kopf mit Standort und Aktionen, darunter die Plätze. */
+function InventoryStore({
+  canManage,
+  labelSelection,
+  onChanged,
+  onShowStock,
+  onToggleLabels,
+  places,
+  tenantId,
+  warehouse,
+  warehouses,
+}: {
+  canManage: boolean;
+  labelSelection: ReadonlySet<string>;
+  onChanged: InventoryChangedHandler;
+  onShowStock: (locationId: string) => void;
+  onToggleLabels: (ids: readonly string[], checked: boolean) => void;
+  places: readonly InventoryLocation[];
+  tenantId: string;
+  warehouse: InventoryWarehouse | null;
+  warehouses: readonly InventoryWarehouse[];
+}) {
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(false);
+  // Standardmässig zugeklappt: nur der Kopf des Lagers ist sichtbar.
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const activePlaces = places.filter((place) => place.active);
+  const allSelected =
+    activePlaces.length > 0 &&
+    activePlaces.every((place) => labelSelection.has(place.id));
+  const selectedCount = activePlaces.filter((place) =>
+    labelSelection.has(place.id),
+  ).length;
+  const title = warehouse ? warehouse.name : "Ohne Lager";
+  const canAdd = canManage && (!warehouse || warehouse.active);
+
+  return (
+    <section
+      aria-label={title}
+      className={`inventory__store${warehouse && !warehouse.active ? " is-inactive" : ""}${open ? "" : " is-collapsed"}`}
+    >
+      {warehouse && editing ? (
+        <InventoryWarehouseEditForm
+          onChanged={onChanged}
+          onDone={() => setEditing(false)}
+          tenantId={tenantId}
+          warehouse={warehouse}
+        />
+      ) : (
+        <header className="inventory__store-head">
+          <button
+            aria-controls={panelId}
+            aria-expanded={open}
+            aria-label={`${title} ${open ? "zuklappen" : "aufklappen"}`}
+            className="inventory__store-toggle"
+            onClick={() => setOpen((current) => !current)}
+            type="button"
+          >
+            {open ? (
+              <ChevronDown aria-hidden="true" size={18} />
+            ) : (
+              <ChevronRight aria-hidden="true" size={18} />
+            )}
+            <span className="inventory__store-icon" aria-hidden="true">
+              <Warehouse size={18} />
+            </span>
+            <span className="inventory__store-title">
+              <span className="inventory__store-name">{title}</span>
+              <small>
+                {[
+                  warehouse ? (warehouse.site ?? "Ohne Standort") : null,
+                  `${activePlaces.length} ${activePlaces.length === 1 ? "Lagerplatz" : "Lagerplätze"}`,
+                  warehouse && !warehouse.active ? "archiviert" : null,
+                  selectedCount > 0 ? `${selectedCount} für Etikett` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </small>
+            </span>
+          </button>
+          <div className="inventory__store-actions">
+            {activePlaces.length > 0 ? (
+              <button
+                className="text-button"
+                onClick={() =>
+                  onToggleLabels(
+                    activePlaces.map((place) => place.id),
+                    !allSelected,
+                  )
+                }
+                type="button"
+              >
+                {allSelected ? "Auswahl aufheben" : "Alle für Etiketten"}
+              </button>
+            ) : null}
+            {canAdd ? (
+              <button
+                aria-expanded={adding}
+                className="secondary-button"
+                onClick={() => {
+                  // Ein neuer Lagerplatz erscheint im aufgeklappten Lager.
+                  setOpen(true);
+                  setAdding((current) => !current);
+                }}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={15} /> Lagerplatz
+              </button>
+            ) : null}
+            {canManage && warehouse ? (
+              <InventoryWarehouseButtons
+                onChanged={onChanged}
+                onEdit={() => setEditing(true)}
+                tenantId={tenantId}
+                warehouse={warehouse}
+              />
+            ) : null}
+          </div>
+        </header>
+      )}
+      <div hidden={!open} id={panelId}>
+        {adding ? (
+          <InventoryLocationCreateForm
+            onCancel={() => setAdding(false)}
+            onChanged={onChanged}
+            tenantId={tenantId}
+            warehouseId={warehouse?.id ?? null}
+          />
+        ) : null}
+        {places.length > 0 ? (
+          <ul className="inventory__places">
+            {places.map((location) => (
+              <InventoryLocationRow
+                canManage={canManage}
+                key={location.id}
+                labelSelected={labelSelection.has(location.id)}
+                location={location}
+                onChanged={onChanged}
+                onShowStock={() => onShowStock(location.id)}
+                onToggleLabel={(checked) =>
+                  onToggleLabels([location.id], checked)
+                }
+                tenantId={tenantId}
+                warehouses={warehouses}
+              />
+            ))}
+          </ul>
+        ) : adding ? null : (
+          <p className="inventory__store-empty">
+            {canAdd
+              ? tn(
+                  "Noch keine Lagerplätze. Mit «Lagerplatz» erfasst du den ersten.",
+                  "Noch keine Lagerplätze. Mit «Lagerplatz» erfassen Sie den ersten.",
+                )
+              : "Noch keine Lagerplätze."}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Neues Lager mit Standort. */
+function InventoryWarehouseCreateForm({
+  onCancel,
+  onChanged,
+  onDone,
+  tenantId,
+}: {
+  onCancel: () => void;
+  onChanged: InventoryChangedHandler;
+  onDone: () => void;
+  tenantId: string;
+}) {
+  const [name, setName] = useState("");
+  const [site, setSite] = useState("");
+  const [saving, setSaving] = useState(false);
+  const request = useClientRequestId(tenantId, "warehouse");
+
+  const create = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    const saved = await onChanged(
+      {
+        type: "manageWarehouse",
+        tenantId,
+        operation: "create",
+        values: { name: name.trim(), site: site.trim() || null },
+        clientRequestId: request.requestId(),
+      },
+      "Das Lager wurde erfasst.",
+    );
+    setSaving(false);
+    if (saved) {
+      request.discard();
+      setName("");
+      setSite("");
+      onDone();
+    }
+  };
+
+  return (
+    <form
+      className="inventory__store-form"
+      onChange={request.discard}
+      onSubmit={(event) => void create(event)}
+    >
+      <h3>Neues Lager</h3>
+      <FormGrid cols={2}>
+        <FormField label="Lager" required>
+          <input
+            autoComplete="off"
+            autoFocus
+            onChange={(event) => setName(event.target.value)}
+            placeholder="z. B. Hauptlager Bern"
+            required
+            value={name}
+          />
+        </FormField>
+        <FormField label="Standort" optional>
+          <input
+            autoComplete="off"
+            onChange={(event) => setSite(event.target.value)}
+            placeholder="z. B. Bern, Hauptstrasse 1"
+            value={site}
+          />
+        </FormField>
+      </FormGrid>
+      <div className="inventory__location-actions">
+        <button
+          className="secondary-button"
+          disabled={saving}
+          onClick={onCancel}
+          type="button"
+        >
+          Abbrechen
+        </button>
+        <button disabled={!name.trim() || saving} type="submit">
+          {saving ? "Lager wird erfasst …" : "Lager erfassen"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function useWarehouseMutation(
+  tenantId: string,
+  warehouse: InventoryWarehouse,
+  onChanged: InventoryChangedHandler,
+) {
+  const [saving, setSaving] = useState(false);
+  const request = useClientRequestId(tenantId, `warehouse-${warehouse.id}`);
+  const run = async (
+    body:
+      | {
+          operation: "update";
+          values: { name?: string; site?: string | null; active?: boolean };
+        }
+      | { operation: "archive" },
+    message: string,
+  ): Promise<boolean> => {
+    setSaving(true);
+    const base = {
+      type: "manageWarehouse" as const,
+      tenantId,
+      warehouseId: warehouse.id,
+      clientRequestId: request.requestId(),
+    };
+    const saved = await onChanged(
+      body.operation === "archive"
+        ? { ...base, operation: "archive" }
+        : { ...base, operation: "update", values: body.values },
+      message,
+    );
+    request.discard();
+    setSaving(false);
+    return Boolean(saved);
+  };
+  return { run, saving };
+}
+
+function InventoryWarehouseEditForm({
+  onChanged,
+  onDone,
+  tenantId,
+  warehouse,
+}: {
+  onChanged: InventoryChangedHandler;
+  onDone: () => void;
+  tenantId: string;
+  warehouse: InventoryWarehouse;
+}) {
+  const [name, setName] = useState(warehouse.name);
+  const [site, setSite] = useState(warehouse.site ?? "");
+  const { run, saving } = useWarehouseMutation(tenantId, warehouse, onChanged);
+  return (
+    <form
+      className="inventory__store-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!name.trim() || saving) return;
+        void run(
+          {
+            operation: "update",
+            values: { name: name.trim(), site: site.trim() || null },
+          },
+          "Das Lager wurde gespeichert.",
+        ).then((saved) => {
+          if (saved) onDone();
+        });
+      }}
+    >
+      <FormGrid cols={2}>
+        <FormField label="Lager" required>
+          <input
+            autoComplete="off"
+            onChange={(event) => setName(event.target.value)}
+            required
+            value={name}
+          />
+        </FormField>
+        <FormField label="Standort" optional>
+          <input
+            autoComplete="off"
+            onChange={(event) => setSite(event.target.value)}
+            value={site}
+          />
+        </FormField>
+      </FormGrid>
+      <div className="inventory__location-actions">
+        <button
+          className="secondary-button"
+          disabled={saving}
+          onClick={onDone}
+          type="button"
+        >
+          Abbrechen
+        </button>
+        <button disabled={saving || !name.trim()} type="submit">
+          {saving ? "Wird gespeichert …" : "Speichern"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function InventoryWarehouseButtons({
+  onChanged,
+  onEdit,
+  tenantId,
+  warehouse,
+}: {
+  onChanged: InventoryChangedHandler;
+  onEdit: () => void;
+  tenantId: string;
+  warehouse: InventoryWarehouse;
+}) {
+  const { run, saving } = useWarehouseMutation(tenantId, warehouse, onChanged);
+  if (!warehouse.active) {
+    return (
+      <button
+        aria-label={`${warehouse.name} wieder aktivieren`}
+        className="icon-button"
+        disabled={saving}
+        onClick={() =>
+          void run(
+            { operation: "update", values: { active: true } },
+            "Das Lager ist wieder aktiv.",
+          )
+        }
+        title="Wieder aktivieren"
+        type="button"
+      >
+        <RotateCcw aria-hidden="true" size={15} />
+      </button>
+    );
+  }
+  return (
+    <span className="inventory__location-buttons">
+      <button
+        aria-label={`${warehouse.name} bearbeiten`}
+        className="icon-button"
+        disabled={saving}
+        onClick={onEdit}
+        title="Lager bearbeiten"
+        type="button"
+      >
+        <Pencil aria-hidden="true" size={15} />
+      </button>
+      <button
+        aria-label={`${warehouse.name} archivieren`}
+        className="icon-button"
+        disabled={saving}
+        onClick={() =>
+          void (async () => {
+            if (
+              await confirmDialog(
+                `Lager «${warehouse.name}» archivieren? Die Lagerplätze und ihr Bestand bleiben erhalten.`,
+              )
+            ) {
+              await run(
+                { operation: "archive" },
+                "Das Lager wurde archiviert.",
+              );
+            }
+          })()
+        }
+        title="Lager archivieren"
+        type="button"
+      >
+        <Trash2 aria-hidden="true" size={15} />
+      </button>
+    </span>
+  );
+}
+
+/** Auswahl des Lagers für einen Lagerort (nur aktive Lager). */
+function WarehouseSelect({
+  onChange,
+  value,
+  warehouses,
+}: {
+  onChange: (id: string) => void;
+  value: string;
+  warehouses: readonly InventoryWarehouse[];
+}) {
+  const options = warehouses.filter(
+    (warehouse) => warehouse.active || warehouse.id === value,
+  );
+  if (options.length === 0) return null;
+  return (
+    <FormField label="Lager" optional>
+      <select onChange={(event) => onChange(event.target.value)} value={value}>
+        <option value="">Ohne Lager</option>
+        {options.map((warehouse) => (
+          <option key={warehouse.id} value={warehouse.id}>
+            {warehouse.site
+              ? `${warehouse.name} (${warehouse.site})`
+              : warehouse.name}
+          </option>
+        ))}
+      </select>
+    </FormField>
   );
 }
 
 /** Ein Lagerort mit Bearbeiten, Löschen (archivieren) und Reaktivieren. */
 function InventoryLocationRow({
   canManage,
+  labelSelected,
   location,
   onChanged,
+  onShowStock,
+  onToggleLabel,
   tenantId,
+  warehouses,
 }: {
   canManage: boolean;
+  labelSelected: boolean;
   location: InventoryLocation;
   onChanged: InventoryChangedHandler;
+  onShowStock: () => void;
+  onToggleLabel: (checked: boolean) => void;
   tenantId: string;
+  warehouses: readonly InventoryWarehouse[];
 }) {
   const [editing, setEditing] = useState(false);
-  const [code, setCode] = useState(location.code ?? "");
-  const [name, setName] = useState(location.name);
+  const [place, setPlace] = useState(location.name);
+  const [note, setNote] = useState(location.note ?? "");
+  const [warehouseId, setWarehouseId] = useState(location.warehouseId ?? "");
   const [saving, setSaving] = useState(false);
   const request = useClientRequestId(tenantId, `location-${location.id}`);
 
   const run = async (
     body:
-      | {
-          operation: "update";
-          values: { code?: string; name?: string; active?: boolean };
-        }
+      | { operation: "update"; values: LocationInput & { active?: boolean } }
       | { operation: "archive" },
     message: string,
   ): Promise<boolean> => {
@@ -2834,11 +3709,15 @@ function InventoryLocationRow({
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!code.trim() || !name.trim() || saving) return;
+    if (!place.trim() || saving) return;
     const saved = await run(
       {
         operation: "update",
-        values: { code: code.trim(), name: name.trim() },
+        values: {
+          code: place.trim(),
+          note: note.trim() || null,
+          warehouseId: warehouseId || null,
+        },
       },
       "Der Lagerort wurde gespeichert.",
     );
@@ -2866,20 +3745,25 @@ function InventoryLocationRow({
       <li className="inventory__location-edit">
         <form onSubmit={(event) => void save(event)}>
           <FormGrid cols={2}>
-            <FormField label="Ortscode" required>
+            <FormField label="Lagerort" required>
               <input
                 autoComplete="off"
-                onChange={(event) => setCode(event.target.value)}
+                onChange={(event) => setPlace(event.target.value)}
                 required
-                value={code}
+                value={place}
               />
             </FormField>
-            <FormField label="Bezeichnung" required>
+            <WarehouseSelect
+              onChange={setWarehouseId}
+              value={warehouseId}
+              warehouses={warehouses}
+            />
+            <FormField label="Bemerkung" optional>
               <input
                 autoComplete="off"
-                onChange={(event) => setName(event.target.value)}
-                required
-                value={name}
+                maxLength={500}
+                onChange={(event) => setNote(event.target.value)}
+                value={note}
               />
             </FormField>
           </FormGrid>
@@ -2888,18 +3772,16 @@ function InventoryLocationRow({
               className="secondary-button"
               disabled={saving}
               onClick={() => {
-                setCode(location.code ?? "");
-                setName(location.name);
+                setPlace(location.name);
+                setNote(location.note ?? "");
+                setWarehouseId(location.warehouseId ?? "");
                 setEditing(false);
               }}
               type="button"
             >
               Abbrechen
             </button>
-            <button
-              disabled={saving || !code.trim() || !name.trim()}
-              type="submit"
-            >
+            <button disabled={saving || !place.trim()} type="submit">
               {saving ? "Wird gespeichert …" : "Speichern"}
             </button>
           </div>
@@ -2910,15 +3792,41 @@ function InventoryLocationRow({
 
   return (
     <li className={location.active ? undefined : "is-inactive"}>
-      <MapPin aria-hidden="true" size={18} />
-      <div>
+      {location.active ? (
+        <label className="inventory__check">
+          <input
+            checked={labelSelected}
+            onChange={(event) => onToggleLabel(event.target.checked)}
+            type="checkbox"
+          />
+          <span className="sr-only">
+            Für Etikett auswählen: {location.name}
+          </span>
+        </label>
+      ) : (
+        <span aria-hidden="true" />
+      )}
+      <MapPin aria-hidden="true" className="inventory__place-icon" size={16} />
+      <div className="inventory__place-name">
         <strong>{location.name}</strong>
-        <small>{location.code ?? "Ohne Ortscode"}</small>
+        {location.note ? <small>{location.note}</small> : null}
       </div>
-      {!location.active ? <span>Gelöscht</span> : null}
-      {canManage ? (
-        <span className="inventory__location-buttons">
-          {location.active ? (
+      {!location.active ? (
+        <span className="inventory__place-state">Gelöscht</span>
+      ) : null}
+      <span className="inventory__location-buttons">
+        {location.active ? (
+          <button
+            className="text-button"
+            onClick={onShowStock}
+            title="Artikel an diesem Lagerplatz anzeigen"
+            type="button"
+          >
+            Bestand
+          </button>
+        ) : null}
+        {canManage ? (
+          location.active ? (
             <>
               <button
                 aria-label={`${location.name} bearbeiten`}
@@ -2952,12 +3860,14 @@ function InventoryLocationRow({
             >
               <RotateCcw aria-hidden="true" size={15} />
             </button>
-          )}
-        </span>
-      ) : null}
+          )
+        ) : null}
+      </span>
     </li>
   );
 }
+
+/** Ein Lagerort mit Bearbeiten, Löschen (archivieren) und Reaktivieren. */
 
 function InventoryEvents({
   canAdjust,
@@ -2968,6 +3878,7 @@ function InventoryEvents({
   items,
   locations,
   onChanged,
+  onOpenItem,
   tenantId,
 }: {
   canAdjust: boolean;
@@ -2978,6 +3889,7 @@ function InventoryEvents({
   items: readonly InventoryItemSummary[];
   locations: readonly InventoryLocation[];
   onChanged: InventoryChangedHandler;
+  onOpenItem: (itemId: string) => void;
   tenantId: string;
 }) {
   return (
@@ -3015,7 +3927,11 @@ function InventoryEvents({
         Begrenzte Bewegungshistorie
         {hasMore ? "; weitere Bewegungen sind vorhanden." : "."}
       </p>
-      <InventoryEventList events={events} items={items} />
+      <InventoryEventList
+        events={events}
+        items={items}
+        onOpenItem={onOpenItem}
+      />
     </section>
   );
 }
@@ -3023,11 +3939,18 @@ function InventoryEvents({
 function InventoryEventList({
   events,
   items,
+  onOpenItem,
 }: {
   events: readonly InventoryEvent[];
   items: readonly InventoryItemSummary[];
+  /** Opens the article of a movement. */
+  onOpenItem: (itemId: string) => void;
 }) {
   const unitsByItemName = new Map(items.map((item) => [item.name, item.unit]));
+  // Only articles the caller can see (and that are still listed) can be opened.
+  const itemIds = new Set(
+    items.filter((item) => item.active).map((item) => item.id),
+  );
   return events.length ? (
     <ul className="inventory__list inventory__list--events">
       {events.map((event) => {
@@ -3054,7 +3977,18 @@ function InventoryEventList({
             </span>
             <div className="inventory__event-copy">
               <strong>{eventLabel(event.type)}</strong>
-              <span>{event.itemName}</span>
+              {event.itemId && itemIds.has(event.itemId) ? (
+                <button
+                  className="inventory__item-link"
+                  onClick={() => onOpenItem(event.itemId!)}
+                  title="Artikel öffnen"
+                  type="button"
+                >
+                  {event.itemName}
+                </button>
+              ) : (
+                <span>{event.itemName}</span>
+              )}
               <small>
                 {event.locationName ?? "Ohne Lagerort"} ·{" "}
                 {dateTime(event.occurredAt)}
@@ -3391,7 +4325,8 @@ function SourceReservationRuleForm({
             <select
               onChange={(event) => {
                 const nextSourceKind = event.target.value as
-                  "event_space_equipment" | "onboarding_template_task";
+                  | "event_space_equipment"
+                  | "onboarding_template_task";
                 setSourceKind(nextSourceKind);
               }}
               value={selectedSourceKind}
@@ -3801,17 +4736,24 @@ function InventoryActiveCountList({
 }
 
 function InventoryLocationCreateForm({
+  onCancel,
   onChanged,
   tenantId,
+  warehouseId,
 }: {
+  onCancel: () => void;
   onChanged: InventoryChangedHandler;
   tenantId: string;
+  warehouseId: string | null;
 }) {
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
+  const [place, setPlace] = useState("");
+  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const clientRequest = useClientRequestId(tenantId, "location-create");
-  const complete = code.trim().length > 0 && name.trim().length > 0;
+  const clientRequest = useClientRequestId(
+    tenantId,
+    `location-create-${warehouseId ?? "none"}`,
+  );
+  const complete = place.trim().length > 0;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -3822,49 +4764,67 @@ function InventoryLocationCreateForm({
         type: "manageLocation",
         tenantId,
         operation: "create",
-        values: { code, name },
+        values: {
+          code: place.trim(),
+          ...(note.trim() ? { note: note.trim() } : {}),
+          ...(warehouseId ? { warehouseId } : {}),
+        },
         clientRequestId: clientRequest.requestId(),
       },
-      "Der Lagerort wurde erfasst und die Ansicht aktualisiert.",
+      "Der Lagerplatz wurde erfasst.",
     );
     setSaving(false);
     if (saved) {
+      // Offen lassen: mehrere Plätze nacheinander erfassen.
       clientRequest.discard();
-      setCode("");
-      setName("");
+      setPlace("");
+      setNote("");
     }
   };
 
   return (
-    <details className="inventory__form" open>
-      <summary>Lagerort erfassen</summary>
-      <form
-        onChange={clientRequest.discard}
-        onSubmit={(event) => void submit(event)}
-      >
-        <FormGrid cols={2}>
-          <FormField label="Ortscode" required>
-            <input
-              autoComplete="off"
-              onChange={(event) => setCode(event.target.value)}
-              required
-              value={code}
-            />
-          </FormField>
-          <FormField label="Bezeichnung" required>
-            <input
-              autoComplete="off"
-              onChange={(event) => setName(event.target.value)}
-              required
-              value={name}
-            />
-          </FormField>
-        </FormGrid>
-        <button disabled={!complete || saving} type="submit">
-          {saving ? "Lagerort wird erfasst …" : "Lagerort erfassen"}
+    <form
+      className="inventory__store-form"
+      onChange={clientRequest.discard}
+      onSubmit={(event) => void submit(event)}
+    >
+      <FormGrid cols={2}>
+        <FormField
+          hint="Buchstaben, Ziffern, Punkt, Binde- und Unterstrich, z. B. WSICT.01.02. Er steht auf der Etikette."
+          label="Lagerplatz"
+          required
+        >
+          <input
+            autoComplete="off"
+            autoFocus
+            onChange={(event) => setPlace(event.target.value)}
+            required
+            value={place}
+          />
+        </FormField>
+        <FormField label="Bemerkung" optional>
+          <input
+            autoComplete="off"
+            maxLength={500}
+            onChange={(event) => setNote(event.target.value)}
+            value={note}
+          />
+        </FormField>
+      </FormGrid>
+      <div className="inventory__location-actions">
+        <button
+          className="secondary-button"
+          disabled={saving}
+          onClick={onCancel}
+          type="button"
+        >
+          Fertig
         </button>
-      </form>
-    </details>
+        <button disabled={!complete || saving} type="submit">
+          {saving ? "Wird erfasst …" : "Lagerplatz erfassen"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -3970,6 +4930,7 @@ function InventoryMovementForm({
   const [itemId, setItemId] = useState("");
   const [fromLocationId, setFromLocationId] = useState("");
   const [toLocationId, setToLocationId] = useState("");
+  const [toLocationEndId, setToLocationEndId] = useState("");
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const clientRequest = useClientRequestId(tenantId, "movement");
@@ -3986,6 +4947,13 @@ function InventoryMovementForm({
     selectedType === "receipt" ||
     selectedType === "transfer" ||
     selectedType === "adjustment_in";
+  const receiptAreaEnd =
+    selectedType === "receipt" &&
+    areaEndOptions(locations, toLocationId).some(
+      (location) => location.id === toLocationEndId,
+    )
+      ? toLocationEndId
+      : "";
   const amountNumber = Number(amount);
   const complete =
     itemId.length > 0 &&
@@ -4008,6 +4976,9 @@ function InventoryMovementForm({
         quantity: amountNumber,
         ...(requiresFrom ? { fromLocationId } : {}),
         ...(requiresTo ? { toLocationId } : {}),
+        ...(selectedType === "receipt" && receiptAreaEnd
+          ? { toLocationEndId: receiptAreaEnd }
+          : {}),
         clientRequestId: clientRequest.requestId(),
       },
       "Die Buchung wurde gespeichert und die Ansicht aktualisiert.",
@@ -4018,6 +4989,7 @@ function InventoryMovementForm({
       setItemId("");
       setFromLocationId("");
       setToLocationId("");
+      setToLocationEndId("");
       setAmount("");
     }
   };
@@ -4089,6 +5061,14 @@ function InventoryMovementForm({
                 ))}
               </select>
             </FormField>
+          ) : null}
+          {selectedType === "receipt" ? (
+            <AreaEndField
+              locations={locations}
+              onChange={setToLocationEndId}
+              startId={toLocationId}
+              value={receiptAreaEnd}
+            />
           ) : null}
           <FormField label="Menge" required>
             <input

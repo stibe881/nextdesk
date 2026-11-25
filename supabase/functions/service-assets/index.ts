@@ -21,7 +21,7 @@ const INTUNE_PRIMARY_PERSON_LOOKUP_PAGE_SIZE = 100;
 const MAX_CATALOG_ROWS = 10_000;
 const MAX_TICKET_SEARCH_RESULTS = 30;
 const SERVICE_SELECT =
-  "id, tenant_id, name, description, criticality, status, status_public, primary_responsible_id, secondary_responsible_id, service_category_id, department_id, active, created_at, updated_at";
+  "id, tenant_id, name, description, criticality, status, status_public, audience, primary_responsible_id, secondary_responsible_id, service_category_id, department_id, active, created_at, updated_at";
 const SERVICE_CATEGORY_SELECT =
   "id, tenant_id, name, parent_id, active, created_at, updated_at";
 const ASSET_SELECT =
@@ -232,6 +232,10 @@ const SERVICE_FIELDS: Record<string, Field> = {
     ]),
   },
   statusPublic: { column: "status_public", validate: boolean },
+  audience: {
+    column: "audience",
+    validate: enumeration(["internal", "external"]),
+  },
   primaryResponsibleId: {
     column: "primary_responsible_id",
     validate: nullable(uuid),

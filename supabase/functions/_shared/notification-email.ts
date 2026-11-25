@@ -179,8 +179,8 @@ function ticketEvents(
       tone(formality, "Du wurdest erwähnt", "Sie wurden erwähnt"),
       tone(
         formality,
-        "Du wurdest in einem Ticket erwähnt.",
-        "Sie wurden in einem Ticket erwähnt.",
+        "Du wurdest in einem Ticket erwähnt. Bitte wirf einen Blick darauf.",
+        "Sie wurden in einem Ticket erwähnt. Bitte werfen Sie einen Blick darauf.",
       ),
     ],
     "ticket.supervisor_request": [
@@ -403,6 +403,72 @@ export function notificationEmailText(
           formality,
           "Eine Bestellung wartet seit mehreren Tagen auf Freigabe. Du erhältst diese Erinnerung als Stellvertretung.",
           "Eine Bestellung wartet seit mehreren Tagen auf Freigabe. Sie erhalten diese Erinnerung als Stellvertretung.",
+        ),
+      ];
+    }
+  } else if (kind === "onboarding.assigned") {
+    const person = text(payload.employeeName);
+    const label =
+      payload.entryKind === "offboarding"
+        ? "Austritt"
+        : payload.entryKind === "change"
+          ? "Mutation"
+          : "Eintritt";
+    const article = label === "Mutation" ? "Die" : "Der";
+    const accusative = label === "Mutation" ? "die" : "den";
+    const by = text(payload.actorName, 80);
+    const standIn = text(payload.delegatedFor, 80);
+    title = `${label} zugewiesen${person ? `: ${person}` : ""}`;
+    lines = [
+      standIn
+        ? tone(
+            formality,
+            `${article} ${label}${person ? ` von ${person}` : ""} wurde dir als Stellvertretung für ${standIn} zugewiesen${by ? ` (von ${by})` : ""}.`,
+            `${article} ${label}${person ? ` von ${person}` : ""} wurde Ihnen als Stellvertretung für ${standIn} zugewiesen${by ? ` (von ${by})` : ""}.`,
+          )
+        : tone(
+            formality,
+            `${by ? `${by} hat dir ${accusative}` : `Dir wurde ${article.toLowerCase()}`} ${label}${person ? ` von ${person}` : ""} zugewiesen. Du bist jetzt für die ICT-Aufgaben verantwortlich.`,
+            `${by ? `${by} hat Ihnen ${accusative}` : `Ihnen wurde ${article.toLowerCase()}`} ${label}${person ? ` von ${person}` : ""} zugewiesen. Sie sind jetzt für die ICT-Aufgaben verantwortlich.`,
+          ),
+    ];
+  } else if (kind === "project.member_added") {
+    const project = text(payload.projectTitle) ?? "ein Projekt";
+    const by = text(payload.actorName, 80);
+    title = `Neues Projekt: ${project}`;
+    lines = [
+      by
+        ? tone(
+            formality,
+            `${by} hat dich zum Projekt «${project}» hinzugefügt.`,
+            `${by} hat Sie zum Projekt «${project}» hinzugefügt.`,
+          )
+        : tone(
+            formality,
+            `Du arbeitest jetzt im Projekt «${project}» mit.`,
+            `Sie arbeiten jetzt im Projekt «${project}» mit.`,
+          ),
+    ];
+  } else if (kind === "project.task_assigned") {
+    const project = text(payload.projectTitle) ?? "ein Projekt";
+    const task = text(payload.taskTitle);
+    const count = Number(payload.taskCount);
+    if (Number.isInteger(count) && count > 1) {
+      title = `${count} Projektaufgaben zugewiesen`;
+      lines = [
+        tone(
+          formality,
+          `Dir wurden ${count} Aufgaben im Projekt «${project}» zugewiesen.`,
+          `Ihnen wurden ${count} Aufgaben im Projekt «${project}» zugewiesen.`,
+        ),
+      ];
+    } else {
+      title = `Projektaufgabe zugewiesen${task ? `: ${task}` : ""}`;
+      lines = [
+        tone(
+          formality,
+          `${task ? `«${task}»` : "Eine Aufgabe"} im Projekt «${project}» wurde dir zugewiesen.`,
+          `${task ? `«${task}»` : "Eine Aufgabe"} im Projekt «${project}» wurde Ihnen zugewiesen.`,
         ),
       ];
     }

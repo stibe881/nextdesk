@@ -668,6 +668,60 @@ type PreparedLogoUpload = {
   previewUrl: string;
 };
 
+type EntraSyncRun = {
+  id: string;
+  trigger: "manual" | "scheduled";
+  status: "running" | "succeeded" | "failed";
+  started_at: string;
+  imported: number | null;
+  active: number | null;
+  skipped: number | null;
+};
+
+/** Läufe, die ohne Aufklappen sichtbar sind (insgesamt bis 20). */
+const VISIBLE_ENTRA_RUNS = 3;
+
+function parseEntraSyncRuns(value: unknown): EntraSyncRun[] {
+  const runs =
+    isRecord(value) && isRecord(value.data) && Array.isArray(value.data.runs)
+      ? value.data.runs
+      : [];
+  const count = (item: unknown) =>
+    typeof item === "number" && Number.isFinite(item) ? item : null;
+  return runs.flatMap((run: unknown): EntraSyncRun[] => {
+    if (
+      !isRecord(run) ||
+      typeof run.id !== "string" ||
+      typeof run.started_at !== "string" ||
+      (run.trigger !== "manual" && run.trigger !== "scheduled") ||
+      (run.status !== "running" &&
+        run.status !== "succeeded" &&
+        run.status !== "failed")
+    ) {
+      return [];
+    }
+    return [
+      {
+        id: run.id,
+        trigger: run.trigger,
+        status: run.status,
+        started_at: run.started_at,
+        imported: count(run.imported),
+        active: count(run.active),
+        skipped: count(run.skipped),
+      },
+    ];
+  });
+}
+
+/** Bezeichnung eines Laufs; der nächtliche Abgleich heisst «automatisch». */
+function entraRunLabel(run: EntraSyncRun): string {
+  const kind = run.trigger === "scheduled" ? "Automatischer" : "Manueller";
+  if (run.status === "running") return `${kind} Abgleich läuft`;
+  if (run.status === "failed") return `${kind} Abgleich fehlgeschlagen`;
+  return `${kind} Abgleich abgeschlossen`;
+}
+
 const LOGO_MIME_TYPES = new Set<PreparedLogoUpload["contentType"]>([
   "image/png",
   "image/jpeg",
@@ -1269,6 +1323,8 @@ export function TenantAdminSettings({
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const [ssoForm, setSsoForm] = useState<SsoForm>(emptySsoForm);
   const [entraDirectoryEnabled, setEntraDirectoryEnabled] = useState(false);
+  const [entraRuns, setEntraRuns] = useState<EntraSyncRun[]>([]);
+  const [showAllEntraRuns, setShowAllEntraRuns] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<SaveTarget | null>(null);
   const [error, setError] = useState("");
@@ -1395,6 +1451,29 @@ export function TenantAdminSettings({
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const loadEntraRuns = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke(
+        "entra-directory-sync",
+        { body: { type: "listRuns", tenantId } },
+      );
+      if (invokeError) throw invokeError;
+      setEntraRuns(parseEntraSyncRuns(data));
+    } catch {
+      setEntraRuns([]);
+    }
+  }, [tenantId]);
+
+  const entraDirectoryConfigured = Boolean(
+    settings?.entra_directory?.configured_entra_tenant_id,
+  );
+  useEffect(() => {
+    if (activeArea === "features" && entraDirectoryConfigured) {
+      void loadEntraRuns();
+    }
+  }, [activeArea, entraDirectoryConfigured, loadEntraRuns]);
 
   useEffect(() => {
     const pushFeature = settings?.tenant_feature_flags.find(
@@ -1527,13 +1606,14 @@ export function TenantAdminSettings({
       );
       if (invokeError) throw invokeError;
       await loadData();
+      await loadEntraRuns();
       const result = isRecord(data) && isRecord(data.data) ? data.data : null;
       const imported =
         result && typeof result.imported === "number" ? result.imported : 0;
       const active =
         result && typeof result.active === "number" ? result.active : 0;
       setSuccess(
-        `Der Entra-Abgleich ist abgeschlossen: ${imported} Personen verarbeitet, ${active} aktiv. Die synchronisierten Personen erscheinen unten im Verzeichnis.`,
+        `Der Entra-Abgleich ist abgeschlossen: ${imported} Personen verarbeitet, ${active} aktiv. Die synchronisierten Personen erscheinen unter «Personen & Agenten».`,
       );
     } catch (nextError) {
       setError(
@@ -4318,45 +4398,7 @@ export function TenantAdminSettings({
                     </ul>
                   </section>
                 ) : null}
-              </section>
-            )}
 
-            {activeArea === "ticket-fields" && (
-              <TicketCustomFieldsAdmin tenantId={tenantId} />
-            )}
-
-            {activeArea === "departments" && (
-              <section
-                aria-label="Abteilungen"
-                id="tenant-departments-heading"
-                tabIndex={-1}
-              >
-                <DepartmentManagement tenantId={tenantId} />
-                <DepartmentModules
-                  tenantId={tenantId}
-                  onChanged={onFeaturesUpdated}
-                />
-              </section>
-            )}
-
-            {activeArea === "privacy" && (
-              <TenantDataRetention tenantId={tenantId} />
-            )}
-
-            {activeArea === "users" && (
-              <section
-                className="tenant-admin-settings__section"
-                aria-labelledby="tenant-users-heading"
-              >
-                <h2 id="tenant-users-heading" tabIndex={-1}>
-                  Personen & Agenten
-                </h2>
-                <p>
-                  {tn(
-                    "Ordne Mitarbeitende einer Abteilung zu, hinterlege Angebot und Funktion und bestimme, wer als Support-Agent in der Ticketbearbeitung arbeitet.",
-                    "Ordnen Sie Mitarbeitende einer Abteilung zu, hinterlegen Sie Angebot und Funktion und bestimmen Sie, wer als Support-Agent in der Ticketbearbeitung arbeitet.",
-                  )}
-                </p>
                 <section
                   className="tenant-admin-settings__directory-config"
                   aria-labelledby="tenant-entra-directory-heading"
@@ -4367,10 +4409,10 @@ export function TenantAdminSettings({
                         Microsoft Entra-Verzeichnis
                       </h3>
                       <p>
-                        Die Verbindung ist ausschliesslich an die aktive,
-                        mandantenspezifische Microsoft-Entra-SSO-Konfiguration
-                        gebunden. Personen werden erst bei einem bewusst
-                        gestarteten Abgleich verarbeitet.
+                        {tn(
+                          "Die Verbindung ist ausschliesslich an die aktive, mandantenspezifische Microsoft-Entra-SSO-Konfiguration gebunden. Ist der Connector aktiv, gleicht nextDesk das Verzeichnis jede Nacht automatisch ab; einen Abgleich kannst du zusätzlich jederzeit von Hand starten. Die Personen erscheinen unter «Personen & Agenten».",
+                          "Die Verbindung ist ausschliesslich an die aktive, mandantenspezifische Microsoft-Entra-SSO-Konfiguration gebunden. Ist der Connector aktiv, gleicht nextDesk das Verzeichnis jede Nacht automatisch ab; einen Abgleich können Sie zusätzlich jederzeit von Hand starten. Die Personen erscheinen unter «Personen & Agenten».",
+                        )}
                       </p>
                     </div>
                     <span
@@ -4404,7 +4446,7 @@ export function TenantAdminSettings({
                                   "failed"
                                 ? "Verbindung fehlgeschlagen"
                                 : entraDirectory.enabled
-                                  ? "Bereit für manuellen Abgleich"
+                                  ? "Aktiv · nächtlicher Abgleich"
                                   : "Deaktiviert"}
                     </span>
                   </div>
@@ -4448,7 +4490,9 @@ export function TenantAdminSettings({
                           setEntraDirectoryEnabled(event.target.checked)
                         }
                       />
-                      <span>Connector für manuelle Abgleiche aktivieren</span>
+                      <span>
+                        Connector aktivieren (Abgleich jede Nacht automatisch)
+                      </span>
                     </label>
                     <div>
                       <button
@@ -4481,9 +4525,57 @@ export function TenantAdminSettings({
                       >
                         {saving === "entra-sync"
                           ? "Entra wird abgeglichen …"
-                          : "Manuellen Abgleich starten"}
+                          : "Jetzt abgleichen"}
                       </button>
                     </div>
+                  </div>
+                  <div className="tenant-admin-settings__directory-runs">
+                    <h4>Abgleichshistorie</h4>
+                    {entraRuns.length === 0 ? (
+                      <p className="empty-state">
+                        Noch kein Abgleich protokolliert.
+                      </p>
+                    ) : (
+                      <>
+                        <ul aria-label="Entra-Abgleichshistorie">
+                          {(showAllEntraRuns
+                            ? entraRuns
+                            : entraRuns.slice(0, VISIBLE_ENTRA_RUNS)
+                          ).map((run) => (
+                            <li key={run.id}>
+                              <strong>{entraRunLabel(run)}</strong>
+                              <p>
+                                {formatDate(run.started_at)} ·{" "}
+                                {run.trigger === "scheduled"
+                                  ? "Synchronisation (täglich, automatisch)"
+                                  : "Synchronisation (von Hand)"}
+                              </p>
+                              {run.status === "succeeded" ? (
+                                <p>
+                                  Personen: {run.imported ?? 0} · aktiv:{" "}
+                                  {run.active ?? 0} · übersprungen:{" "}
+                                  {run.skipped ?? 0}
+                                </p>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                        {entraRuns.length > VISIBLE_ENTRA_RUNS ? (
+                          <button
+                            aria-expanded={showAllEntraRuns}
+                            className="text-button tenant-admin-settings__directory-more"
+                            onClick={() =>
+                              setShowAllEntraRuns((current) => !current)
+                            }
+                            type="button"
+                          >
+                            {showAllEntraRuns
+                              ? "Weniger anzeigen"
+                              : `Ältere Läufe anzeigen (${entraRuns.length - VISIBLE_ENTRA_RUNS} weitere)`}
+                          </button>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                   <p className="tenant-admin-settings__directory-note">
                     Der Verbindungstest überträgt keine Personenliste in den
@@ -4493,6 +4585,45 @@ export function TenantAdminSettings({
                     werden weiterhin nur über eine bewusste Vormerkung vergeben.
                   </p>
                 </section>
+              </section>
+            )}
+
+            {activeArea === "ticket-fields" && (
+              <TicketCustomFieldsAdmin tenantId={tenantId} />
+            )}
+
+            {activeArea === "departments" && (
+              <section
+                aria-label="Abteilungen"
+                id="tenant-departments-heading"
+                tabIndex={-1}
+              >
+                <DepartmentManagement tenantId={tenantId} />
+                <DepartmentModules
+                  tenantId={tenantId}
+                  onChanged={onFeaturesUpdated}
+                />
+              </section>
+            )}
+
+            {activeArea === "privacy" && (
+              <TenantDataRetention tenantId={tenantId} />
+            )}
+
+            {activeArea === "users" && (
+              <section
+                className="tenant-admin-settings__section"
+                aria-labelledby="tenant-users-heading"
+              >
+                <h2 id="tenant-users-heading" tabIndex={-1}>
+                  Personen & Agenten
+                </h2>
+                <p>
+                  {tn(
+                    "Ordne Mitarbeitende einer Abteilung zu, hinterlege Angebot und Funktion und bestimme, wer als Support-Agent in der Ticketbearbeitung arbeitet.",
+                    "Ordnen Sie Mitarbeitende einer Abteilung zu, hinterlegen Sie Angebot und Funktion und bestimmen Sie, wer als Support-Agent in der Ticketbearbeitung arbeitet.",
+                  )}
+                </p>
                 <form
                   className="tenant-admin-settings__form"
                   onSubmit={inviteUser}

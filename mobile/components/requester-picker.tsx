@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  type ScrollViewInstance,
 } from "react-native";
 
 import {
@@ -55,7 +56,7 @@ export function RequesterPicker({
   const [newEmail, setNewEmail] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
-  const resultsScrollRef = useRef<ScrollView>(null);
+  const resultsScrollRef = useRef<ScrollViewInstance>(null);
   const queryLength = Array.from(query.trim()).length;
   const selected = value ?? defaultRequester;
 
@@ -142,7 +143,12 @@ export function RequesterPicker({
   async function createRequester() {
     const displayName = newName.trim();
     if (Array.from(displayName).length < 2) {
-      setCreateError(tn("Bitte gib einen Namen mit mindestens zwei Zeichen ein.", "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein."));
+      setCreateError(
+        tn(
+          "Bitte gib einen Namen mit mindestens zwei Zeichen ein.",
+          "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein.",
+        ),
+      );
       return;
     }
     setCreating(true);

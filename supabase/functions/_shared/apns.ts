@@ -24,6 +24,8 @@ export type ApnsPayloadKind =
   | "inventory_low_stock"
   | "shop"
   | "service_task"
+  | "project"
+  | "onboarding"
   | "infrastructure"
   | "watched"
   | "rule_reminder"
@@ -49,6 +51,8 @@ export type ApnsPayloadInput = {
   contractId?: string;
   ticketNumber?: string;
   subject?: string | null;
+  /** Person, die in einer Notiz oder Antwort erwähnt hat. */
+  mentionAuthorName?: string;
   summaryCount?: number;
   /** Zahl auf dem App-Symbol: ungelesene Mitteilungen der Person. */
   badge?: number;
@@ -63,6 +67,18 @@ export type ApnsPayloadInput = {
   serviceTaskEvent?: string;
   serviceTaskTitle?: string;
   occurrenceId?: string;
+  /** Project: «member_added» or «task_assigned», with what it is about. */
+  projectEvent?: string;
+  projectId?: string;
+  projectTitle?: string;
+  projectTaskId?: string;
+  projectTaskTitle?: string;
+  projectTaskCount?: number;
+  /** Ein- oder Austritt zugewiesen: Eintrag, Person, Art und Vertretung. */
+  onboardingEntryId?: string;
+  onboardingEmployeeName?: string;
+  onboardingEntryKind?: string;
+  onboardingDelegatedFor?: string;
   /** Infrastructure reminder: device, reason and due date (YYYY-MM-DD). */
   assetId?: string;
   assetName?: string;
@@ -292,21 +308,31 @@ function alertFor(
               `${ticketNumber} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
             ),
       };
-    case "mention":
+    case "mention": {
+      const author = input.mentionAuthorName
+        ? truncateSubject(input.mentionAuthorName)
+        : null;
       return {
-        title: tone(formality, "Du wurdest erwähnt", "Sie wurden erwähnt"),
+        title: author
+          ? tone(
+              formality,
+              `${author} hat dich erwähnt`,
+              `${author} hat Sie erwähnt`,
+            )
+          : tone(formality, "Du wurdest erwähnt", "Sie wurden erwähnt"),
         body: subject
           ? tone(
               formality,
-              `Du wurdest in ${ticketNumber} in einer internen Notiz erwähnt: ${subject}`,
-              `Sie wurden in ${ticketNumber} in einer internen Notiz erwähnt: ${subject}`,
+              `${ticketNumber}: ${subject} – bitte wirf einen Blick darauf.`,
+              `${ticketNumber}: ${subject} – bitte werfen Sie einen Blick darauf.`,
             )
           : tone(
               formality,
-              `Du wurdest in ${ticketNumber} in einer internen Notiz erwähnt.`,
-              `Sie wurden in ${ticketNumber} in einer internen Notiz erwähnt.`,
+              `Bitte wirf einen Blick auf ${ticketNumber}.`,
+              `Bitte werfen Sie einen Blick auf ${ticketNumber}.`,
             ),
       };
+    }
     case "resolved":
       return {
         title: "Ticket gelöst",
@@ -636,7 +662,11 @@ function alertFor(
           };
         case "team_ready":
           return {
-            title: tone(formality, "Dein Team ist bereit", "Ihr Team ist bereit"),
+            title: tone(
+              formality,
+              "Dein Team ist bereit",
+              "Ihr Team ist bereit",
+            ),
             body: "Das bestellte Microsoft-Teams-Team wurde angelegt.",
           };
         case "team_failed":
@@ -661,6 +691,65 @@ function alertFor(
         default:
           return { title: "Shop", body: `Neuigkeit zu Bestellung${number}.` };
       }
+    }
+    case "onboarding": {
+      const person = input.onboardingEmployeeName?.trim().slice(0, 80);
+      const label =
+        input.onboardingEntryKind === "offboarding"
+          ? "Austritt"
+          : input.onboardingEntryKind === "change"
+            ? "Mutation"
+            : "Eintritt";
+      const article = label === "Mutation" ? "Die" : "Der";
+      const of = person ? ` von ${person}` : "";
+      const standIn = input.onboardingDelegatedFor?.trim().slice(0, 80);
+      return {
+        title: `${label} zugewiesen`,
+        body: standIn
+          ? tone(
+              formality,
+              `${article} ${label}${of} wurde dir als Stellvertretung für ${standIn} zugewiesen.`,
+              `${article} ${label}${of} wurde Ihnen als Stellvertretung für ${standIn} zugewiesen.`,
+            )
+          : tone(
+              formality,
+              `${article} ${label}${of} wurde dir zugewiesen.`,
+              `${article} ${label}${of} wurde Ihnen zugewiesen.`,
+            ),
+      };
+    }
+    case "project": {
+      const project = input.projectTitle?.trim().slice(0, 80) || "ein Projekt";
+      if (input.projectEvent === "member_added") {
+        return {
+          title: "Neues Projekt",
+          body: tone(
+            formality,
+            `Du arbeitest jetzt im Projekt «${project}» mit.`,
+            `Sie arbeiten jetzt im Projekt «${project}» mit.`,
+          ),
+        };
+      }
+      const task = input.projectTaskTitle?.trim().slice(0, 80);
+      const count = input.projectTaskCount ?? 0;
+      return {
+        title:
+          count > 1
+            ? "Projektaufgaben zugewiesen"
+            : "Projektaufgabe zugewiesen",
+        body:
+          count > 1
+            ? tone(
+                formality,
+                `Dir wurden ${count} Aufgaben im Projekt «${project}» zugewiesen.`,
+                `Ihnen wurden ${count} Aufgaben im Projekt «${project}» zugewiesen.`,
+              )
+            : tone(
+                formality,
+                `${task ? `«${task}»` : "Eine Aufgabe"} im Projekt «${project}» wurde dir zugewiesen.`,
+                `${task ? `«${task}»` : "Eine Aufgabe"} im Projekt «${project}» wurde Ihnen zugewiesen.`,
+              ),
+      };
     }
     case "service_task": {
       const title =
@@ -887,6 +976,22 @@ export function buildApnsPayload(
   if (input.kind === "service_task" && input.occurrenceId) {
     data.occurrenceId = input.occurrenceId;
   }
+  // Project: only opaque ids, so the app can open it once it has the screen.
+  if (input.kind === "project") {
+    if (input.projectId && PAYLOAD_UUID.test(input.projectId)) {
+      data.projectId = input.projectId;
+    }
+    if (input.projectTaskId && PAYLOAD_UUID.test(input.projectTaskId)) {
+      data.projectTaskId = input.projectTaskId;
+    }
+  }
+  if (
+    input.kind === "onboarding" &&
+    input.onboardingEntryId &&
+    PAYLOAD_UUID.test(input.onboardingEntryId)
+  ) {
+    data.onboardingEntryId = input.onboardingEntryId;
+  }
   if (input.kind === "infrastructure" && input.assetId) {
     data.assetId = input.assetId;
   }
@@ -975,6 +1080,7 @@ export async function sendApns(
   environment: ApnsEnvironment,
   payload: Record<string, unknown>,
   collapseId: string,
+  options: { priority?: 5 | 10; expiresInSeconds?: number } = {},
 ): Promise<{ status: number; reason?: string }> {
   const configuration = readConfiguration();
   if (!configuration) return { status: 0, reason: "apns_not_configured" };
@@ -990,8 +1096,11 @@ export async function sendApns(
         authorization: `bearer ${authorization}`,
         "apns-topic": "ch.grossict.nextdesk",
         "apns-push-type": "alert",
-        "apns-priority": "10",
-        "apns-expiration": String(Math.floor(Date.now() / 1000) + 24 * 60 * 60),
+        "apns-priority": String(options.priority ?? 10),
+        "apns-expiration": String(
+          Math.floor(Date.now() / 1000) +
+            (options.expiresInSeconds ?? 24 * 60 * 60),
+        ),
         "apns-collapse-id": collapseId.slice(0, 64),
         "content-type": "application/json",
       },

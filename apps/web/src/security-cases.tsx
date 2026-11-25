@@ -591,6 +591,14 @@ function SecurityCaseView({
                 >
                   {STATE_LABELS[detail.state]}
                 </span>
+                {analysis.simulation ? (
+                  <span
+                    className="security-chip security-chip--low"
+                    title="Vereinbartes Awareness-Training: automatisch als Phishing beurteilt, ohne Alarmierung"
+                  >
+                    Phishing-Simulation · {analysis.simulation}
+                  </span>
+                ) : null}
                 {detail.teamName ? (
                   <span className="security-chip security-chip--line">
                     Team {detail.teamName}

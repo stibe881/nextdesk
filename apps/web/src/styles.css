@@ -7456,6 +7456,43 @@ body:has(.ticket-detail) {
   row-gap: 10px;
 }
 
+.service-assets__group-heading > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 2px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.service-assets__group-heading > button::before {
+  content: "▾";
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.service-assets__group-heading > button[aria-expanded="false"]::before {
+  content: "▸";
+}
+
+.service-assets__group-count {
+  border-radius: 999px;
+  padding: 0 8px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .service-assets__services-panel > ul > li > .service-assets__service-card {
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
@@ -23620,4 +23657,537 @@ body.app-dialog-open {
 
 .ticket-trash__search:focus-within {
   border-color: var(--accent, #4f46e5);
+/* Verschachtelte Lager-Panels (z. B. «Regeln für künftige Quellen» unter
+   «Reservation anlegen») brauchen Abstand zum vorherigen Block. */
+.inventory__panel > .inventory__panel {
+  margin-top: 24px;
+}
+
+/* Lager mit Standort und ihre Lagerplätze (Lager → Lagerorte) */
+.inventory__warehouses {
+  display: grid;
+  gap: 12px;
+  margin-top: 17px;
+}
+
+.inventory__warehouses > .inventory__form {
+  margin-top: 0;
+}
+
+.inventory__warehouse-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.inventory__warehouse-list > li {
+  align-items: center;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.inventory__warehouse-list > li > div {
+  display: grid;
+  min-width: 0;
+}
+
+.inventory__warehouse-list small {
+  color: var(--muted);
+  font-size: 0.77rem;
+}
+
+.inventory__warehouse-list .inventory__location-buttons {
+  margin-left: auto;
+}
+
+.inventory__warehouse-list > li.inventory__warehouse-edit {
+  display: block;
+  grid-column: 1 / -1;
+}
+
+.inventory__location-group {
+  margin-top: 24px;
+}
+
+.inventory__location-group-title {
+  color: var(--ink);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.inventory__location-group-title small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.inventory__location-group > .inventory__location-grid {
+  margin-top: 10px;
+}
+
+/* Kennzahlen der Lager-Übersicht sind Verknüpfungen zum jeweiligen Bereich. */
+.inventory__metrics:has(> .inventory__metric--link:nth-child(2):last-child) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+button.inventory__metric--link {
+  appearance: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+button.inventory__metric--link:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+button.inventory__metric--link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .inventory__metrics:has(> .inventory__metric--link:nth-child(2):last-child) {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Entra-Verzeichnis: Abgleichshistorie (Einstellungen → Funktionen). */
+.tenant-admin-settings__directory-runs h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+.tenant-admin-settings__directory-runs ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tenant-admin-settings__directory-runs li {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+}
+.tenant-admin-settings__directory-runs li p {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+.tenant-admin-settings__directory-more {
+  margin-top: 0.5rem;
+}
+
+/* Lagerorte: jedes Lager als Karte, die Lagerplätze als Liste darin. */
+.inventory__stores {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.inventory__store {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.inventory__store.is-inactive {
+  opacity: 0.7;
+}
+
+.inventory__store-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+.inventory__store-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+
+.inventory__store-title {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.inventory__store-title h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.inventory__store-title small {
+  color: var(--muted);
+}
+
+.inventory__store-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inventory__store-actions .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 12px;
+}
+
+.inventory__store-form {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.inventory__stores ~ .inventory__store-form,
+.panel > .inventory__store-form {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.inventory__store-form h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.inventory__store-empty {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--muted);
+}
+
+.inventory__places {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inventory__places > li {
+  display: grid;
+  grid-template-columns: 24px 20px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.inventory__places > li:first-child {
+  border-top: 0;
+}
+
+.inventory__places > li:hover {
+  background: var(--surface-subtle);
+}
+
+.inventory__places > li.is-inactive {
+  opacity: 0.6;
+}
+
+.inventory__places > li.inventory__location-edit {
+  display: block;
+}
+
+.inventory__place-icon {
+  color: var(--primary);
+}
+
+.inventory__place-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  min-width: 0;
+}
+
+.inventory__place-name strong {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.inventory__place-name small {
+  color: var(--muted);
+}
+
+.inventory__place-state {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.inventory__places .inventory__location-buttons {
+  align-items: center;
+  grid-column: -2;
+}
+
+/* Lager als Karte: auf- und zuklappbar (standardmässig zu). */
+.inventory__store-toggle {
+  align-items: center;
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 10px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 200px;
+  font: inherit;
+  gap: 12px;
+  margin: -6px;
+  min-width: 0;
+  padding: 6px;
+  text-align: left;
+}
+
+.inventory__store-toggle:hover {
+  background: color-mix(in srgb, var(--primary-soft) 45%, transparent);
+}
+
+.inventory__store-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.inventory__store-toggle > svg {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.inventory__store-toggle .inventory__store-title {
+  display: grid;
+}
+
+.inventory__store.is-collapsed > .inventory__store-head {
+  border-bottom: 0;
+}
+
+.inventory__store-name {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* Artikelnamen in der Lager-Übersicht und in den Bewegungen öffnen den Artikel. */
+.inventory__item-link {
+  appearance: none;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.inventory__item-link:hover,
+.inventory__item-link:hover strong {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.inventory__item-link:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Unter Mindestbestand: Artikelbild vor der Bezeichnung. */
+.inventory__list--thumbs > li > .inventory__item-image {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.inventory__list--thumbs > li > .inventory__item-image img,
+.inventory__list--thumbs > li > .inventory__item-image-placeholder,
+.inventory__list--thumbs > li > .inventory__item-image .inventory__item-image-placeholder {
+  border-radius: 8px;
+  height: 48px;
+  width: 48px;
+}
+
+/* Ohne Bild bleibt eine leere Fläche statt eines Textes. */
+.inventory__list--thumbs .inventory__item-image-placeholder {
+  font-size: 0;
+  padding: 0;
+}
+
+.inventory__list--thumbs > li > .inventory__item-link {
+  flex: 1 1 auto;
+}
+
+.personal-settings__incident-push {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.personal-settings__incident-push-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.personal-settings__incident-push-head h4 {
+  margin: 0 0 4px;
+}
+
+.personal-settings__incident-services {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.personal-settings__incident-services legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+
+.personal-settings__incident-services legend small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.personal-settings__incident-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.personal-settings__incident-services ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px 16px;
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.personal-settings__incident-services label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}
+
+/* Mehrfachauswahl: Haupt-Ticket zum Zusammenführen wählen. */
+.ticket-bulk-actions__merge-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  border: 0;
+}
+.ticket-bulk-actions__merge-list label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.ticket-bulk-actions__merge-list input {
+  margin-top: 3px;
+}
+
+/* «N Personen betroffen» über zusammengeführte Tickets. */
+.ticket-meta .ticket-meta__affected {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* Anlass-Kopfzeile: Zusammenfassung links, PDF und Status rechts. */
+.event-spaces__request-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.event-spaces__request-head .event-spaces__request-summary {
+  grid-template-columns: minmax(104px, 0.42fr) minmax(0, 1.65fr);
+}
+
+.event-spaces__request-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px 0 8px;
+}
+
+.event-spaces__pill-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.event-spaces__pill-button:hover,
+.event-spaces__status-select:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.event-spaces__status-select {
+  cursor: pointer;
+  appearance: none;
+  padding-right: 22px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 12px) 52%,
+    calc(100% - 8px) 52%;
+  background-size:
+    4px 4px,
+    4px 4px;
+  background-repeat: no-repeat;
+}
+
+@media (max-width: 640px) {
+  .event-spaces__request-head {
+    grid-template-columns: 1fr;
+  }
+
+  .event-spaces__request-actions {
+    padding: 0 18px 12px;
+  }
+}
+
+/* Platzhalter für später geladene Nebenbereiche (Deferred). */
+.deferred-placeholder {
+  min-height: 1px;
 }

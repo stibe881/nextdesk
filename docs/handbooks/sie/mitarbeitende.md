@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-17
+updated: 2026-11-23
 ---
 
 # Handbuch für Mitarbeitende
@@ -358,6 +358,14 @@ E-Mail-Benachrichtigungen gibt es, sobald Ihr Unternehmen ein
 Exchange-Postfach verbunden hat. Mehr dazu unter «Persönliche Einstellungen und
 Handbücher».
 
+### Wie erhalte ich eine Push-Mitteilung bei Störungen?
+
+1. Klicken Sie unten links auf Ihren **Namen** und öffnen Sie **Benachrichtigungen**. In der App: **Einstellungen → Benachrichtigungen**.
+2. Schalten Sie **Störungen** ein.
+3. Wählen Sie unter **Dienste**, für welche Dienste Sie informiert werden wollen. Ohne Auswahl gilt **Alle**.
+
+Die Mitteilung kommt auf iPhone und Android, sobald eine Störung gemeldet wird – dann, wenn auch der Banner erscheint. Mehr dazu unter «Persönliche Einstellungen und Handbücher».
+
 ### Wie lege ich fest, wann ich Benachrichtigungen erhalte?
 
 1. Klicken Sie unten links auf Ihren **Namen** und öffnen Sie
@@ -502,6 +510,23 @@ gelesen haben. Mehr dazu unter «nextDesk auf dem iPhone».
 Nennen Sie diese Angaben dem Support, wenn Sie ein Problem melden. Mehr dazu
 unter «nextDesk auf dem iPhone».
 
+### Wie arbeite ich in einem Projekt mit?
+
+1. Öffnen Sie in der Navigation **Projekte**. Der Menüpunkt erscheint, sobald Sie in ein Projekt aufgenommen sind.
+2. Klicken Sie auf das Projekt.
+3. Im **Zeitplan**, im **Board** oder in der **Liste** sehen Sie die Aufgaben; ein Klick auf einen Titel öffnet die Aufgabe.
+4. Je nach Rolle ändern Sie dort Status und Checkliste oder schreiben Sie einen Kommentar.
+
+Mehr dazu unter «Projekte».
+
+### Wie öffne ich ein Projekt, zu dem ich als Gast eingeladen bin?
+
+1. Öffnen Sie den Anmeldelink aus der Einladungs-E-Mail.
+2. Nach der Anmeldung sehen Sie den Menüpunkt **Projekte** mit dem Projekt.
+3. Klicken Sie auf das Projekt. Sie sehen Überblick, Zeitplan, Board, Liste und die freigegebene Dokumentation.
+
+Mehr dazu unter «Projekte».
+
 ## Anmelden
 
 Öffnen Sie `https://app.nextdesk.ch` im Browser.
@@ -535,6 +560,7 @@ Nach der Anmeldung sehen Sie links das Menü und rechts den Inhalt.
 - **Wissensdatenbank** – Anleitungen und Antworten auf häufige Fragen
   (falls aktiviert)
 - **Shop** – Geräte und Zubehör bestellen (falls aktiviert)
+- **Projekte** – Projekte, in denen eine Mitarbeit oder Einladung besteht
 
 Oben rechts finden Sie:
 
@@ -621,11 +647,24 @@ Unter **Tickets** sehen Sie alle Ihre Anliegen mit Nummer, Betreff und Status.
 
 ![Liste der eigenen Tickets](images/ma-meine-tickets.jpg)
 
+Wird dasselbe Anliegen mehrmals gemeldet (von Ihnen oder von mehreren
+Personen), führt der Support die Tickets zusammen. Sie erhalten dann eine
+Mail mit der Nummer, unter der Ihr Anliegen weiterläuft. Antworten des
+Supports erhalten Sie weiterhin, und antworten Sie auf eine Mail zum alten
+Ticket, kommt Ihre Nachricht trotzdem an.
+
 ## Ein Ticket öffnen und antworten
 
 Klicken Sie auf ein Ticket. Der Block **Fortschritt** zeigt die Schritte
 _Eingegangen → In Bearbeitung → Wartet auf Sie → Gelöst → Geschlossen_ mit
 Zeitpunkten.
+
+Oben im Ticket sehen Sie als kleine Profilbilder, wer das Ticket gerade
+ebenfalls offen hat (z. B. die bearbeitende Person). Fahren Sie mit der Maus
+darüber bzw. tippen Sie in der App darauf, um den Namen zu sehen.
+
+Die Beschreibung Ihres Anliegens ist eingeklappt, sobald es Nachrichten
+gibt; ein Klick darauf zeigt sie wieder ganz.
 
 - **Antworten:** Schreiben Sie in **Ihre Nachricht** und klicken Sie auf
   **Nachricht senden**. Mit **Dateien anhängen** fügen Sie Screenshots oder Dokumente hinzu.
@@ -760,6 +799,29 @@ Gäste erhalten eine Einladung von Microsoft und erscheinen erst nach Annahme
 im Team. Weitere Tabs wie Planner oder OneNote ergänzt das Team danach in
 Teams selbst.
 
+## Projekte
+
+Der Menüpunkt **Projekte** erscheint, wenn Sie in einem Projekt mitarbeiten
+oder als Gast eingeladen sind. Die Übersicht zeigt Ihre Projekte mit Ampel,
+Status, Leitung, Fortschritt und nächstem Meilenstein.
+
+In einem Projekt finden Sie:
+
+- **Überblick** – Beschreibung, Meilensteine, Eckdaten und Kommentare
+- **Zeitplan** – die Zeitleiste mit Phasen, Aufgaben, Meilensteinen und
+  Abhängigkeiten
+- **Board** – die Aufgaben nach Status
+- **Liste** – alle Elemente als Tabelle mit Filtern
+- **Dokumentation** – Konzepte und Protokolle
+
+Was Sie ändern dürfen, hängt von Ihrer Rolle im Projekt ab. Als
+**Mitarbeit** bearbeiten Sie Aufgaben, buchen Zeit und schreiben Dokumente.
+Als **Gast** sehen Sie den Plan sowie Dokumente und Kommentare, die für Gäste
+freigegeben sind; mit der Rolle «kommentierend» können Sie zusätzlich
+Kommentare schreiben. Zeiten, Budget und Verknüpfungen sehen Gäste nicht.
+
+![Projekt in der Ansicht eines Gastes](images/ma-projekt-gast.jpg)
+
 ## Persönliche Einstellungen und Handbücher
 
 Klicken Sie unten links auf Ihren **Namen**, um die **Persönlichen
@@ -778,6 +840,13 @@ Einstellungen** zu öffnen:
 
 ![Benachrichtigungen: Push und E-Mail pro Benachrichtigung](images/ma-benachrichtigungen.jpg)
 
+- **Störungen** (unter Benachrichtigungen) – eine Push-Mitteilung auf iPhone
+  und Android, sobald die ICT eine Störung meldet, also dann, wenn auch der
+  Banner erscheint. Nach dem Einschalten wählen Sie unter **Dienste**, für
+  welche Dienste Sie informiert werden wollen (**Alle**, **Keine** oder
+  einzelne); Störungen ohne zugeordneten Dienst werden immer gemeldet. Die
+  Mitteilung kommt sofort, unabhängig von der Benachrichtigungszeit, und
+  braucht die nextDesk-App mit erlaubten Mitteilungen.
 - **Sitzungsverwaltung** – alle anderen Geräte abmelden
 - **Abmelden** und **Konto löschen**. Melden Sie sich mit SSO Ihres
   Unternehmens an, wird Ihr Konto von Ihrem Unternehmen verwaltet und kann
@@ -806,7 +875,7 @@ erstellen** eine Rückfrage dazu. Die **Home**-Seite gestalten Sie selbst: Mit d
 Fokus, Zuletzt geöffnet, Übersicht, Ticketliste, Erwähnungen, Geräte) ein oder
 aus und verschieben sie mit den Pfeilen. **Standard wiederherstellen** setzt
 alles zurück. Die Einstellung gilt nur für Sie und wird zwischen Ihren
-Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall.
+Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall. Die **Ticketliste** unter der Übersicht zeigt ohne gewählte Kachel die nicht zugewiesenen Tickets (gibt es keine, die offenen); ein Tipp auf _Meine Tickets_, _Offen_ oder _Nicht zugewiesen_ wechselt die Liste. Die zuletzt geöffneten Tickets stehen unter **Zuletzt angesehen**.
 Unter **Tickets** sehen Sie zuerst den Filter **Meine**: Tickets, die Sie
 angefragt haben oder die Ihnen zugewiesen sind. Mit **Alle**, **Beobachtet**,
 **Offen**, **Gelöst** oder **Nicht zugewiesen** wechseln Sie die Ansicht. Kehren
@@ -835,10 +904,13 @@ Neuigkeiten.
 
 Auf dem **App-Symbol** zeigt eine rote Zahl, wie viele Mitteilungen Sie noch nicht
 gelesen haben (alle Arbeitsbereiche zusammen). Sie sinkt, sobald Sie Mitteilungen
-lesen, das Ticket dazu öffnen oder alle als gelesen markieren. Auf dem iPhone aktualisiert sie sich auch
-bei neuen Mitteilungen, wenn die App geschlossen ist. Auf Android erscheint sie,
-wenn Ihr Startbildschirm Zahlen auf Symbolen unterstützt, und wird beim Öffnen
-der App aktualisiert. Auf Android erhalten Sie ausserdem die Push-Mitteilungen der
+lesen, das Ticket dazu öffnen oder alle als gelesen markieren, auch wenn Sie das
+im Web tun (zum Beispiel mit **Alle gesehen** bei der Glocke): Die Zahl auf dem
+Smartphone passt sich nach wenigen Sekunden an, ohne dass Sie die App öffnen. Auf
+dem iPhone aktualisiert sie sich auch bei neuen Mitteilungen, wenn die App
+geschlossen ist. Auf Android erscheint sie, wenn Ihr Startbildschirm Zahlen auf
+Symbolen unterstützt; sind alle Mitteilungen gelesen, verschwinden auch die
+Mitteilungen von nextDesk aus der Benachrichtigungsleiste. Auf Android erhalten Sie ausserdem die Push-Mitteilungen der
 Administration (zum Beispiel zu Wartungen), sobald Sie die Benachrichtigungen der
 App erlaubt haben.
 

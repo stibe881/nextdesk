@@ -1,4 +1,5 @@
 import { tn } from "./lib/formality";
+import { ProjectLinkCard } from "./project-link-card";
 import { FormChips } from "./form-kit";
 import {
   ChevronLeft,
@@ -1735,6 +1736,13 @@ function OrderDialog({
                 </div>
               ) : null}
             </dl>
+            <ProjectLinkCard
+              compact
+              heading="Projekt"
+              targetId={orderId}
+              targetKind="shop_order"
+              tenantId={tenantId}
+            />
 
             <h3>Artikel</h3>
             <ul className="shop__lines">
@@ -2465,6 +2473,24 @@ function ArticlePreview({
  * Article editor and category management, opened from the catalog. Reports
  * a success message (or null when nothing changed) through onDone.
  */
+/**
+ * Software hat keinen Lagerbestand: Ist die Kategorie «Software» gewählt (oder
+ * neu eingetippt), gibt es weder Mindest- noch Zielbestand.
+ */
+function isSoftwareArticle(
+  categoryIds: readonly string[],
+  categories: readonly { id: string; name: string }[],
+  typedCategory: string,
+): boolean {
+  const isSoftware = (name: string) => name.trim().toLowerCase() === "software";
+  return (
+    isSoftware(typedCategory) ||
+    categoryIds.some((id) =>
+      isSoftware(categories.find((entry) => entry.id === id)?.name ?? ""),
+    )
+  );
+}
+
 export function CatalogEditor({
   tenantId,
   departments,
@@ -2497,6 +2523,10 @@ export function CatalogEditor({
     id?: string;
     name: string;
   } | null>(null);
+  // Software: kein Mindest- und Zielbestand (Felder entfallen, gespeichert wird 0).
+  const editorSoftware = draft
+    ? isSoftwareArticle(draft.categoryIds, categories, draft.newCategory)
+    : false;
 
   const load = useCallback(() => {
     shopApi
@@ -2723,8 +2753,11 @@ export function CatalogEditor({
       const categoryName =
         categories.find((entry) => entry.id === categoryIds[0])?.name ??
         (typedCategory || undefined);
-      const minimum = isLoan ? 0 : Number(draft.minimumStock);
-      const target = isLoan ? 0 : Number(draft.targetStock);
+      // Ausleihartikel und Software haben keinen Mindest- und Zielbestand.
+      const noStockTargets =
+        isLoan || isSoftwareArticle(categoryIds, categories, draft.newCategory);
+      const minimum = noStockTargets ? 0 : Number(draft.minimumStock);
+      const target = noStockTargets ? 0 : Number(draft.targetStock);
       if (
         !Number.isFinite(minimum) ||
         !Number.isFinite(target) ||
@@ -3348,7 +3381,9 @@ export function CatalogEditor({
                     stock
                       ? draft.kind === "loan"
                         ? `Bestand ${draft.stockQuantity || 0} ${draft.unit}`
-                        : `Mindestbestand ${draft.minimumStock || 0} · Ziel ${draft.targetStock || 0}`
+                        : editorSoftware
+                          ? "Ohne Mindest- und Zielbestand"
+                          : `Mindestbestand ${draft.minimumStock || 0} · Ziel ${draft.targetStock || 0}`
                       : draft.kind === "loan" && draft.loanQuantity
                         ? `${draft.loanQuantity} zum Ausleihen`
                         : ""
@@ -3726,6 +3761,13 @@ export function CatalogEditor({
                             value={draft.stockQuantity}
                           />
                         </label>
+                      ) : editorSoftware ? (
+                        <p
+                          className="shop__options-hint"
+                          style={{ gridColumn: "1 / -1" }}
+                        >
+                          Für Software gibt es keinen Mindest- und Zielbestand.
+                        </p>
                       ) : (
                         <>
                           <label>

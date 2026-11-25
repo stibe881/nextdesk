@@ -131,6 +131,8 @@ const ENABLED_FEATURES = new Set([
   "teams.provisioning",
   "monitoring.native",
   "contracts.management",
+  "onboarding.entries",
+  "inventory.management",
 ]);
 const ALL_FEATURES = [
   "monitoring.native",
@@ -147,6 +149,7 @@ const ALL_FEATURES = [
   "contracts.management",
   "self_service.shop",
   "service.tasks",
+  "projects.management",
   "event.spaces",
   "onboarding.entries",
   "experience.workspace",
@@ -646,6 +649,93 @@ function coordinationOverview(ticket) {
 }
 
 const HANDLERS = {
+  projects: require("./project-data.cjs").handler,
+  inventory: (body) => {
+    if (body.type === "listOpenReservations") return ok({ reservations: [] });
+    if (body.type === "listActiveCounts") return ok({ activeCounts: [] });
+    if (body.type === "listSourceReservationRules")
+      return ok({
+        canManageEventRules: false,
+        canManageOnboardingRules: false,
+        rules: [],
+        onboardingTemplateTasks: [],
+      });
+    if (body.type !== "workspace") return null;
+    const warehouses = [
+      {
+        id: "wh-ict",
+        name: "Wandschrank ICT",
+        site: "Bern, Hauptstrasse 1 · 2. OG",
+        active: true,
+      },
+      {
+        id: "wh-main",
+        name: "Hauptlager",
+        site: "Bern, Lagerstrasse 4",
+        active: true,
+      },
+      { id: "wh-new", name: "Lager Thun", site: null, active: true },
+    ];
+    const place = (id, name, warehouseId, note = null) => ({
+      id,
+      name,
+      code: name,
+      active: true,
+      note,
+      warehouseId,
+    });
+    const locations = [
+      place("loc-1", "WSICT.01.01", "wh-ict", "Oberes Fach, Kabel"),
+      place("loc-2", "WSICT.01.02", "wh-ict"),
+      place("loc-3", "WSICT.01.03", "wh-ict", "Ersatz-Netzteile"),
+      place("loc-4", "HL.A.01.1", "wh-main"),
+      place("loc-5", "HL.A.01.2", "wh-main", "Notebooks (Leihgeräte)"),
+      place("loc-6", "HL.B.02.1", "wh-main"),
+      place("loc-7", "Empfang", null, "Schublade unter dem Empfang"),
+    ];
+    return ok({
+      permissions: {
+        canRead: true,
+        canManage: true,
+        canMove: true,
+        canAdjust: true,
+        canCloseInventoryCount: true,
+        canIssue: true,
+      },
+      summary: {
+        criticalItemCount: 0,
+        openReservationCount: 0,
+        activeCountSessionCount: 0,
+      },
+      items: [],
+      locations,
+      recentEvents: [],
+      recentEventsHasMore: false,
+      lowStockItems: [],
+      departments: [],
+      warehouses,
+    });
+  },
+  "entra-directory-sync": (body) => {
+    if (body.type !== "listRuns") return ok({ connected: true });
+    // Nächtliche Läufe plus ein manueller Abgleich.
+    const runs = [0, 1, 2, 3, 4, 5].map((index) => ({
+      id: `entra-run-${index}`,
+      trigger: index === 1 ? "manual" : "scheduled",
+      status: "succeeded",
+      started_at: D.ago(
+        index === 1 ? 26 * D.HOUR : (2 + index * 24) * D.HOUR + 3 * D.MIN,
+      ),
+      finished_at: D.ago(
+        index === 1 ? 26 * D.HOUR - D.MIN : (2 + index * 24) * D.HOUR,
+      ),
+      imported: 184 - index,
+      active: 171 - index,
+      skipped: 2,
+      error_code: null,
+    }));
+    return ok({ runs });
+  },
   "owner-access": () => fail("platform_operator_required", 403),
   "tenant-sso-access": () =>
     ok({
@@ -1247,7 +1337,30 @@ const HANDLERS = {
         totals,
         deviceCount: devices.length,
         sensorCount: 18,
-        devices,
+        devices: devices.map((device, index) => ({
+          ...device,
+          groupId: [
+            D.uid("60606060", 1),
+            D.uid("60606060", 2),
+            D.uid("60606060", 2),
+            D.uid("60606060", 3),
+            null,
+          ][index % 5],
+        })),
+        groups: [
+          { id: D.uid("60606060", 1), name: "Hauptgebäude", parentId: null },
+          {
+            id: D.uid("60606060", 4),
+            name: "Technik",
+            parentId: D.uid("60606060", 1),
+          },
+          {
+            id: D.uid("60606060", 2),
+            name: "Serverraum",
+            parentId: D.uid("60606060", 4),
+          },
+          { id: D.uid("60606060", 3), name: "Aussenstelle", parentId: null },
+        ],
         agents,
         probePackage: { version: "1.1.0", builtAt: ago(7200), size: 8237661 },
         checkedAt: ago(12),
@@ -1499,11 +1612,35 @@ const HANDLERS = {
     if (body.type === "device") {
       return ok({
         canManage: true,
+        canManageSnmp: true,
+        snmp: {
+          version: "v3",
+          user: "nextdesk-ro",
+          authProtocol: "sha256",
+          privProtocol: "aes",
+          updatedAt: "2026-11-20T08:00:00Z",
+        },
         serviceOptions: [
-          { id: D.uid("31313131", 1), name: "ERP" },
-          { id: D.uid("31313131", 2), name: "E-Mail" },
-          { id: D.uid("31313131", 3), name: "Intranet" },
-          { id: D.uid("31313131", 4), name: "Zeiterfassung" },
+          { id: D.uid("31313131", 1), name: "ERP", category: "Allgemein" },
+          { id: D.uid("31313131", 2), name: "E-Mail", category: "Allgemein" },
+          { id: D.uid("31313131", 3), name: "Intranet", category: "Allgemein" },
+          { id: D.uid("31313131", 4), name: "Zeiterfassung", category: "Apps" },
+          {
+            id: D.uid("31313131", 5),
+            name: "Büromaterialbestellungen",
+            category: "Apps",
+          },
+          {
+            id: D.uid("31313131", 6),
+            name: "EVA / Aggressionsmeldungen",
+            category: "Apps",
+          },
+          { id: D.uid("31313131", 7), name: "Telefonie", category: "Netzwerk" },
+          {
+            id: D.uid("31313131", 8),
+            name: "WLAN Hauptgebäude",
+            category: "Netzwerk",
+          },
         ],
         device: {
           assetId: D.uid("49494949", 2),
@@ -2596,7 +2733,7 @@ const HANDLERS = {
       });
     }
     if (body.type === "listIntuneManualSyncRuns") {
-      const run = (n, mode, offset, created, updated) => ({
+      const run = (n, mode, offset, created, updated, scheduled = false) => ({
         id: D.uid("26262626", n),
         mode,
         status: "succeeded",
@@ -2615,12 +2752,15 @@ const HANDLERS = {
         retry_of_run_id: null,
         root_run_id: null,
         attempt_no: 1,
+        scheduled,
       });
       return ok({
         runs: [
-          run(1, "synchronize", 3 * D.HOUR, 2, 41),
-          run(2, "dry_run", 3 * D.HOUR + 10 * D.MIN, 0, 0),
-          run(3, "synchronize", 2 * D.DAY, 5, 18),
+          run(1, "synchronize", 3 * D.HOUR, 2, 41, true),
+          run(2, "synchronize", 5 * D.HOUR, 0, 3),
+          run(3, "dry_run", 5 * D.HOUR + 10 * D.MIN, 0, 0),
+          run(4, "synchronize", 1 * D.DAY + 3 * D.HOUR, 1, 12, true),
+          run(5, "synchronize", 2 * D.DAY + 3 * D.HOUR, 5, 18, true),
         ],
       });
     }
@@ -3162,8 +3302,122 @@ const HANDLERS = {
     if (body.type === "listRequesters") return ok({ people: [] });
     return null;
   },
-  onboarding: (body) =>
-    body.type === "navigationSummary" ? ok({ attentionCount: 0 }) : null,
+  onboarding: (body) => {
+    if (body.type === "navigationSummary") return ok({ attentionCount: 0 });
+    if (body.type === "listDepartmentTasks") return ok({ tasks: [] });
+    if (body.type !== "listWorkspace") return null;
+    // Eintritt in 12 Tagen: Aufgaben teils überfällig, bald fällig, später
+    // und erledigt, damit die Gruppen der Karte sichtbar sind.
+    const day = (offset) => D.iso(offset * D.DAY).slice(0, 10);
+    const task = (n, title, offset, status, extra = {}) => ({
+      id: D.uid("0b0b0b0b", n),
+      title,
+      dueOn: day(offset),
+      responsibleName: "Mara Keller",
+      departmentId: null,
+      departmentName: null,
+      status,
+      canUpdate: true,
+      exception: null,
+      ...extra,
+    });
+    return ok({
+      permissions: { canRequest: true, canManage: true },
+      people: [{ id: D.uid("0c0c0c0c", 1), displayName: "Mara Keller" }],
+      agents: [
+        { id: D.uid("0c0c0c0c", 2), displayName: "Daniel Frei" },
+        { id: D.uid("0c0c0c0c", 1), displayName: "Mara Keller" },
+      ],
+      departments: [
+        {
+          id: D.uid("0f0f0f0f", 1),
+          name: "ICT",
+          agentIds: [D.uid("0c0c0c0c", 1), D.uid("0c0c0c0c", 2)],
+        },
+      ],
+      templates: [
+        { id: D.uid("0d0d0d0d", 1), key: "standard", name: "Standard" },
+      ],
+      entries: [
+        {
+          id: D.uid("0e0e0e0e", 1),
+          employeeName: "Lea Brunner",
+          startsOn: day(12),
+          organisationUnit: "Finanzen",
+          location: "Zürich, 3. OG",
+          managerName: "Thomas Huber",
+          ictResponsibleName: "Mara Keller",
+          ictResponsibleUserId: D.uid("0c0c0c0c", 1),
+          departmentId: D.uid("0f0f0f0f", 1),
+          departmentName: "ICT",
+          assignableAgentIds: [D.uid("0c0c0c0c", 1), D.uid("0c0c0c0c", 2)],
+          templateId: D.uid("0d0d0d0d", 1),
+          kind: "onboarding",
+          canEdit: true,
+          canAssign: true,
+          delegatedFor: null,
+          source: "email",
+          sourceTicketNumber: "ICT-2026-000150",
+          details: {
+            filledBy: "Thomas Huber",
+            supervisor: "Thomas Huber",
+            jobTitle: "Sachbearbeiterin Finanzen",
+            needsKey: true,
+            ictEquipment: "Notebook",
+            groupMailboxes: "keine Gruppenpostfächer",
+            functions: [],
+          },
+          tasks: [
+            task(1, "Gerät bereitstellen", -1, "in_progress", {
+              exception: {
+                ticketNumber: "ICT-2026-000141",
+                reason: "Lieferverzögerung",
+              },
+            }),
+            task(2, "Konto und Zugriffe einrichten", 3, "open"),
+            task(3, "Gruppen und Berechtigungen zuweisen", 5, "open"),
+            task(4, "Badge bereitstellen", 9, "open", {
+              responsibleName: "Peter Meier",
+              departmentName: "Infrastruktur",
+            }),
+            task(5, "Einführung und Übergabe bestätigen", 12, "open"),
+            task(6, "Arbeitsplatz vorbereiten", -3, "completed"),
+          ],
+        },
+        {
+          id: D.uid("0e0e0e0e", 2),
+          employeeName: "Sara Keller",
+          startsOn: day(20),
+          organisationUnit: "Internat",
+          location: "Zürich, 3. OG",
+          managerName: "Thomas Huber",
+          ictResponsibleName: "Mara Keller",
+          ictResponsibleUserId: D.uid("0c0c0c0c", 1),
+          departmentId: D.uid("0f0f0f0f", 1),
+          departmentName: "ICT",
+          assignableAgentIds: [D.uid("0c0c0c0c", 1), D.uid("0c0c0c0c", 2)],
+          templateId: null,
+          kind: "change",
+          changeTypes: ["name", "department"],
+          canEdit: true,
+          canAssign: true,
+          delegatedFor: null,
+          source: "manual",
+          sourceTicketNumber: null,
+          details: {
+            newName: "Sara Brunner",
+            previousDepartment: "Schule",
+            newDepartment: "Internat",
+          },
+          tasks: [
+            task(11, "Benutzerkonto auf den neuen Namen umbenennen", 17, "open"),
+            task(12, "E-Mail-Adresse anpassen, bisherige Adresse als Alias behalten", 17, "open"),
+            task(13, "Gruppen und Berechtigungen der neuen Abteilung zuweisen", 17, "open"),
+          ],
+        },
+      ],
+    });
+  },
   "event-spaces": (body) =>
     body.type === "navigationSummary" ? fail("feature_disabled", 403) : null,
   contracts: (body) => {
@@ -3258,6 +3512,22 @@ const HANDLERS = {
   },
   "requester-portal": (body, { persona }) => {
     if (body.type === "activeIncidentNotices") return ok({ notices: [] });
+    if (
+      body.type === "incidentPushSettings" ||
+      body.type === "saveIncidentPushSettings"
+    ) {
+      return ok({
+        enabled: true,
+        serviceIds: ["svc-mail", "svc-phone"],
+        services: [
+          { id: "svc-abacus", name: "Abacus" },
+          { id: "svc-mail", name: "E-Mail" },
+          { id: "svc-intranet", name: "Intranet" },
+          { id: "svc-phone", name: "Telefonie" },
+          { id: "svc-wlan", name: "WLAN" },
+        ],
+      });
+    }
     if (body.type === "ticketProgress") {
       const ticket = visibleTickets(persona).find(
         (t) => t.id === body.ticketId,

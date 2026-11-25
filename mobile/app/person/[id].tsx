@@ -194,6 +194,8 @@ export default function PersonScreen() {
   const renderTicket = (ticket: PersonTicket) => (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: !ticket.readable }}
+      disabled={!ticket.readable}
       key={ticket.id}
       onPress={() => openTicket(ticket.id)}
       style={styles.row}
@@ -206,8 +208,10 @@ export default function PersonScreen() {
         <Text numberOfLines={1} style={styles.rowMeta}>
           {[
             ticket.categoryName,
+            ticket.teamName ? `Team ${ticket.teamName}` : null,
             ticket.assignedAgentName ?? "Nicht zugewiesen",
             relativeDate(ticket.updatedAt),
+            ticket.readable ? null : "nur für dieses Team zu öffnen",
           ]
             .filter(Boolean)
             .join(" · ")}
@@ -293,7 +297,9 @@ export default function PersonScreen() {
                       style={styles.avatarPhoto}
                     />
                   ) : (
-                    <Text style={styles.avatarText}>{personInitials(name)}</Text>
+                    <Text style={styles.avatarText}>
+                      {personInitials(name)}
+                    </Text>
                   )}
                 </View>
                 <View style={styles.headCopy}>
@@ -575,7 +581,10 @@ export default function PersonScreen() {
                   {tickets.length === 0 ? (
                     <Text style={styles.muted}>
                       {data.tickets.length === 0
-                        ? tn(`${firstName} hat noch keine Tickets, die du sehen darfst.`, `${firstName} hat noch keine Tickets, die Sie sehen dürfen.`)
+                        ? tn(
+                            `${firstName} hat noch keine Tickets, die du sehen darfst.`,
+                            `${firstName} hat noch keine Tickets, die Sie sehen dürfen.`,
+                          )
                         : "Keine Tickets in dieser Auswahl."}
                     </Text>
                   ) : (

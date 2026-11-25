@@ -3,10 +3,12 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  FolderTree,
   FlaskConical,
   LoaderCircle,
   ListPlus,
   Pause,
+  KeyRound,
   Pencil,
   Play,
   Plus,
@@ -16,6 +18,7 @@ import {
   Trash2,
   Network,
 } from "lucide-react";
+import { ProjectLinkCard } from "./project-link-card";
 import {
   useCallback,
   useEffect,
@@ -24,6 +27,7 @@ import {
   useRef,
   useState,
   Fragment,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -41,6 +45,18 @@ import {
   formatMs,
   formatSince,
   connectedPorts,
+  deviceSections,
+  type DeviceSection,
+  type MonitoringDeviceRow,
+  type MonitoringGroup,
+  NO_GROUP_LABEL,
+  MAX_GROUP_DEPTH,
+  groupPath,
+  snmpProtocolLabel,
+  snmpSummaryLabel,
+  type MonitoringSnmpSummary,
+  orderedGroups,
+  groupServiceOptions,
   formatValue,
   guessCategory,
   LINK_SOURCE_LABELS,
@@ -286,6 +302,14 @@ function OverviewView({
   const [filter, setFilter] = useState<MonitoringState | "all">("all");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
+  // Categories of the devices: folded by default (opened ones are kept),
+  // assigning and managing. A search or state filter opens all of them.
+  const [openSections, setOpenSections] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const toggleSection = toggleIn(setOpenSections);
+  const [assigning, setAssigning] = useState(false);
+  const [managingGroups, setManagingGroups] = useState(false);
 
   const load = useCallback(() => {
     monitoringCall<MonitoringOverview>({ type: "overview", tenantId })
@@ -368,6 +392,19 @@ function OverviewView({
       ),
     [data, filter, search, sort],
   );
+  const groups = data?.groups ?? [];
+  const sections = useMemo(
+    () => deviceSections(devices, data?.groups ?? []),
+    [devices, data],
+  );
+  const filtering = search.trim() !== "" || filter !== "all";
+  const sectionCollapsed = (key: string) =>
+    !filtering && !openSections.has(key);
+  // A folded category also hides its subcategories.
+  const sectionHidden = (section: DeviceSection<MonitoringDeviceRow>) => {
+    if (section.label && sectionCollapsed(section.key)) return true;
+    return section.ancestors.some((id) => sectionCollapsed(id));
+  };
   const sortHeader = (key: DeviceSortKey, label: string) => (
     <th
       aria-sort={
@@ -412,14 +449,24 @@ function OverviewView({
           </p>
         </div>
         {data?.canManage ? (
-          <button
-            className="primary-button"
-            onClick={() => setAdding(true)}
-            type="button"
-          >
-            <Plus aria-hidden="true" size={16} />
-            Geräte hinzufügen
-          </button>
+          <div className="monitoring__actions">
+            <button
+              className="secondary-button"
+              onClick={() => setManagingGroups(true)}
+              type="button"
+            >
+              <FolderTree aria-hidden="true" size={16} />
+              Kategorien
+            </button>
+            <button
+              className="primary-button"
+              onClick={() => setAdding(true)}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={16} />
+              Geräte hinzufügen
+            </button>
+          </div>
         ) : null}
       </header>
 
@@ -658,6 +705,16 @@ function OverviewView({
                     >
                       <Play aria-hidden="true" size={15} /> Fortsetzen
                     </button>
+                    {chosenDevices.size > 0 ? (
+                      <button
+                        className="secondary-button"
+                        onClick={() => setAssigning(true)}
+                        type="button"
+                      >
+                        <FolderTree aria-hidden="true" size={15} /> Kategorie
+                        zuweisen
+                      </button>
+                    ) : null}
                     <button
                       className="text-button"
                       onClick={clearChosen}
@@ -709,138 +766,186 @@ function OverviewView({
                     </tr>
                   </thead>
                   <tbody>
-                    {devices.map((device) => {
-                      const open = expanded.has(device.assetId);
-                      const devicePaused = device.state === "paused";
-                      return (
-                        <Fragment key={device.assetId}>
-                          <tr>
-                            {data.canManage ? (
-                              <td className="monitoring-table__check">
-                                <input
-                                  aria-label={`${device.name} auswählen`}
-                                  checked={chosenDevices.has(device.assetId)}
-                                  onChange={() => toggleDevice(device.assetId)}
-                                  type="checkbox"
-                                />
-                              </td>
-                            ) : null}
-                            <td className="monitoring-table__toggle">
-                              <button
-                                aria-expanded={open}
-                                aria-label={
-                                  open
-                                    ? `Sensoren von ${device.name} zuklappen`
-                                    : `Sensoren von ${device.name} aufklappen`
-                                }
-                                className="monitoring-table__expand"
-                                onClick={() => toggleExpanded(device.assetId)}
-                                type="button"
-                              >
-                                {open ? (
-                                  <ChevronDown aria-hidden="true" size={16} />
-                                ) : (
-                                  <ChevronRight aria-hidden="true" size={16} />
-                                )}
-                              </button>
-                            </td>
-                            <td>
-                              <StateChip state={device.state} />
-                            </td>
-                            <td>
-                              <button
-                                className="text-button monitoring-table__name"
-                                onClick={() => onOpenDevice(device.assetId)}
-                                type="button"
-                              >
-                                {device.name}
-                              </button>
-                              <span className="monitoring-muted">
-                                {[
-                                  categoryText(
-                                    device.category,
-                                    device.categoryLabel,
-                                  ),
-                                  device.ipAddress ?? device.hostname,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
+                    {sections.flatMap((section) => [
+                      section.label &&
+                      !section.ancestors.some((id) => sectionCollapsed(id)) ? (
+                        <tr
+                          className={`monitoring-table__group${section.depth ? " monitoring-table__group--sub" : ""}`}
+                          key={`group:${section.key}`}
+                          style={depthStyle(section.depth)}
+                        >
+                          <td colSpan={data.canManage ? 8 : 6}>
+                            <button
+                              aria-expanded={!sectionCollapsed(section.key)}
+                              onClick={() => toggleSection(section.key)}
+                              type="button"
+                            >
+                              <ChevronDown aria-hidden="true" size={15} />
+                              <span>{section.label}</span>
+                              <span className="monitoring-table__group-count">
+                                {section.total}
                               </span>
-                              {devicePaused && device.pause ? (
-                                <span className="monitoring-pause-note">
-                                  {pauseText(device.pause)}
-                                </span>
-                              ) : null}
-                            </td>
-                            <td>{sensorCountsText(device.counts)}</td>
-                            <td>{formatMs(device.responseMs)}</td>
-                            <td className="monitoring-muted">
-                              {formatAgo(device.lastCheckAt, now)}
-                            </td>
-                            {data.canManage ? (
-                              <td className="monitoring-table__action">
-                                {device.sensorCount > 0 ? (
+                            </button>
+                          </td>
+                        </tr>
+                      ) : null,
+                      ...(sectionHidden(section) ? [] : section.devices).map(
+                        (device) => {
+                          const open = expanded.has(device.assetId);
+                          const devicePaused = device.state === "paused";
+                          return (
+                            <Fragment key={device.assetId}>
+                              <tr
+                                className={
+                                  section.depth > 0
+                                    ? "monitoring-table__row--sub"
+                                    : undefined
+                                }
+                                style={depthStyle(section.depth)}
+                              >
+                                {data.canManage ? (
+                                  <td className="monitoring-table__check">
+                                    <input
+                                      aria-label={`${device.name} auswählen`}
+                                      checked={chosenDevices.has(
+                                        device.assetId,
+                                      )}
+                                      onChange={() =>
+                                        toggleDevice(device.assetId)
+                                      }
+                                      type="checkbox"
+                                    />
+                                  </td>
+                                ) : null}
+                                <td className="monitoring-table__toggle">
                                   <button
-                                    className="text-button"
-                                    disabled={pausing !== null}
+                                    aria-expanded={open}
+                                    aria-label={
+                                      open
+                                        ? `Sensoren von ${device.name} zuklappen`
+                                        : `Sensoren von ${device.name} aufklappen`
+                                    }
+                                    className="monitoring-table__expand"
                                     onClick={() =>
-                                      void setPaused(
-                                        `device:${device.assetId}`,
-                                        {
-                                          type: "pauseDevice",
-                                          assetId: device.assetId,
-                                          paused: !devicePaused,
-                                        },
-                                        `«${device.name}»`,
-                                      )
+                                      toggleExpanded(device.assetId)
                                     }
                                     type="button"
                                   >
-                                    {devicePaused ? (
-                                      <Play aria-hidden="true" size={14} />
+                                    {open ? (
+                                      <ChevronDown
+                                        aria-hidden="true"
+                                        size={16}
+                                      />
                                     ) : (
-                                      <Pause aria-hidden="true" size={14} />
+                                      <ChevronRight
+                                        aria-hidden="true"
+                                        size={16}
+                                      />
                                     )}
-                                    {pausing === `device:${device.assetId}`
-                                      ? "…"
-                                      : devicePaused
-                                        ? "Fortsetzen"
-                                        : "Pausieren"}
                                   </button>
+                                </td>
+                                <td>
+                                  <StateChip state={device.state} />
+                                </td>
+                                <td>
+                                  <button
+                                    className="text-button monitoring-table__name"
+                                    onClick={() => onOpenDevice(device.assetId)}
+                                    type="button"
+                                  >
+                                    {device.name}
+                                  </button>
+                                  <span className="monitoring-muted">
+                                    {[
+                                      categoryText(
+                                        device.category,
+                                        device.categoryLabel,
+                                      ),
+                                      device.ipAddress ?? device.hostname,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </span>
+                                  {devicePaused && device.pause ? (
+                                    <span className="monitoring-pause-note">
+                                      {pauseText(device.pause)}
+                                    </span>
+                                  ) : null}
+                                </td>
+                                <td>{sensorCountsText(device.counts)}</td>
+                                <td>{formatMs(device.responseMs)}</td>
+                                <td className="monitoring-muted">
+                                  {formatAgo(device.lastCheckAt, now)}
+                                </td>
+                                {data.canManage ? (
+                                  <td className="monitoring-table__action">
+                                    {device.sensorCount > 0 ? (
+                                      <button
+                                        className="text-button"
+                                        disabled={pausing !== null}
+                                        onClick={() =>
+                                          void setPaused(
+                                            `device:${device.assetId}`,
+                                            {
+                                              type: "pauseDevice",
+                                              assetId: device.assetId,
+                                              paused: !devicePaused,
+                                            },
+                                            `«${device.name}»`,
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        {devicePaused ? (
+                                          <Play aria-hidden="true" size={14} />
+                                        ) : (
+                                          <Pause aria-hidden="true" size={14} />
+                                        )}
+                                        {pausing === `device:${device.assetId}`
+                                          ? "…"
+                                          : devicePaused
+                                            ? "Fortsetzen"
+                                            : "Pausieren"}
+                                      </button>
+                                    ) : null}
+                                  </td>
                                 ) : null}
-                              </td>
-                            ) : null}
-                          </tr>
-                          {open ? (
-                            <tr className="monitoring-table__sensors">
-                              <td colSpan={data.canManage ? 8 : 6}>
-                                <DeviceSensorList
-                                  assetId={device.assetId}
-                                  canManage={data.canManage}
-                                  chosen={chosenSensors}
-                                  now={now}
-                                  onChoose={toggleSensor}
-                                  onPause={(sensorId, paused, name) =>
-                                    void setPaused(
-                                      `sensor:${sensorId}`,
-                                      {
-                                        type: "pauseSensor",
-                                        sensorId,
-                                        paused,
-                                      },
-                                      `«${name}» (${device.name})`,
-                                    )
-                                  }
-                                  pausing={pausing}
-                                  revision={sensorRevision}
-                                  tenantId={tenantId}
-                                />
-                              </td>
-                            </tr>
-                          ) : null}
-                        </Fragment>
-                      );
-                    })}
+                              </tr>
+                              {open ? (
+                                <tr
+                                  className={`monitoring-table__sensors${section.depth > 0 ? " monitoring-table__row--sub" : ""}`}
+                                  style={depthStyle(section.depth)}
+                                >
+                                  <td colSpan={data.canManage ? 8 : 6}>
+                                    <DeviceSensorList
+                                      assetId={device.assetId}
+                                      canManage={data.canManage}
+                                      chosen={chosenSensors}
+                                      now={now}
+                                      onChoose={toggleSensor}
+                                      onPause={(sensorId, paused, name) =>
+                                        void setPaused(
+                                          `sensor:${sensorId}`,
+                                          {
+                                            type: "pauseSensor",
+                                            sensorId,
+                                            paused,
+                                          },
+                                          `«${name}» (${device.name})`,
+                                        )
+                                      }
+                                      pausing={pausing}
+                                      revision={sensorRevision}
+                                      tenantId={tenantId}
+                                    />
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </Fragment>
+                          );
+                        },
+                      ),
+                    ])}
                   </tbody>
                 </table>
               </div>
@@ -849,6 +954,37 @@ function OverviewView({
         </>
       ) : null}
 
+      {assigning && data ? (
+        <AssignGroupDialog
+          assetIds={[...chosenDevices]}
+          currentGroupId={(() => {
+            // Vorauswahl, wenn alle gewählten Geräte dieselbe Kategorie haben.
+            const ids = new Set(
+              data.devices
+                .filter((device) => chosenDevices.has(device.assetId))
+                .map((device) => device.groupId ?? null),
+            );
+            return ids.size === 1 ? ([...ids][0] ?? null) : null;
+          })()}
+          groups={groups}
+          onClose={() => setAssigning(false)}
+          onSaved={() => {
+            setAssigning(false);
+            clearChosen();
+            load();
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
+      {managingGroups && data ? (
+        <GroupsDialog
+          devices={data.devices}
+          groups={groups}
+          onChanged={load}
+          onClose={() => setManagingGroups(false)}
+          tenantId={tenantId}
+        />
+      ) : null}
       {adding && data ? (
         <AddDeviceDialog
           agents={data.agents}
@@ -1548,6 +1684,7 @@ function ProbeCard({
       {editing ? (
         <AgentDialog
           agent={editing}
+          canManageSnmp={data.canManageSnmp === true}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -1654,6 +1791,7 @@ function DeviceView({
   const [draft, setDraft] = useState<SensorDraft | null>(null);
   const [addingPorts, setAddingPorts] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [snmpOpen, setSnmpOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState<Confirmation | null>(null);
   const [simulating, setSimulating] = useState(false);
@@ -1853,6 +1991,17 @@ function DeviceView({
                   <Pencil aria-hidden="true" size={16} />
                   Bearbeiten
                 </button>
+                {data.canManageSnmp ? (
+                  <button
+                    className="secondary-button"
+                    onClick={() => setSnmpOpen(true)}
+                    title={snmpSummaryLabel(data.snmp)}
+                    type="button"
+                  >
+                    <KeyRound aria-hidden="true" size={16} />
+                    SNMP
+                  </button>
+                ) : null}
                 <button
                   className="secondary-button"
                   disabled={busy}
@@ -2159,6 +2308,20 @@ function DeviceView({
             load();
           }}
           tenantId={tenantId}
+        />
+      ) : null}
+      {snmpOpen && data ? (
+        <SnmpDialog
+          current={data.snmp ?? null}
+          hint={`Zugangsdaten für «${data.device.name}», mit Vorrang vor dem Standard der Sonde und der config.json.`}
+          onClose={() => setSnmpOpen(false)}
+          onSaved={() => {
+            setSnmpOpen(false);
+            load();
+          }}
+          target={{ assetId }}
+          tenantId={tenantId}
+          title="SNMP-Zugangsdaten"
         />
       ) : null}
       {addingPorts && data ? (
@@ -2922,7 +3085,7 @@ function SensorDialog({
   draft: SensorDraft;
   agents: MonitoringAgent[];
   /** Services of the status page that can be linked. */
-  services: { id: string; name: string }[];
+  services: { id: string; name: string; category?: string | null }[];
   /** Names of the services linked to the device (apply without own choice). */
   deviceServices: string[];
   onClose: () => void;
@@ -2931,6 +3094,10 @@ function SensorDialog({
   const [draft, setDraft] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [serviceQuery, setServiceQuery] = useState("");
+  const serviceGroups = groupServiceOptions(services, serviceQuery);
+  // Headings only when the services have categories at all.
+  const grouped = services.some((service) => service.category);
   const change = (patch: Partial<SensorDraft>) =>
     setDraft((current) => ({ ...current, ...patch }));
 
@@ -3043,28 +3210,92 @@ function SensorDialog({
                   ? `Ohne Auswahl gelten die Dienste des Geräts: ${deviceServices.join(", ")}.`
                   : "Ohne Auswahl ist bei einem Ausfall kein Dienst betroffen (am Gerät ist keiner hinterlegt)."}
             </p>
+            {draft.serviceIds?.length ? (
+              <ul
+                aria-label="Gewählte Dienste"
+                className="monitoring-services__chosen"
+              >
+                {services
+                  .filter((service) => draft.serviceIds!.includes(service.id))
+                  .map((service) => (
+                    <li key={service.id}>
+                      {service.name}
+                      <button
+                        aria-label={`${service.name} entfernen`}
+                        onClick={() =>
+                          change({
+                            serviceIds: draft.serviceIds!.filter(
+                              (id) => id !== service.id,
+                            ),
+                          })
+                        }
+                        type="button"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            ) : null}
+            <label className="monitoring__search monitoring-services__search">
+              <Search aria-hidden="true" size={15} />
+              <span className="sr-only">Dienst suchen</span>
+              <input
+                onChange={(event) => setServiceQuery(event.target.value)}
+                placeholder={`In ${services.length} Diensten suchen (Name oder Kategorie)`}
+                type="search"
+                value={serviceQuery}
+              />
+            </label>
             <div className="monitoring-services__list">
-              {services.map((service) => {
-                const chosen = draft.serviceIds?.includes(service.id) ?? false;
-                return (
-                  <label className="monitoring-check" key={service.id}>
-                    <input
-                      checked={chosen}
-                      onChange={() =>
-                        change({
-                          serviceIds: chosen
-                            ? (draft.serviceIds ?? []).filter(
-                                (id) => id !== service.id,
-                              )
-                            : [...(draft.serviceIds ?? []), service.id],
-                        })
-                      }
-                      type="checkbox"
-                    />
-                    <span>{service.name}</span>
-                  </label>
-                );
-              })}
+              {serviceGroups.map((group) => (
+                <div
+                  className="monitoring-services__group"
+                  key={group.category}
+                >
+                  {grouped ? (
+                    <div className="monitoring-services__category">
+                      <span>{group.category}</span>
+                      <span>
+                        {
+                          group.services.filter((service) =>
+                            draft.serviceIds?.includes(service.id),
+                          ).length
+                        }{" "}
+                        / {group.services.length}
+                      </span>
+                    </div>
+                  ) : null}
+                  {group.services.map((service) => {
+                    const chosen =
+                      draft.serviceIds?.includes(service.id) ?? false;
+                    return (
+                      <label
+                        className="monitoring-services__item"
+                        key={service.id}
+                      >
+                        <input
+                          checked={chosen}
+                          onChange={() =>
+                            change({
+                              serviceIds: chosen
+                                ? (draft.serviceIds ?? []).filter(
+                                    (id) => id !== service.id,
+                                  )
+                                : [...(draft.serviceIds ?? []), service.id],
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        <span>{service.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+              {serviceGroups.length === 0 ? (
+                <p className="monitoring-muted">Kein Dienst passt zur Suche.</p>
+              ) : null}
             </div>
           </fieldset>
         ) : null}
@@ -3072,6 +3303,15 @@ function SensorDialog({
           <p className="ticket-detail-message error" role="alert">
             {error}
           </p>
+        ) : null}
+        {draft.id ? (
+          <ProjectLinkCard
+            compact
+            heading="Projekte"
+            targetId={draft.id}
+            targetKind="monitoring_sensor"
+            tenantId={tenantId}
+          />
         ) : null}
         <div className="monitoring-form__actions">
           <button className="secondary-button" onClick={onClose} type="button">
@@ -4173,14 +4413,258 @@ function ConnectionsCard({
   );
 }
 
-/** Name and state of a probe, and a new token for it. */
-function AgentDialog({
+const SNMP_AUTH_OPTIONS = [
+  "sha256",
+  "sha",
+  "sha224",
+  "sha384",
+  "sha512",
+  "md5",
+];
+const SNMP_PRIV_OPTIONS = ["aes", "aes256b", "aes256r", "des"];
+
+/**
+ * SNMP credentials of a device or the default of a probe. Stored secrets are
+ * never shown: an empty key field keeps the stored key.
+ */
+function SnmpDialog({
   tenantId,
-  agent,
+  target,
+  title,
+  hint,
+  current,
   onClose,
   onSaved,
 }: {
   tenantId: string;
+  target: { assetId: string } | { agentId: string };
+  title: string;
+  hint: string;
+  current: MonitoringSnmpSummary | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [version, setVersion] = useState<"v2c" | "v3">(
+    current?.version ?? "v3",
+  );
+  const [community, setCommunity] = useState("");
+  const [user, setUser] = useState(current?.user ?? "");
+  const [authProtocol, setAuthProtocol] = useState(
+    current ? (current.authProtocol ?? "") : "sha256",
+  );
+  const [authKey, setAuthKey] = useState("");
+  const [privProtocol, setPrivProtocol] = useState(
+    current ? (current.privProtocol ?? "") : "aes",
+  );
+  const [privKey, setPrivKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  // A stored secret can be kept only while the version stays the same.
+  const stored = current?.version === version ? current : null;
+  const keyPlaceholder = (has: boolean) =>
+    has ? "Gespeichert – leer lassen, um ihn zu behalten" : "";
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await monitoringCall({
+        type: "saveSnmp",
+        tenantId,
+        ...target,
+        credential:
+          version === "v2c"
+            ? { version, community: community || null }
+            : {
+                version,
+                user,
+                authProtocol: authProtocol || null,
+                authKey: authProtocol ? authKey || null : null,
+                privProtocol: authProtocol ? privProtocol || null : null,
+                privKey: authProtocol && privProtocol ? privKey || null : null,
+              },
+      });
+      onSaved();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(false);
+    }
+  };
+  const remove = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await monitoringCall({ type: "deleteSnmp", tenantId, ...target });
+      onSaved();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog onClose={onClose} title={title}>
+      <form
+        autoComplete="off"
+        className="monitoring-form"
+        onSubmit={(event) => void submit(event)}
+      >
+        <p className="monitoring-muted">{hint}</p>
+        <p className="monitoring-muted">
+          Gespeichert: <strong>{snmpSummaryLabel(current)}</strong>
+        </p>
+        <label className="monitoring-field">
+          <span>Version</span>
+          <select
+            onChange={(event) =>
+              setVersion(event.target.value === "v2c" ? "v2c" : "v3")
+            }
+            value={version}
+          >
+            <option value="v3">SNMP v3 (empfohlen)</option>
+            <option value="v2c">SNMP v2c</option>
+          </select>
+        </label>
+        {version === "v2c" ? (
+          <label className="monitoring-field">
+            <span>Community</span>
+            <input
+              autoComplete="new-password"
+              maxLength={128}
+              onChange={(event) => setCommunity(event.target.value)}
+              placeholder={keyPlaceholder(!!stored)}
+              required={!stored}
+              type="password"
+              value={community}
+            />
+          </label>
+        ) : (
+          <>
+            <label className="monitoring-field">
+              <span>Benutzer</span>
+              <input
+                autoComplete="off"
+                maxLength={64}
+                onChange={(event) => setUser(event.target.value)}
+                required
+                type="text"
+                value={user}
+              />
+            </label>
+            <label className="monitoring-field">
+              <span>Authentifizierung</span>
+              <select
+                onChange={(event) => setAuthProtocol(event.target.value)}
+                value={authProtocol}
+              >
+                <option value="">Keine</option>
+                {SNMP_AUTH_OPTIONS.map((protocol) => (
+                  <option key={protocol} value={protocol}>
+                    {snmpProtocolLabel(protocol)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {authProtocol ? (
+              <>
+                <label className="monitoring-field">
+                  <span>Authentifizierungsschlüssel</span>
+                  <input
+                    autoComplete="new-password"
+                    maxLength={128}
+                    minLength={8}
+                    onChange={(event) => setAuthKey(event.target.value)}
+                    placeholder={keyPlaceholder(!!stored?.authProtocol)}
+                    required={!stored?.authProtocol}
+                    type="password"
+                    value={authKey}
+                  />
+                </label>
+                <label className="monitoring-field">
+                  <span>Verschlüsselung</span>
+                  <select
+                    onChange={(event) => setPrivProtocol(event.target.value)}
+                    value={privProtocol}
+                  >
+                    <option value="">Keine</option>
+                    {SNMP_PRIV_OPTIONS.map((protocol) => (
+                      <option key={protocol} value={protocol}>
+                        {snmpProtocolLabel(protocol)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {privProtocol ? (
+                  <label className="monitoring-field">
+                    <span>Verschlüsselungsschlüssel</span>
+                    <input
+                      autoComplete="new-password"
+                      maxLength={128}
+                      minLength={8}
+                      onChange={(event) => setPrivKey(event.target.value)}
+                      placeholder={keyPlaceholder(!!stored?.privProtocol)}
+                      required={!stored?.privProtocol}
+                      type="password"
+                      value={privKey}
+                    />
+                  </label>
+                ) : null}
+              </>
+            ) : null}
+          </>
+        )}
+        <p className="monitoring-muted">
+          Die Schlüssel werden verschlüsselt gespeichert und nie wieder
+          angezeigt. Die Sonde (ab Version 1.4.0) übernimmt sie innert einer
+          Minute; Einträge aus nextDesk haben Vorrang vor der config.json.
+        </p>
+        {error ? <p className="form-error">{error}</p> : null}
+        <div className="monitoring-form__actions">
+          {current ? (
+            confirmRemove ? (
+              <button
+                className="primary-button monitoring-danger"
+                disabled={saving}
+                onClick={() => void remove()}
+                type="button"
+              >
+                Wirklich entfernen
+              </button>
+            ) : (
+              <button
+                className="secondary-button"
+                disabled={saving}
+                onClick={() => setConfirmRemove(true)}
+                type="button"
+              >
+                Entfernen
+              </button>
+            )
+          ) : null}
+          <button className="secondary-button" onClick={onClose} type="button">
+            Abbrechen
+          </button>
+          <button className="primary-button" disabled={saving} type="submit">
+            Speichern
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Name and state of a probe, and a new token for it. */
+function AgentDialog({
+  tenantId,
+  agent,
+  canManageSnmp,
+  onClose,
+  onSaved,
+}: {
+  tenantId: string;
+  canManageSnmp: boolean;
   agent: MonitoringAgent;
   onClose: () => void;
   onSaved: () => void;
@@ -4192,6 +4676,7 @@ function AgentDialog({
   const [confirmToken, setConfirmToken] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [snmpOpen, setSnmpOpen] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -4229,6 +4714,20 @@ function AgentDialog({
     }
   };
 
+  if (snmpOpen) {
+    return (
+      <SnmpDialog
+        current={agent.snmp ?? null}
+        hint={`Standard der Sonde «${agent.name}» für alle Geräte ohne eigene Zugangsdaten.`}
+        onClose={() => setSnmpOpen(false)}
+        onSaved={onSaved}
+        target={{ agentId: agent.id }}
+        tenantId={tenantId}
+        title="SNMP-Standard der Sonde"
+      />
+    );
+  }
+
   return (
     <Dialog
       onClose={token ? onSaved : onClose}
@@ -4264,6 +4763,26 @@ function AgentDialog({
             </span>
           </span>
         </label>
+        {canManageSnmp ? (
+          <div className="monitoring-package">
+            <div>
+              <strong>SNMP-Standard</strong>
+              <span className="monitoring-muted">
+                {snmpSummaryLabel(agent.snmp)}. Gilt für alle Geräte dieser
+                Sonde ohne eigene Zugangsdaten.
+              </span>
+            </div>
+            <button
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => setSnmpOpen(true)}
+              type="button"
+            >
+              <KeyRound aria-hidden="true" size={16} />
+              {agent.snmp ? "Ändern" : "Festlegen"}
+            </button>
+          </div>
+        ) : null}
         <div className="monitoring-package">
           <div>
             <strong>Token</strong>
@@ -4438,6 +4957,455 @@ function RemoveAgentDialog({
           >
             <Trash2 aria-hidden="true" size={16} />
             Sonde löschen
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+const NEW_GROUP = "new";
+
+/** Indentation of a category level in the device list. */
+function depthStyle(depth: number): CSSProperties {
+  return { "--monitoring-depth": depth } as CSSProperties;
+}
+
+/** Puts the chosen devices into a category or subcategory. */
+function AssignGroupDialog({
+  tenantId,
+  assetIds,
+  currentGroupId,
+  groups,
+  onClose,
+  onSaved,
+}: {
+  tenantId: string;
+  assetIds: string[];
+  /** Category all chosen devices share, if any: preselected. */
+  currentGroupId: string | null;
+  groups: MonitoringGroup[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  // One choice per level: «» = none, NEW_GROUP = create, else a group id.
+  const tree = orderedGroups(groups);
+  const [levels, setLevels] = useState<{ id: string; name: string }[]>(() => {
+    const current = tree.find((group) => group.id === currentGroupId);
+    if (current) {
+      return [...current.ancestors, current.id].map((id) => ({ id, name: "" }));
+    }
+    return [{ id: groups.length ? "" : NEW_GROUP, name: "" }];
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // The chosen levels and, while there is room, one more to go deeper.
+  const last = levels[levels.length - 1];
+  const shown =
+    last && last.id !== "" && levels.length < MAX_GROUP_DEPTH
+      ? [...levels, { id: "", name: "" }]
+      : levels;
+  const setLevel = (index: number, patch: { id?: string; name?: string }) =>
+    setLevels(
+      patch.id !== undefined
+        ? [
+            ...levels.slice(0, index),
+            ...(patch.id === "" && index > 0
+              ? []
+              : [{ id: patch.id, name: "" }]),
+          ]
+        : shown
+            .slice(0, Math.max(levels.length, index + 1))
+            .map((level, position) =>
+              position === index ? { ...level, name: patch.name ?? "" } : level,
+            ),
+    );
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      let target: string | null = null;
+      for (const level of levels) {
+        if (level.id === "") break;
+        if (level.id === NEW_GROUP) {
+          target = (
+            await monitoringCall<{ groupId: string }>({
+              type: "saveGroup",
+              tenantId,
+              groupId: null,
+              name: level.name,
+              parentId: target,
+            })
+          ).groupId;
+        } else {
+          target = level.id;
+        }
+      }
+      await monitoringCall({
+        type: "assignGroup",
+        tenantId,
+        assetIds,
+        groupId: target,
+      });
+      onSaved();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(false);
+    }
+  };
+  return (
+    <Dialog onClose={onClose} title="Kategorie zuweisen">
+      <form
+        className="monitoring-form"
+        onSubmit={(event) => void submit(event)}
+      >
+        <p className="monitoring-muted">
+          {assetIds.length === 1
+            ? "Das gewählte Gerät"
+            : `Die ${assetIds.length} gewählten Geräte`}{" "}
+          einer Kategorie oder Unterkategorie zuweisen. Die Art der Geräte
+          bleibt unverändert.
+        </p>
+        {shown.map((level, index) => {
+          const parent = index > 0 ? shown[index - 1]!.id : null;
+          const options = groups
+            .filter((group) =>
+              index === 0
+                ? group.parentId === null
+                : parent !== NEW_GROUP && group.parentId === parent,
+            )
+            .sort((a, b) =>
+              a.name.localeCompare(b.name, "de", { numeric: true }),
+            );
+          return (
+            <Fragment key={index}>
+              <label className="monitoring-field">
+                <span>
+                  {index === 0 ? "Kategorie" : "Unterkategorie (optional)"}
+                </span>
+                <select
+                  autoFocus={index === 0}
+                  onChange={(event) =>
+                    setLevel(index, { id: event.target.value })
+                  }
+                  value={level.id}
+                >
+                  <option value="">
+                    {index === 0
+                      ? NO_GROUP_LABEL
+                      : "Keine – direkt in der Kategorie darüber"}
+                  </option>
+                  {options.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                  <option value={NEW_GROUP}>
+                    {index === 0
+                      ? "Neue Kategorie erstellen …"
+                      : "Neue Unterkategorie erstellen …"}
+                  </option>
+                </select>
+              </label>
+              {level.id === NEW_GROUP ? (
+                <label className="monitoring-field">
+                  <span>
+                    {index === 0
+                      ? "Name der neuen Kategorie"
+                      : "Name der neuen Unterkategorie"}
+                  </span>
+                  <input
+                    maxLength={80}
+                    onChange={(event) =>
+                      setLevel(index, { name: event.target.value })
+                    }
+                    placeholder={
+                      index === 0 ? "z. B. Standort Baar" : "z. B. Netzwerk"
+                    }
+                    required
+                    type="text"
+                    value={level.name}
+                  />
+                </label>
+              ) : null}
+            </Fragment>
+          );
+        })}
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="monitoring-form__actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            Abbrechen
+          </button>
+          <button className="primary-button" disabled={saving} type="submit">
+            Zuweisen
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Categories and subcategories: create, rename, move and delete. */
+function GroupsDialog({
+  tenantId,
+  groups,
+  devices,
+  onChanged,
+  onClose,
+}: {
+  tenantId: string;
+  groups: MonitoringGroup[];
+  devices: MonitoringDeviceRow[];
+  onChanged: () => void;
+  onClose: () => void;
+}) {
+  const [editing, setEditing] = useState<{
+    id: string | null;
+    name: string;
+    parentId: string;
+  } | null>(null);
+  const [removing, setRemoving] = useState<MonitoringGroup | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const run = (call: Promise<unknown>, done: () => void) => {
+    setSaving(true);
+    setError(null);
+    call
+      .then(() => {
+        done();
+        onChanged();
+      })
+      .catch((failure) => setError(message(failure)))
+      .finally(() => setSaving(false));
+  };
+  const tree = orderedGroups(groups);
+  // A category with everything below it.
+  const within = (id: string) =>
+    new Set([
+      id,
+      ...tree
+        .filter((entry) => entry.ancestors.includes(id))
+        .map((entry) => entry.id),
+    ]);
+  const count = (group: MonitoringGroup) => {
+    const ids = within(group.id);
+    return devices.filter(
+      (device) => !!device.groupId && ids.has(device.groupId),
+    ).length;
+  };
+  // Levels below a category (0 = none): limits where it can be moved to.
+  const levelsBelow = (id: string) => {
+    const own = tree.find((entry) => entry.id === id)?.depth ?? 0;
+    return Math.max(
+      0,
+      ...tree
+        .filter((entry) => entry.ancestors.includes(id))
+        .map((entry) => entry.depth - own),
+    );
+  };
+  const hasChildren = (id: string | null) =>
+    id !== null && groups.some((group) => group.parentId === id);
+  return (
+    <Dialog onClose={onClose} title="Kategorien der Geräte">
+      <div className="monitoring-form">
+        <p className="monitoring-muted">
+          Kategorien gliedern die Geräteliste, zum Beispiel «Standort → Netzwerk
+          → Switch» (bis zu vier Ebenen). Zugewiesen werden Geräte in der Liste
+          über die Auswahl und «Kategorie zuweisen».
+        </p>
+        {groups.length === 0 ? (
+          <p className="monitoring__empty">Noch keine Kategorie angelegt.</p>
+        ) : (
+          <ul className="monitoring-groups">
+            {tree.map((group) => (
+              <li
+                className={group.depth ? "monitoring-groups__child" : undefined}
+                key={group.id}
+                style={depthStyle(group.depth)}
+              >
+                <span>
+                  <strong>{group.name}</strong>
+                  <span className="monitoring-muted">
+                    {count(group) === 1 ? "1 Gerät" : `${count(group)} Geräte`}
+                  </span>
+                </span>
+                <span className="monitoring-table__actions">
+                  {group.depth < MAX_GROUP_DEPTH - 1 ? (
+                    <button
+                      aria-label={`Unterkategorie zu ${group.name} hinzufügen`}
+                      className="icon-button"
+                      onClick={() =>
+                        setEditing({ id: null, name: "", parentId: group.id })
+                      }
+                      title="Unterkategorie hinzufügen"
+                      type="button"
+                    >
+                      <Plus aria-hidden="true" size={16} />
+                    </button>
+                  ) : null}
+                  <button
+                    aria-label={`${group.name} bearbeiten`}
+                    className="icon-button"
+                    onClick={() =>
+                      setEditing({
+                        id: group.id,
+                        name: group.name,
+                        parentId: group.parentId ?? "",
+                      })
+                    }
+                    title="Bearbeiten"
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={16} />
+                  </button>
+                  <button
+                    aria-label={`${group.name} löschen`}
+                    className="icon-button"
+                    onClick={() => setRemoving(group)}
+                    title="Löschen"
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={16} />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {removing ? (
+          <div className="ticket-detail-message error" role="alert">
+            <p>
+              «{removing.name}»
+              {hasChildren(removing.id) ? " samt Unterkategorien" : ""} löschen?
+              Die Geräte bleiben überwacht und stehen danach ohne Kategorie da.
+            </p>
+            <div className="monitoring-form__actions">
+              <button
+                className="secondary-button"
+                onClick={() => setRemoving(null)}
+                type="button"
+              >
+                Abbrechen
+              </button>
+              <button
+                className="primary-button monitoring-danger"
+                disabled={saving}
+                onClick={() =>
+                  run(
+                    monitoringCall({
+                      type: "deleteGroup",
+                      tenantId,
+                      groupId: removing.id,
+                    }),
+                    () => setRemoving(null),
+                  )
+                }
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={16} />
+                Löschen
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {editing ? (
+          <form
+            className="monitoring-groups__form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              run(
+                monitoringCall({
+                  type: "saveGroup",
+                  tenantId,
+                  groupId: editing.id,
+                  name: editing.name,
+                  parentId: editing.parentId || null,
+                }),
+                () => setEditing(null),
+              );
+            }}
+          >
+            <label className="monitoring-field">
+              <span>{editing.id ? "Name" : "Name der neuen Kategorie"}</span>
+              <input
+                autoFocus
+                maxLength={80}
+                onChange={(event) =>
+                  setEditing({ ...editing, name: event.target.value })
+                }
+                required
+                type="text"
+                value={editing.name}
+              />
+            </label>
+            {
+              <label className="monitoring-field">
+                <span>Unterkategorie von</span>
+                <select
+                  onChange={(event) =>
+                    setEditing({ ...editing, parentId: event.target.value })
+                  }
+                  value={editing.parentId}
+                >
+                  <option value="">Keine – eigene Kategorie</option>
+                  {tree
+                    .filter(
+                      (group) =>
+                        // Not below itself, and not deeper than allowed.
+                        !(editing.id && within(editing.id).has(group.id)) &&
+                        group.depth +
+                          1 +
+                          (editing.id ? levelsBelow(editing.id) : 0) <
+                          MAX_GROUP_DEPTH,
+                    )
+                    .map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {groupPath(groups, group.id)}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            }
+            <div className="monitoring-form__actions">
+              <button
+                className="secondary-button"
+                onClick={() => setEditing(null)}
+                type="button"
+              >
+                Abbrechen
+              </button>
+              <button
+                className="primary-button"
+                disabled={saving}
+                type="submit"
+              >
+                Speichern
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            className="secondary-button monitoring-form__all"
+            onClick={() => setEditing({ id: null, name: "", parentId: "" })}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} />
+            Kategorie hinzufügen
+          </button>
+        )}
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="monitoring-form__actions">
+          <button className="primary-button" onClick={onClose} type="button">
+            Fertig
           </button>
         </div>
       </div>

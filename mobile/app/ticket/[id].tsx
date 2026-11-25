@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
+  Image,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -95,6 +97,8 @@ import {
 import {
   listWatchedTicketIds,
   setTicketWatched,
+  forwardTicket,
+  parseForwardRecipients,
 } from "@/lib/mobile-ticket-actions";
 import {
   hapticError,
@@ -113,6 +117,7 @@ import {
   saveMobileTicketDraft,
   updateMobileTicket,
   updateMobileTicketCategory,
+  updateMobileTicketTeam,
   type MobileTicketDetail,
   type TicketRequester,
   type TicketCommentVisibility,
@@ -120,6 +125,22 @@ import {
 import { recordRecentItem } from "@/lib/recent-items";
 import { draftRestoredLabel, pickNewestDraft } from "@/lib/recent-items-model";
 import { tn } from "@/lib/formality";
+import { mentionedAgentIds } from "@/lib/ticket-mentions";
+import {
+  parseTicketSplitNote,
+  ticketSplitNoteText,
+} from "@/lib/ticket-split-note";
+import {
+  presenceInitials,
+  refreshTicketPresence,
+  type TicketPresencePerson,
+} from "@/lib/ticket-presence";
+import { NextDeskRequestError } from "@/lib/nextdesk-error-messages";
+import {
+  getMobileTicketSupportLevel,
+  handOverMobileTicketLevel,
+  type MobileSupportLevel,
+} from "@/lib/support-levels";
 
 /** A file picked for the next message; uploaded when the message is sent. */
 type PickedMessageFile = PendingMessageAttachment & {
@@ -351,9 +372,9 @@ export default function TicketDetailScreen() {
   const [editingField, setEditingField] = useState<
     "subject" | "description" | "requester" | null
   >(null);
-  const [selection, setSelection] = useState<"status" | "priority" | null>(
-    null,
-  );
+  const [selection, setSelection] = useState<
+    "status" | "priority" | "team" | null
+  >(null);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const [categorySelectionStep, setCategorySelectionStep] = useState<
     "category" | "subcategory"
@@ -417,6 +438,56 @@ export default function TicketDetailScreen() {
   );
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [reopenSheetOpen, setReopenSheetOpen] = useState(false);
+  // «Details» ist in der App standardmässig eingeklappt.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  // Wer das Ticket gerade auch offen hat (Agenten und anfragende Person).
+  const [presence, setPresence] = useState<TicketPresencePerson[]>([]);
+  const presenceTicketId = ticket?.id ?? null;
+  const presenceTenantId = tenant?.id ?? null;
+  useEffect(() => {
+    if (!presenceTicketId || !presenceTenantId) return;
+    let active = true;
+    const refresh = () => {
+      if (AppState.currentState !== "active") return;
+      void refreshTicketPresence(presenceTenantId, presenceTicketId)
+        .then((people) => {
+          if (active) setPresence(people);
+        })
+        .catch(() => {
+          if (active) setPresence([]);
+        });
+    };
+    refresh();
+    const interval = setInterval(refresh, 20_000);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => {
+      active = false;
+      clearInterval(interval);
+      subscription.remove();
+      setPresence([]);
+    };
+  }, [presenceTenantId, presenceTicketId]);
+  // Beschreibung: aufgeklappt, solange die Unterhaltung leer ist; danach
+  // eingeklappt. Ein Tipp überschreibt das für dieses Ticket.
+  const [descriptionOpen, setDescriptionOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    setDescriptionOpen(null);
+  }, [id]);
+  const [forwardOpen, setForwardOpen] = useState(false);
+  const [levelHandover, setLevelHandover] = useState<{
+    teamId: string;
+    teamName: string;
+    currentLevel: MobileSupportLevel;
+  } | null>(null);
+  const [levelHandoverNote, setLevelHandoverNote] = useState("");
+  const [levelHandoverError, setLevelHandoverError] = useState("");
+  const [handingOver, setHandingOver] = useState(false);
+  const [forwardRecipients, setForwardRecipients] = useState("");
+  const [forwardMessage, setForwardMessage] = useState("");
+  const [forwarding, setForwarding] = useState(false);
+  const [forwardError, setForwardError] = useState("");
   const [reopenReason, setReopenReason] = useState("");
   const [reopenError, setReopenError] = useState("");
   const [requestingReopen, setRequestingReopen] = useState(false);
@@ -690,6 +761,30 @@ export default function TicketDetailScreen() {
     [ticket],
   );
   const ticketIsResolved = Boolean(ticket?.resolvedAt || status?.is_closed);
+  // Agenten, die in Notizen mit «@Name» erwähnt werden können.
+  const mentionCandidates = useMemo(
+    () =>
+      ticket?.canWriteInternalNotes
+        ? (assignableAgents ?? [])
+            .filter(
+              (agent) =>
+                agent.userId !== currentUserId &&
+                typeof agent.displayName === "string" &&
+                agent.displayName.trim().length > 1,
+            )
+            .map((agent) => ({
+              id: agent.userId,
+              displayName: agent.displayName!.trim(),
+            }))
+        : [],
+    [assignableAgents, currentUserId, ticket?.canWriteInternalNotes],
+  );
+  const descriptionExpanded =
+    editingField === "description" ||
+    (descriptionOpen ?? (ticket?.comments.length ?? 0) === 0);
+  const splitNote = ticket
+    ? parseTicketSplitNote(ticket.description).note
+    : null;
   const canUseRequesterPortal =
     requesterPortalEnabled && requesterPortalAvailable;
   const canUseAgentWorkbench =
@@ -814,6 +909,48 @@ export default function TicketDetailScreen() {
     setReopenError("");
     setReopenSheetOpen(true);
     hapticSelection();
+  }
+
+  async function submitForward() {
+    if (!ticket || !tenant || forwarding) return;
+    const { emails, invalid } = parseForwardRecipients(forwardRecipients);
+    if (invalid.length) {
+      setForwardError(`Ungültige Adresse: ${invalid.join(", ")}`);
+      return;
+    }
+    if (!emails.length || emails.length > 10) {
+      setForwardError("Bitte 1 bis 10 Mailadressen angeben.");
+      return;
+    }
+    setForwarding(true);
+    setForwardError("");
+    try {
+      const count = await forwardTicket({
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        emails,
+        message: forwardMessage.trim(),
+      });
+      setForwardOpen(false);
+      setForwardRecipients("");
+      setForwardMessage("");
+      setMessage(
+        count === 1
+          ? "Die Mail wurde weitergeleitet."
+          : `Die Mail wurde an ${count} Adressen weitergeleitet.`,
+      );
+      hapticSuccess();
+      void load(false);
+    } catch (nextError) {
+      hapticError();
+      setForwardError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Mail konnte nicht weitergeleitet werden.",
+      );
+    } finally {
+      setForwarding(false);
+    }
   }
 
   async function submitReopenRequest() {
@@ -1089,6 +1226,9 @@ export default function TicketDetailScreen() {
       setEditingField(null);
       setMessage("Ticket wurde erfolgreich gespeichert.");
       hapticSuccess();
+      // Der Server kann dabei mehr ändern (z. B. automatische Zuweisung beim
+      // ersten Statuswechsel, SLA-Pause): den aktuellen Stand nachladen.
+      void load(false);
     } catch (nextError) {
       hapticError();
       setError(
@@ -1098,6 +1238,102 @@ export default function TicketDetailScreen() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveTeam(teamId: string | null) {
+    if (!ticket || !tenant) return;
+    if ((ticket.assignedTeamId ?? null) === teamId) return;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await updateMobileTicketTeam({
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        teamId,
+      });
+      setTicket({ ...ticket, assignedTeamId: teamId });
+      const name = ticket.teamOptions.find((team) => team.id === teamId)?.name;
+      setMessage(
+        name
+          ? `Das Ticket gehört jetzt zum Team ${name}.`
+          : "Das Team wurde entfernt.",
+      );
+      hapticSuccess();
+      // Assignable agents depend on the team.
+      void loadAllAssignableAgents();
+      void load(false);
+    } catch (nextError) {
+      // Team einer anderen Supportstufe: Übergabe mit Pflicht-Notiz wie beim
+      // Herauf- bzw. Herunterstufen.
+      if (
+        nextError instanceof NextDeskRequestError &&
+        nextError.code === "support_level_handover_required" &&
+        teamId
+      ) {
+        try {
+          const level = await getMobileTicketSupportLevel(tenant.id, ticket.id);
+          if (level?.currentLevel) {
+            setLevelHandover({
+              teamId,
+              teamName:
+                ticket.teamOptions.find((team) => team.id === teamId)?.name ??
+                "das Team",
+              currentLevel: level.currentLevel,
+            });
+            setLevelHandoverNote("");
+            setLevelHandoverError("");
+            return;
+          }
+        } catch {
+          // Fällt auf die Fehlermeldung unten zurück.
+        }
+      }
+      hapticError();
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Team konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitLevelHandover() {
+    if (!ticket || !tenant || !levelHandover || handingOver) return;
+    const note = levelHandoverNote.trim();
+    if (Array.from(note).length < 10) {
+      setLevelHandoverError(
+        "Die Übergabenotiz ist Pflicht (mindestens 10 Zeichen).",
+      );
+      return;
+    }
+    setHandingOver(true);
+    setLevelHandoverError("");
+    try {
+      await handOverMobileTicketLevel({
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        targetTeamId: levelHandover.teamId,
+        note,
+        expectedLevel: levelHandover.currentLevel,
+      });
+      setMessage(`Das Ticket wurde an ${levelHandover.teamName} übergeben.`);
+      setLevelHandover(null);
+      hapticSuccess();
+      void loadAllAssignableAgents();
+      void load(false);
+    } catch (nextError) {
+      hapticError();
+      setLevelHandoverError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Übergabe ist nicht gelungen.",
+      );
+    } finally {
+      setHandingOver(false);
     }
   }
 
@@ -1209,6 +1445,15 @@ export default function TicketDetailScreen() {
   function changeComment(nextBody: string) {
     setComment(nextBody);
     setDraftDirty(true);
+    // «@» getippt: Agenten für Vorschläge laden (einmal).
+    if (
+      nextBody.includes("@") &&
+      assignableAgents === null &&
+      !assignableAgentsLoading &&
+      ticket?.canWriteInternalNotes
+    ) {
+      void loadAllAssignableAgents();
+    }
   }
 
   /** «Verwerfen»: leert den Entwurf auf allen Geräten. */
@@ -1659,6 +1904,9 @@ export default function TicketDetailScreen() {
         body,
         visibility: commentVisibility,
         attachmentIds,
+        mentionedUserIds: ticket.canWriteInternalNotes
+          ? mentionedAgentIds(body, mentionCandidates)
+          : [],
       });
       setPickedFiles([]);
       setComment("");
@@ -1825,7 +2073,73 @@ export default function TicketDetailScreen() {
           </View>
 
           <View style={styles.ticketHead}>
-            <Text style={styles.ticketId}>{ticket.ticketNumber}</Text>
+            <View style={styles.ticketIdRow}>
+              <Text style={styles.ticketId}>{ticket.ticketNumber}</Text>
+              {presence.length > 0 ? (
+                <Pressable
+                  accessibilityHint="Zeigt, wer das Ticket gerade auch anschaut."
+                  accessibilityLabel={`Schaut gerade auch: ${presence
+                    .map((person) => person.displayName)
+                    .join(", ")}`}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => {
+                    hapticSelection();
+                    Alert.alert(
+                      "Schaut gerade auch",
+                      presence
+                        .map(
+                          (person) =>
+                            `${person.displayName}${
+                              person.role === "requester"
+                                ? " (anfragende Person)"
+                                : ""
+                            }${person.editing ? " – bearbeitet gerade" : ""}`,
+                        )
+                        .join("\n"),
+                    );
+                  }}
+                  style={styles.presenceRow}
+                >
+                  {presence.slice(0, 4).map((person, index) => (
+                    <View
+                      key={`${person.displayName}-${index}`}
+                      style={[
+                        styles.presenceAvatar,
+                        {
+                          backgroundColor: colors.primarySoft,
+                          borderColor: colors.surface,
+                          marginLeft: index === 0 ? 0 : -8,
+                        },
+                      ]}
+                    >
+                      {person.photoUrl ? (
+                        <Image
+                          source={{ uri: person.photoUrl }}
+                          style={styles.presencePhoto}
+                        />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.presenceInitials,
+                            { color: colors.primaryText },
+                          ]}
+                        >
+                          {presenceInitials(person.displayName)}
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                  {presence.length > 4 ? (
+                    <Text
+                      style={[styles.presenceMore, { color: colors.muted }]}
+                    >
+                      +{presence.length - 4}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              ) : null}
+            </View>
             {ticket.canUpdate && editingField === "subject" ? (
               <View style={styles.inlineEdit}>
                 <TextInput
@@ -1929,6 +2243,43 @@ export default function TicketDetailScreen() {
             <TicketSlaPauseText pausedAt={ticket.slaPausedAt} />
           </View>
 
+          {ticket.mergedInto ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() =>
+                router.push(`/ticket/${ticket.mergedInto?.id ?? ""}`)
+              }
+              style={[styles.mergeHint, { borderColor: colors.border }]}
+            >
+              <Ionicons
+                color={colors.muted}
+                name="git-merge-outline"
+                size={16}
+              />
+              <Text
+                style={[styles.mergeHintText, { color: colors.foreground }]}
+              >
+                Zusammengeführt in {ticket.mergedInto.ticketNumber}. Die
+                Bearbeitung läuft dort weiter.
+              </Text>
+            </Pressable>
+          ) : ticket.mergedTicketCount > 0 ? (
+            <View style={[styles.mergeHint, { borderColor: colors.border }]}>
+              <Ionicons color={colors.muted} name="people-outline" size={16} />
+              <Text
+                style={[styles.mergeHintText, { color: colors.foreground }]}
+              >
+                {ticket.affectedPeople > 1
+                  ? `${ticket.affectedPeople} Personen betroffen · `
+                  : ""}
+                {ticket.mergedTicketCount}{" "}
+                {ticket.mergedTicketCount === 1
+                  ? "Ticket zusammengeführt"
+                  : "Tickets zusammengeführt"}
+              </Text>
+            </View>
+          ) : null}
+
           {canUseRequesterPortal &&
           currentUserId &&
           ticket.requesterId === currentUserId ? (
@@ -1952,768 +2303,480 @@ export default function TicketDetailScreen() {
           <View
             style={[styles.detailsCard, tokenStyles.card, densityStyles.card]}
           >
-            <Text style={[styles.detailsTitle, tokenStyles.foreground]}>
-              Details
-            </Text>
+            <Pressable
+              accessibilityLabel={
+                detailsOpen ? "Details einklappen" : "Details aufklappen"
+              }
+              accessibilityRole="button"
+              accessibilityState={{ expanded: detailsOpen }}
+              onPress={() => {
+                hapticSelection();
+                setDetailsOpen((open) => !open);
+              }}
+              style={styles.detailsHeader}
+            >
+              <View style={styles.detailsHeaderText}>
+                <Text style={[styles.detailsTitle, tokenStyles.foreground]}>
+                  Details
+                </Text>
+                {detailsOpen ? null : (
+                  <Text
+                    numberOfLines={2}
+                    style={[styles.detailsCollapsedSummary, tokenStyles.muted]}
+                  >
+                    {[
+                      ticket.requesterName,
+                      ticket.assignedAgentId
+                        ? (assigneeName ?? null)
+                        : "Nicht zugewiesen",
+                      ticket.teamOptions.find(
+                        (team) => team.id === ticket.assignedTeamId,
+                      )?.name,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                )}
+              </View>
+              <Ionicons
+                color={colors.muted}
+                name={detailsOpen ? "chevron-up" : "chevron-down"}
+                size={20}
+              />
+            </Pressable>
+            {detailsOpen ? (
+              <>
+                <View style={styles.detailsRequester}>
+                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                    ANFRAGENDE PERSON
+                  </Text>
+                  {ticket.canUpdate &&
+                  editingField === "requester" &&
+                  requester ? (
+                    <RequesterPicker
+                      autoOpen
+                      contextLabel="TICKET BEARBEITEN"
+                      defaultRequester={ticket.requesterContact ?? requester}
+                      onChange={(nextRequester) =>
+                        void saveChange({ requester: nextRequester })
+                      }
+                      onClose={() => setEditingField(null)}
+                      tenantId={tenant?.id ?? ""}
+                      value={requester}
+                    />
+                  ) : (
+                    <Pressable
+                      accessibilityHint={
+                        ticket.canUpdate
+                          ? "Antippen, um die anfragende Person zu ändern."
+                          : undefined
+                      }
+                      accessibilityRole={
+                        ticket.canUpdate ? "button" : undefined
+                      }
+                      disabled={!ticket.canUpdate || !requester}
+                      onPress={() => {
+                        hapticSelection();
+                        setEditingField("requester");
+                      }}
+                      style={styles.requesterPressable}
+                    >
+                      <Text numberOfLines={2} style={styles.requesterName}>
+                        {ticket.requesterName ?? "Anfragende Person"}
+                      </Text>
+                      {ticket.requesterContact?.department ||
+                      ticket.requesterContact?.offering ? (
+                        <Text style={styles.requesterMeta}>
+                          {[
+                            ticket.requesterContact?.department,
+                            ticket.requesterContact?.offering,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  )}
+                  {ticket.canUpdate && ticket.requesterContact?.id ? (
+                    <Pressable
+                      accessibilityHint="Zeigt alle Tickets, Geräte und die Zufriedenheit dieser Person."
+                      accessibilityLabel={`Personenübersicht von ${ticket.requesterContact.displayName} öffnen`}
+                      accessibilityRole="button"
+                      onPress={() => {
+                        const route = personRoute({
+                          requesterContactId:
+                            ticket.requesterContact?.id ?? null,
+                        });
+                        if (route) router.push(route as never);
+                      }}
+                      style={styles.contactAction}
+                    >
+                      <Ionicons
+                        color={colors.info}
+                        name="person-circle-outline"
+                        size={15}
+                      />
+                      <Text numberOfLines={1} style={styles.contactActionText}>
+                        Personenübersicht
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  {ticket.requesterContact?.email ? (
+                    <Pressable
+                      accessibilityLabel={`${ticket.requesterContact.displayName} per E-Mail kontaktieren`}
+                      accessibilityRole="button"
+                      onPress={() =>
+                        void contactRequesterByEmail(
+                          ticket.requesterContact?.email ?? "",
+                        )
+                      }
+                      style={styles.contactAction}
+                    >
+                      <Ionicons
+                        color={colors.info}
+                        name="mail-outline"
+                        size={15}
+                      />
+                      <Text numberOfLines={1} style={styles.contactActionText}>
+                        {ticket.requesterContact.email}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  {ticket.requesterContact?.phone ? (
+                    <Pressable
+                      accessibilityLabel={`${ticket.requesterContact.displayName} anrufen`}
+                      accessibilityRole="button"
+                      onPress={() =>
+                        void contactRequesterByPhone(
+                          ticket.requesterContact?.phone ?? "",
+                        )
+                      }
+                      style={styles.contactAction}
+                    >
+                      <Ionicons
+                        color={colors.info}
+                        name="call-outline"
+                        size={15}
+                      />
+                      <Text numberOfLines={1} style={styles.contactActionText}>
+                        {ticket.requesterContact.phone}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
 
-            <View style={styles.detailsRequester}>
-              <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                ANFRAGENDE PERSON
-              </Text>
-              {ticket.canUpdate && editingField === "requester" && requester ? (
-                <RequesterPicker
-                  autoOpen
-                  contextLabel="TICKET BEARBEITEN"
-                  defaultRequester={ticket.requesterContact ?? requester}
-                  onChange={(nextRequester) =>
-                    void saveChange({ requester: nextRequester })
-                  }
-                  onClose={() => setEditingField(null)}
-                  tenantId={tenant?.id ?? ""}
-                  value={requester}
-                />
-              ) : (
+                {canUseAgentWorkbench ? (
+                  <>
+                    <View style={styles.detailsDivider} />
+                    <Pressable
+                      accessibilityHint="Antippen, um einen Agenten zuzuweisen."
+                      accessibilityLabel="Zugewiesen an"
+                      accessibilityRole="button"
+                      disabled={assignableAgentsLoading || assigningAgent}
+                      onPress={() => {
+                        hapticSelection();
+                        void openAgentPicker();
+                      }}
+                      style={styles.detailsValueRow}
+                    >
+                      <View>
+                        <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                          ZUGEWIESEN AN
+                        </Text>
+                        <Text style={styles.detailsValue}>
+                          {ticket.assignedAgentId
+                            ? (assigneeName ?? "Wird geladen …")
+                            : "Niemand"}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        color={colors.primaryText}
+                        name="chevron-forward"
+                        size={18}
+                      />
+                    </Pressable>
+                  </>
+                ) : null}
+
+                {canUseAgentWorkbench &&
+                (ticket.canAssign || ticket.assignedTeamId) ? (
+                  <>
+                    <View style={styles.detailsDivider} />
+                    <Pressable
+                      accessibilityHint={
+                        ticket.canAssign
+                          ? "Antippen, um das Team zu ändern."
+                          : undefined
+                      }
+                      accessibilityLabel="Team"
+                      accessibilityRole={
+                        ticket.canAssign ? "button" : undefined
+                      }
+                      disabled={!ticket.canAssign || saving}
+                      onPress={() => {
+                        hapticSelection();
+                        setSelection("team");
+                      }}
+                      style={styles.detailsValueRow}
+                    >
+                      <View>
+                        <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                          TEAM
+                        </Text>
+                        <Text style={styles.detailsValue}>
+                          {ticket.teamOptions.find(
+                            (team) => team.id === ticket.assignedTeamId,
+                          )?.name ??
+                            (ticket.assignedTeamId
+                              ? "Anderes Team"
+                              : "Kein Team")}
+                        </Text>
+                      </View>
+                      {ticket.canAssign ? (
+                        <Ionicons
+                          color={colors.primaryText}
+                          name="chevron-forward"
+                          size={18}
+                        />
+                      ) : null}
+                    </Pressable>
+                  </>
+                ) : null}
+
+                <View style={styles.detailsDivider} />
                 <Pressable
                   accessibilityHint={
                     ticket.canUpdate
-                      ? "Antippen, um die anfragende Person zu ändern."
+                      ? "Antippen, um den Status zu ändern."
                       : undefined
                   }
+                  accessibilityLabel="Status"
                   accessibilityRole={ticket.canUpdate ? "button" : undefined}
-                  disabled={!ticket.canUpdate || !requester}
+                  disabled={!ticket.canUpdate || saving}
                   onPress={() => {
                     hapticSelection();
-                    setEditingField("requester");
-                  }}
-                  style={styles.requesterPressable}
-                >
-                  <Text numberOfLines={2} style={styles.requesterName}>
-                    {ticket.requesterName ?? "Anfragende Person"}
-                  </Text>
-                  {ticket.requesterContact?.department ||
-                  ticket.requesterContact?.offering ? (
-                    <Text style={styles.requesterMeta}>
-                      {[
-                        ticket.requesterContact?.department,
-                        ticket.requesterContact?.offering,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </Text>
-                  ) : null}
-                </Pressable>
-              )}
-              {ticket.canUpdate && ticket.requesterContact?.id ? (
-                <Pressable
-                  accessibilityHint="Zeigt alle Tickets, Geräte und die Zufriedenheit dieser Person."
-                  accessibilityLabel={`Personenübersicht von ${ticket.requesterContact.displayName} öffnen`}
-                  accessibilityRole="button"
-                  onPress={() => {
-                    const route = personRoute({
-                      requesterContactId: ticket.requesterContact?.id ?? null,
-                    });
-                    if (route) router.push(route as never);
-                  }}
-                  style={styles.contactAction}
-                >
-                  <Ionicons
-                    color={colors.info}
-                    name="person-circle-outline"
-                    size={15}
-                  />
-                  <Text numberOfLines={1} style={styles.contactActionText}>
-                    Personenübersicht
-                  </Text>
-                </Pressable>
-              ) : null}
-              {ticket.requesterContact?.email ? (
-                <Pressable
-                  accessibilityLabel={`${ticket.requesterContact.displayName} per E-Mail kontaktieren`}
-                  accessibilityRole="button"
-                  onPress={() =>
-                    void contactRequesterByEmail(
-                      ticket.requesterContact?.email ?? "",
-                    )
-                  }
-                  style={styles.contactAction}
-                >
-                  <Ionicons color={colors.info} name="mail-outline" size={15} />
-                  <Text numberOfLines={1} style={styles.contactActionText}>
-                    {ticket.requesterContact.email}
-                  </Text>
-                </Pressable>
-              ) : null}
-              {ticket.requesterContact?.phone ? (
-                <Pressable
-                  accessibilityLabel={`${ticket.requesterContact.displayName} anrufen`}
-                  accessibilityRole="button"
-                  onPress={() =>
-                    void contactRequesterByPhone(
-                      ticket.requesterContact?.phone ?? "",
-                    )
-                  }
-                  style={styles.contactAction}
-                >
-                  <Ionicons color={colors.info} name="call-outline" size={15} />
-                  <Text numberOfLines={1} style={styles.contactActionText}>
-                    {ticket.requesterContact.phone}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            {canUseAgentWorkbench ? (
-              <>
-                <View style={styles.detailsDivider} />
-                <Pressable
-                  accessibilityHint="Antippen, um einen Agenten zuzuweisen."
-                  accessibilityLabel="Zugewiesen an"
-                  accessibilityRole="button"
-                  disabled={assignableAgentsLoading || assigningAgent}
-                  onPress={() => {
-                    hapticSelection();
-                    void openAgentPicker();
+                    setSelection("status");
                   }}
                   style={styles.detailsValueRow}
                 >
                   <View>
                     <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                      ZUGEWIESEN AN
+                      STATUS
                     </Text>
                     <Text style={styles.detailsValue}>
-                      {ticket.assignedAgentId
-                        ? (assigneeName ?? "Wird geladen …")
-                        : "Niemand"}
+                      {status?.label ?? "Unbekannt"}
                     </Text>
                   </View>
-                  <Ionicons
-                    color={colors.primaryText}
-                    name="chevron-forward"
-                    size={18}
-                  />
-                </Pressable>
-              </>
-            ) : null}
-
-            <View style={styles.detailsDivider} />
-            <Pressable
-              accessibilityHint={
-                ticket.canUpdate
-                  ? "Antippen, um den Status zu ändern."
-                  : undefined
-              }
-              accessibilityLabel="Status"
-              accessibilityRole={ticket.canUpdate ? "button" : undefined}
-              disabled={!ticket.canUpdate || saving}
-              onPress={() => {
-                hapticSelection();
-                setSelection("status");
-              }}
-              style={styles.detailsValueRow}
-            >
-              <View>
-                <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                  STATUS
-                </Text>
-                <Text style={styles.detailsValue}>
-                  {status?.label ?? "Unbekannt"}
-                </Text>
-              </View>
-              {ticket.canUpdate ? (
-                <Ionicons
-                  color={colors.primaryText}
-                  name="chevron-forward"
-                  size={18}
-                />
-              ) : null}
-            </Pressable>
-
-            <View style={styles.detailsDivider} />
-            <Pressable
-              accessibilityHint={
-                ticket.canUpdate
-                  ? "Antippen, um die Priorität zu ändern."
-                  : undefined
-              }
-              accessibilityLabel="Priorität"
-              accessibilityRole={ticket.canUpdate ? "button" : undefined}
-              disabled={!ticket.canUpdate}
-              onPress={() => {
-                hapticSelection();
-                setSelection("priority");
-              }}
-              style={styles.detailsValueRow}
-            >
-              <View>
-                <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                  PRIORITÄT
-                </Text>
-                <Text style={styles.detailsValue}>
-                  {priority?.label ?? "Ohne Priorität"}
-                </Text>
-              </View>
-              {ticket.canUpdate ? (
-                <Ionicons
-                  color={colors.primaryText}
-                  name="chevron-forward"
-                  size={18}
-                />
-              ) : null}
-            </Pressable>
-
-            <View style={styles.detailsDivider} />
-            <Pressable
-              accessibilityHint={
-                ticket.canUpdate
-                  ? "Antippen, um Kategorie und Unterkategorie zu ändern."
-                  : undefined
-              }
-              accessibilityLabel="Kategorie und Unterkategorie"
-              accessibilityRole={ticket.canUpdate ? "button" : undefined}
-              disabled={!ticket.canUpdate || savingCategory}
-              onPress={openCategorySelection}
-              style={styles.detailsValueRow}
-            >
-              <View style={styles.detailsValueCopy}>
-                <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                  KATEGORIE
-                </Text>
-                <Text numberOfLines={2} style={styles.detailsValue}>
-                  {categorySummary}
-                </Text>
-              </View>
-              {savingCategory ? (
-                <ActivityIndicator color={colors.primaryText} size="small" />
-              ) : ticket.canUpdate ? (
-                <Ionicons
-                  color={colors.primaryText}
-                  name="chevron-forward"
-                  size={18}
-                />
-              ) : null}
-            </Pressable>
-
-            {canSetFollowUp ? (
-              <>
-                <View style={styles.detailsDivider} />
-                <Pressable
-                  accessibilityLabel="Erinnerung für dieses Ticket setzen"
-                  accessibilityRole="button"
-                  disabled={savingFollowUp}
-                  onPress={() => openFollowUpSheet()}
-                  style={styles.detailsActionRow}
-                >
-                  <View style={styles.detailsActionLead}>
-                    <Ionicons
-                      color={colors.primaryText}
-                      name="alarm-outline"
-                      size={19}
-                    />
-                    <Text style={styles.detailsActionLabel}>Erinnerung</Text>
-                  </View>
-                  <View style={styles.detailsActionLead}>
-                    <Text style={styles.detailsActionLink}>Setzen</Text>
+                  {ticket.canUpdate ? (
                     <Ionicons
                       color={colors.primaryText}
                       name="chevron-forward"
                       size={18}
                     />
-                  </View>
+                  ) : null}
                 </Pressable>
-                {followUps.length > 0 ? (
-                  <View style={styles.followUpList}>
-                    {followUps.map((followUp) => {
-                      const overdue = isOverdueFollowUp(followUp);
-                      return (
-                        <View key={followUp.id} style={styles.followUpRow}>
-                          <View style={styles.followUpCopy}>
-                            <Text
-                              style={[
-                                styles.followUpTitle,
-                                overdue && styles.followUpOverdue,
-                              ]}
-                            >
-                              Erinnerung · {compactFollowUpDate(followUp.dueAt)}
-                              {overdue ? " · überfällig" : ""}
-                            </Text>
-                            {followUp.description ? (
-                              <Text
-                                numberOfLines={2}
-                                style={styles.followUpNote}
-                              >
-                                {followUp.description}
-                              </Text>
-                            ) : null}
-                          </View>
-                          <View style={styles.followUpActions}>
-                            <Pressable
-                              accessibilityLabel="Erinnerung ändern"
-                              accessibilityRole="button"
-                              disabled={resolvingFollowUpId !== null}
-                              onPress={() => openFollowUpSheet(followUp)}
-                              style={styles.followUpAction}
-                            >
-                              <Text style={styles.followUpEditText}>
-                                Ändern
-                              </Text>
-                            </Pressable>
-                            <Pressable
-                              accessibilityLabel="Erinnerung als erledigt markieren"
-                              accessibilityRole="button"
-                              accessibilityState={{
-                                busy: resolvingFollowUpId === followUp.id,
-                              }}
-                              disabled={resolvingFollowUpId !== null}
-                              onPress={() =>
-                                void resolveTicketFollowUp(followUp.id)
-                              }
-                              style={styles.followUpAction}
-                            >
-                              <Text style={styles.followUpDoneText}>
-                                {resolvingFollowUpId === followUp.id
-                                  ? "…"
-                                  : "Erledigt"}
-                              </Text>
-                            </Pressable>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : null}
-              </>
-            ) : null}
 
-            {canUseRequesterPortal ? (
-              <>
                 <View style={styles.detailsDivider} />
                 <Pressable
-                  accessibilityLabel="Statuszeitleiste"
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: timelineOpen }}
+                  accessibilityHint={
+                    ticket.canUpdate
+                      ? "Antippen, um die Priorität zu ändern."
+                      : undefined
+                  }
+                  accessibilityLabel="Priorität"
+                  accessibilityRole={ticket.canUpdate ? "button" : undefined}
+                  disabled={!ticket.canUpdate}
                   onPress={() => {
-                    setTimelineOpen((current) => !current);
                     hapticSelection();
+                    setSelection("priority");
                   }}
-                  style={styles.detailsAccordionRow}
+                  style={styles.detailsValueRow}
                 >
-                  <View style={styles.detailsActionLead}>
+                  <View>
+                    <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                      PRIORITÄT
+                    </Text>
+                    <Text style={styles.detailsValue}>
+                      {priority?.label ?? "Ohne Priorität"}
+                    </Text>
+                  </View>
+                  {ticket.canUpdate ? (
                     <Ionicons
                       color={colors.primaryText}
-                      name="time-outline"
-                      size={19}
+                      name="chevron-forward"
+                      size={18}
                     />
-                    <Text style={styles.detailsActionLabel}>
-                      Statuszeitleiste
-                    </Text>
-                  </View>
-                  <View style={styles.detailsActionLead}>
-                    <Text numberOfLines={1} style={styles.detailsSummary}>
-                      {timelineLoading || timeline === null
-                        ? "Lädt …"
-                        : timeline?.length
-                          ? `${timeline.length} Ereignisse · ${formatWorkbenchDate(
-                              timeline.reduce((latest, item) =>
-                                new Date(item.occurredAt).getTime() >
-                                new Date(latest.occurredAt).getTime()
-                                  ? item
-                                  : latest,
-                              ).occurredAt,
-                            )}`
-                          : "Keine"}
-                    </Text>
-                    {timelineLoading || timeline === null ? (
-                      <ActivityIndicator
-                        color={colors.primaryText}
-                        size="small"
-                      />
-                    ) : (
-                      <Ionicons
-                        color={colors.primaryText}
-                        name={timelineOpen ? "chevron-up" : "chevron-down"}
-                        size={18}
-                      />
-                    )}
-                  </View>
+                  ) : null}
                 </Pressable>
-                {timelineOpen ? (
-                  <View style={styles.detailsExpansion}>
-                    {timelineLoading || timeline === null ? (
-                      <View style={styles.inlineLoading}>
-                        <ActivityIndicator
+
+                <View style={styles.detailsDivider} />
+                <Pressable
+                  accessibilityHint={
+                    ticket.canUpdate
+                      ? "Antippen, um Kategorie und Unterkategorie zu ändern."
+                      : undefined
+                  }
+                  accessibilityLabel="Kategorie und Unterkategorie"
+                  accessibilityRole={ticket.canUpdate ? "button" : undefined}
+                  disabled={!ticket.canUpdate || savingCategory}
+                  onPress={openCategorySelection}
+                  style={styles.detailsValueRow}
+                >
+                  <View style={styles.detailsValueCopy}>
+                    <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                      KATEGORIE
+                    </Text>
+                    <Text numberOfLines={2} style={styles.detailsValue}>
+                      {categorySummary}
+                    </Text>
+                  </View>
+                  {savingCategory ? (
+                    <ActivityIndicator
+                      color={colors.primaryText}
+                      size="small"
+                    />
+                  ) : ticket.canUpdate ? (
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="chevron-forward"
+                      size={18}
+                    />
+                  ) : null}
+                </Pressable>
+
+                {canSetFollowUp ? (
+                  <>
+                    <View style={styles.detailsDivider} />
+                    <Pressable
+                      accessibilityLabel="Erinnerung für dieses Ticket setzen"
+                      accessibilityRole="button"
+                      disabled={savingFollowUp}
+                      onPress={() => openFollowUpSheet()}
+                      style={styles.detailsActionRow}
+                    >
+                      <View style={styles.detailsActionLead}>
+                        <Ionicons
                           color={colors.primaryText}
-                          size="small"
+                          name="alarm-outline"
+                          size={19}
                         />
-                        <Text style={[styles.timelineText, tokenStyles.muted]}>
-                          Öffentlicher Verlauf wird geladen …
+                        <Text style={styles.detailsActionLabel}>
+                          Erinnerung
                         </Text>
                       </View>
-                    ) : timeline?.length ? (
-                      <View style={styles.timelineList}>
-                        {timeline.map((item) => (
-                          <View key={item.id} style={styles.timelineItem}>
-                            <View
-                              style={[
-                                styles.timelineIcon,
-                                { backgroundColor: colors.primarySoft },
-                              ]}
-                            >
-                              <Ionicons
-                                color={colors.primaryText}
-                                name={
-                                  item.type === "comment"
-                                    ? "chatbubble-outline"
-                                    : "ellipse-outline"
-                                }
-                                size={15}
-                              />
-                            </View>
-                            <View style={styles.timelineCopy}>
-                              <Text
-                                style={[
-                                  styles.timelineTitle,
-                                  tokenStyles.foreground,
-                                ]}
-                              >
-                                {item.type === "comment"
-                                  ? item.authorDisplayName
-                                    ? `Kommentar von ${item.authorDisplayName}`
-                                    : "Kommentar"
-                                  : publicTimelineEventLabel(item)}
-                              </Text>
-                              {item.type === "comment" && item.body ? (
+                      <View style={styles.detailsActionLead}>
+                        <Text style={styles.detailsActionLink}>Setzen</Text>
+                        <Ionicons
+                          color={colors.primaryText}
+                          name="chevron-forward"
+                          size={18}
+                        />
+                      </View>
+                    </Pressable>
+                    {followUps.length > 0 ? (
+                      <View style={styles.followUpList}>
+                        {followUps.map((followUp) => {
+                          const overdue = isOverdueFollowUp(followUp);
+                          return (
+                            <View key={followUp.id} style={styles.followUpRow}>
+                              <View style={styles.followUpCopy}>
                                 <Text
-                                  numberOfLines={2}
                                   style={[
-                                    styles.timelineText,
-                                    tokenStyles.muted,
+                                    styles.followUpTitle,
+                                    overdue && styles.followUpOverdue,
                                   ]}
                                 >
-                                  {item.body}
+                                  Erinnerung ·{" "}
+                                  {compactFollowUpDate(followUp.dueAt)}
+                                  {overdue ? " · überfällig" : ""}
                                 </Text>
-                              ) : null}
-                              <Text
-                                style={[styles.timelineDate, tokenStyles.muted]}
-                              >
-                                {formatWorkbenchDate(item.occurredAt)}
-                              </Text>
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-                    ) : (
-                      <Text style={[styles.timelineText, tokenStyles.muted]}>
-                        Noch keine öffentlichen Einträge vorhanden.
-                      </Text>
-                    )}
-                  </View>
-                ) : null}
-              </>
-            ) : null}
-
-            {canUseAgentWorkbench ? (
-              <>
-                <View style={styles.detailsDivider} />
-                <Pressable
-                  accessibilityLabel="360°-Kontext"
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: agentContextOpen }}
-                  disabled={contextLoading}
-                  onPress={() => void toggleAgentContext()}
-                  style={styles.detailsAccordionRow}
-                >
-                  <View style={styles.detailsActionLead}>
-                    <Ionicons
-                      color={colors.primaryText}
-                      name="layers-outline"
-                      size={19}
-                    />
-                    <Text style={styles.detailsActionLabel}>360°-Kontext</Text>
-                  </View>
-                  <View style={styles.detailsActionLead}>
-                    <Text numberOfLines={1} style={styles.detailsSummary}>
-                      {contextLoading
-                        ? "Lädt …"
-                        : agentContext
-                          ? `${agentContext.requesterTickets.length} weitere Tickets`
-                          : "Aufklappen"}
-                    </Text>
-                    {contextLoading ? (
-                      <ActivityIndicator
-                        color={colors.primaryText}
-                        size="small"
-                      />
-                    ) : (
-                      <Ionicons
-                        color={colors.primaryText}
-                        name={agentContextOpen ? "chevron-up" : "chevron-down"}
-                        size={18}
-                      />
-                    )}
-                  </View>
-                </Pressable>
-                {agentContextOpen && agentContext ? (
-                  <View style={styles.detailsExpansion}>
-                    {compactContextValue(agentContext.ticket.ticket_number) ? (
-                      <Text
-                        style={[
-                          styles.contextReference,
-                          tokenStyles.foreground,
-                        ]}
-                      >
-                        {compactContextValue(agentContext.ticket.ticket_number)}
-                      </Text>
-                    ) : null}
-                    {[
-                      ["Weitere Tickets", agentContext.requesterTickets.length],
-                      ["Assets", agentContext.assets.length],
-                      ["Assetverlauf", agentContext.assetHistory.length],
-                      [
-                        "Lösungsbestätigungen",
-                        agentContext.resolutionConfirmations.length,
-                      ],
-                    ].map(([label, value]) => (
-                      <View key={label} style={styles.contextSummaryRow}>
-                        <Text style={[styles.timelineText, tokenStyles.muted]}>
-                          {label}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.contextSummaryValue,
-                            tokenStyles.foreground,
-                          ]}
-                        >
-                          {value}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-              </>
-            ) : null}
-
-            {canUseAgentWorkbench ? (
-              <>
-                <View style={styles.detailsDivider} />
-                <Pressable
-                  accessibilityLabel="Passende Agenten"
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: assigneeSuggestionsOpen }}
-                  disabled={suggestionsLoading}
-                  onPress={() => void toggleAssigneeSuggestions()}
-                  style={styles.detailsAccordionRow}
-                >
-                  <View style={styles.detailsActionLead}>
-                    <Ionicons
-                      color={colors.primaryText}
-                      name="people-outline"
-                      size={19}
-                    />
-                    <Text style={styles.detailsActionLabel}>
-                      Passende Agenten
-                    </Text>
-                  </View>
-                  <View style={styles.detailsActionLead}>
-                    <Text numberOfLines={1} style={styles.detailsSummary}>
-                      {suggestionsLoading
-                        ? "Lädt …"
-                        : assigneeSuggestions
-                          ? assigneeSuggestions.length
-                            ? `${Math.min(assigneeSuggestions.length, 5)} Vorschläge`
-                            : "Keine"
-                          : "Aufklappen"}
-                    </Text>
-                    {suggestionsLoading ? (
-                      <ActivityIndicator
-                        color={colors.primaryText}
-                        size="small"
-                      />
-                    ) : (
-                      <Ionicons
-                        color={colors.primaryText}
-                        name={
-                          assigneeSuggestionsOpen
-                            ? "chevron-up"
-                            : "chevron-down"
-                        }
-                        size={18}
-                      />
-                    )}
-                  </View>
-                </Pressable>
-                {assigneeSuggestionsOpen ? (
-                  <View style={styles.detailsExpansion}>
-                    {suggestionsLoading ? (
-                      <View style={styles.inlineLoading}>
-                        <ActivityIndicator
-                          color={colors.primaryText}
-                          size="small"
-                        />
-                        <Text style={[styles.timelineText, tokenStyles.muted]}>
-                          Vorschläge werden geladen …
-                        </Text>
-                      </View>
-                    ) : assigneeSuggestions?.length ? (
-                      <View style={styles.suggestionList}>
-                        {assigneeSuggestions.slice(0, 5).map((suggestion) => {
-                          const displayName =
-                            suggestion.displayName?.trim() || "Agent";
-                          const confirming =
-                            pendingAgentAssignment?.userId ===
-                            suggestion.userId;
-                          return (
-                            <View
-                              key={suggestion.userId}
-                              style={[
-                                styles.suggestion,
-                                {
-                                  backgroundColor: colors.surfaceSubtle,
-                                  borderColor: colors.border,
-                                },
-                              ]}
-                            >
-                              <View style={styles.suggestionHeader}>
-                                <View style={styles.suggestionCopy}>
+                                {followUp.description ? (
                                   <Text
-                                    numberOfLines={1}
-                                    style={[
-                                      styles.suggestionUser,
-                                      tokenStyles.foreground,
-                                    ]}
+                                    numberOfLines={2}
+                                    style={styles.followUpNote}
                                   >
-                                    {displayName}
+                                    {followUp.description}
                                   </Text>
-                                  <Text
-                                    numberOfLines={1}
-                                    style={[
-                                      styles.timelineText,
-                                      tokenStyles.muted,
-                                    ]}
-                                  >
-                                    {suggestion.reasons
-                                      .slice(0, 2)
-                                      .join(" · ") ||
-                                      "Keine Begründung verfügbar"}
-                                  </Text>
-                                </View>
-                                {suggestion.isCurrentAssignee ? (
-                                  <View
-                                    accessibilityLabel={`${displayName} ist bereits zugewiesen`}
-                                    style={styles.assignedBadge}
-                                  >
-                                    <Text style={styles.assignedBadgeText}>
-                                      Zugewiesen
-                                    </Text>
-                                  </View>
-                                ) : (
-                                  <Pressable
-                                    accessibilityLabel={`${displayName} zuweisen`}
-                                    accessibilityRole="button"
-                                    disabled={assigningAgent}
-                                    onPress={() => {
-                                      setManualAgentAssignment(null);
-                                      setManualAgentAssignmentError("");
-                                      setPendingAgentAssignment(suggestion);
-                                      hapticSelection();
-                                    }}
-                                    style={styles.assignButton}
-                                  >
-                                    <Text style={styles.assignButtonText}>
-                                      Zuweisen
-                                    </Text>
-                                  </Pressable>
-                                )}
+                                ) : null}
                               </View>
-                              {confirming ? (
-                                <View style={styles.assignmentConfirmation}>
-                                  <Text
-                                    style={styles.assignmentConfirmationText}
-                                  >
-                                    {displayName} zuweisen?
+                              <View style={styles.followUpActions}>
+                                <Pressable
+                                  accessibilityLabel="Erinnerung ändern"
+                                  accessibilityRole="button"
+                                  disabled={resolvingFollowUpId !== null}
+                                  onPress={() => openFollowUpSheet(followUp)}
+                                  style={styles.followUpAction}
+                                >
+                                  <Text style={styles.followUpEditText}>
+                                    Ändern
                                   </Text>
-                                  <View style={styles.assignmentActions}>
-                                    <Pressable
-                                      accessibilityLabel={`${displayName} zuweisen bestätigen`}
-                                      accessibilityRole="button"
-                                      disabled={assigningAgent}
-                                      onPress={() =>
-                                        void confirmAgentAssignment()
-                                      }
-                                      style={styles.assignmentConfirmButton}
-                                    >
-                                      {assigningAgent ? (
-                                        <ActivityIndicator
-                                          color={colors.onPrimary}
-                                          size="small"
-                                        />
-                                      ) : null}
-                                      <Text
-                                        style={styles.assignmentConfirmText}
-                                      >
-                                        Bestätigen
-                                      </Text>
-                                    </Pressable>
-                                    <Pressable
-                                      accessibilityLabel="Zuweisung abbrechen"
-                                      accessibilityRole="button"
-                                      disabled={assigningAgent}
-                                      onPress={() =>
-                                        setPendingAgentAssignment(null)
-                                      }
-                                      style={styles.assignmentCancelButton}
-                                    >
-                                      <Text style={styles.assignmentCancelText}>
-                                        Abbrechen
-                                      </Text>
-                                    </Pressable>
-                                  </View>
-                                </View>
-                              ) : null}
+                                </Pressable>
+                                <Pressable
+                                  accessibilityLabel="Erinnerung als erledigt markieren"
+                                  accessibilityRole="button"
+                                  accessibilityState={{
+                                    busy: resolvingFollowUpId === followUp.id,
+                                  }}
+                                  disabled={resolvingFollowUpId !== null}
+                                  onPress={() =>
+                                    void resolveTicketFollowUp(followUp.id)
+                                  }
+                                  style={styles.followUpAction}
+                                >
+                                  <Text style={styles.followUpDoneText}>
+                                    {resolvingFollowUpId === followUp.id
+                                      ? "…"
+                                      : "Erledigt"}
+                                  </Text>
+                                </Pressable>
+                              </View>
                             </View>
                           );
                         })}
-                        <Text style={styles.assignmentFootnote}>
-                          Zuweisung nur nach Bestätigung
+                      </View>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {canUseRequesterPortal ? (
+                  <>
+                    <View style={styles.detailsDivider} />
+                    <Pressable
+                      accessibilityLabel="Statuszeitleiste"
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: timelineOpen }}
+                      onPress={() => {
+                        setTimelineOpen((current) => !current);
+                        hapticSelection();
+                      }}
+                      style={styles.detailsAccordionRow}
+                    >
+                      <View style={styles.detailsActionLead}>
+                        <Ionicons
+                          color={colors.primaryText}
+                          name="time-outline"
+                          size={19}
+                        />
+                        <Text style={styles.detailsActionLabel}>
+                          Statuszeitleiste
                         </Text>
                       </View>
-                    ) : (
-                      <Text style={[styles.timelineText, tokenStyles.muted]}>
-                        Derzeit liegen keine Zuweisungsvorschläge vor.
-                      </Text>
-                    )}
-                    {!suggestionsLoading ? (
-                      <Pressable
-                        accessibilityHint="Öffnet alle für dieses Ticket berechtigten Agenten."
-                        accessibilityLabel="Anderen Agenten auswählen"
-                        accessibilityRole="button"
-                        disabled={assignableAgentsLoading || assigningAgent}
-                        onPress={() => {
-                          hapticSelection();
-                          void openAgentPicker();
-                        }}
-                        style={({ pressed }) => [
-                          styles.manualAssigneeButton,
-                          (assignableAgentsLoading || assigningAgent) &&
-                            styles.disabled,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <View style={styles.manualAssigneeCopy}>
-                          <Ionicons
-                            color={colors.primaryText}
-                            name="people-outline"
-                            size={18}
-                          />
-                          <View style={styles.suggestionCopy}>
-                            <Text style={styles.manualAssigneeTitle}>
-                              Anderen Agenten auswählen
-                            </Text>
-                            <Text style={styles.manualAssigneeText}>
-                              Alle berechtigten Agenten anzeigen
-                            </Text>
-                          </View>
-                        </View>
-                        {assignableAgentsLoading ? (
+                      <View style={styles.detailsActionLead}>
+                        <Text numberOfLines={1} style={styles.detailsSummary}>
+                          {timelineLoading || timeline === null
+                            ? "Lädt …"
+                            : timeline?.length
+                              ? `${timeline.length} Ereignisse · ${formatWorkbenchDate(
+                                  timeline.reduce((latest, item) =>
+                                    new Date(item.occurredAt).getTime() >
+                                    new Date(latest.occurredAt).getTime()
+                                      ? item
+                                      : latest,
+                                  ).occurredAt,
+                                )}`
+                              : "Keine"}
+                        </Text>
+                        {timelineLoading || timeline === null ? (
                           <ActivityIndicator
                             color={colors.primaryText}
                             size="small"
@@ -2721,158 +2784,604 @@ export default function TicketDetailScreen() {
                         ) : (
                           <Ionicons
                             color={colors.primaryText}
-                            name="chevron-forward"
+                            name={timelineOpen ? "chevron-up" : "chevron-down"}
                             size={18}
                           />
                         )}
-                      </Pressable>
-                    ) : null}
-                  </View>
-                ) : null}
-              </>
-            ) : null}
-
-            {canUseAgentWorkbench ? (
-              <>
-                <DepartmentQuestions key={ticket.id} ticketId={ticket.id} />
-                <View style={styles.detailsDivider} />
-                <Pressable
-                  accessibilityLabel="Wiedereröffnungsanträge"
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: reopenRequestsOpen }}
-                  onPress={() => {
-                    setReopenRequestsOpen((current) => !current);
-                    hapticSelection();
-                  }}
-                  style={styles.detailsAccordionRow}
-                >
-                  <View style={styles.detailsActionLead}>
-                    <Ionicons
-                      color={colors.warning}
-                      name="git-pull-request-outline"
-                      size={19}
-                    />
-                    <Text style={styles.detailsActionLabel}>
-                      Wiedereröffnungsanträge
-                    </Text>
-                  </View>
-                  <View style={styles.detailsActionLead}>
-                    {reopenRequestsLoading ? (
-                      <ActivityIndicator
-                        color={colors.primaryText}
-                        size="small"
-                      />
-                    ) : (
-                      <>
-                        <View style={styles.detailsCountBadge}>
-                          <Text style={styles.detailsCountBadgeText}>
-                            {reopenRequests.length || "Keine"}
+                      </View>
+                    </Pressable>
+                    {timelineOpen ? (
+                      <View style={styles.detailsExpansion}>
+                        {timelineLoading || timeline === null ? (
+                          <View style={styles.inlineLoading}>
+                            <ActivityIndicator
+                              color={colors.primaryText}
+                              size="small"
+                            />
+                            <Text
+                              style={[styles.timelineText, tokenStyles.muted]}
+                            >
+                              Öffentlicher Verlauf wird geladen …
+                            </Text>
+                          </View>
+                        ) : timeline?.length ? (
+                          <View style={styles.timelineList}>
+                            {timeline.map((item) => (
+                              <View key={item.id} style={styles.timelineItem}>
+                                <View
+                                  style={[
+                                    styles.timelineIcon,
+                                    { backgroundColor: colors.primarySoft },
+                                  ]}
+                                >
+                                  <Ionicons
+                                    color={colors.primaryText}
+                                    name={
+                                      item.type === "comment"
+                                        ? "chatbubble-outline"
+                                        : "ellipse-outline"
+                                    }
+                                    size={15}
+                                  />
+                                </View>
+                                <View style={styles.timelineCopy}>
+                                  <Text
+                                    style={[
+                                      styles.timelineTitle,
+                                      tokenStyles.foreground,
+                                    ]}
+                                  >
+                                    {item.type === "comment"
+                                      ? item.authorDisplayName
+                                        ? `Kommentar von ${item.authorDisplayName}`
+                                        : "Kommentar"
+                                      : publicTimelineEventLabel(item)}
+                                  </Text>
+                                  {item.type === "comment" && item.body ? (
+                                    <Text
+                                      numberOfLines={2}
+                                      style={[
+                                        styles.timelineText,
+                                        tokenStyles.muted,
+                                      ]}
+                                    >
+                                      {item.body}
+                                    </Text>
+                                  ) : null}
+                                  <Text
+                                    style={[
+                                      styles.timelineDate,
+                                      tokenStyles.muted,
+                                    ]}
+                                  >
+                                    {formatWorkbenchDate(item.occurredAt)}
+                                  </Text>
+                                </View>
+                              </View>
+                            ))}
+                          </View>
+                        ) : (
+                          <Text
+                            style={[styles.timelineText, tokenStyles.muted]}
+                          >
+                            Noch keine öffentlichen Einträge vorhanden.
                           </Text>
-                        </View>
+                        )}
+                      </View>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {canUseAgentWorkbench ? (
+                  <>
+                    <View style={styles.detailsDivider} />
+                    <Pressable
+                      accessibilityLabel="360°-Kontext"
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: agentContextOpen }}
+                      disabled={contextLoading}
+                      onPress={() => void toggleAgentContext()}
+                      style={styles.detailsAccordionRow}
+                    >
+                      <View style={styles.detailsActionLead}>
                         <Ionicons
                           color={colors.primaryText}
-                          name={
-                            reopenRequestsOpen ? "chevron-up" : "chevron-down"
-                          }
-                          size={18}
+                          name="layers-outline"
+                          size={19}
                         />
-                      </>
-                    )}
-                  </View>
-                </Pressable>
-                {reopenRequestsOpen ? (
-                  <View style={styles.detailsExpansion}>
-                    {reopenRequestsLoading ? (
-                      <View style={styles.inlineLoading}>
-                        <ActivityIndicator
-                          color={colors.primaryText}
-                          size="small"
-                        />
-                        <Text style={[styles.timelineText, tokenStyles.muted]}>
-                          Anfragen werden geladen …
+                        <Text style={styles.detailsActionLabel}>
+                          360°-Kontext
                         </Text>
                       </View>
-                    ) : reopenRequests.length ? (
-                      <View style={styles.reopenRequestList}>
-                        {reopenRequests.map((request) => (
-                          <View
-                            key={request.id}
+                      <View style={styles.detailsActionLead}>
+                        <Text numberOfLines={1} style={styles.detailsSummary}>
+                          {contextLoading
+                            ? "Lädt …"
+                            : agentContext
+                              ? `${agentContext.requesterTickets.length} weitere Tickets`
+                              : "Aufklappen"}
+                        </Text>
+                        {contextLoading ? (
+                          <ActivityIndicator
+                            color={colors.primaryText}
+                            size="small"
+                          />
+                        ) : (
+                          <Ionicons
+                            color={colors.primaryText}
+                            name={
+                              agentContextOpen ? "chevron-up" : "chevron-down"
+                            }
+                            size={18}
+                          />
+                        )}
+                      </View>
+                    </Pressable>
+                    {agentContextOpen && agentContext ? (
+                      <View style={styles.detailsExpansion}>
+                        {compactContextValue(
+                          agentContext.ticket.ticket_number,
+                        ) ? (
+                          <Text
                             style={[
-                              styles.reopenRequest,
-                              {
-                                backgroundColor: colors.surfaceSubtle,
-                                borderColor: colors.border,
-                              },
+                              styles.contextReference,
+                              tokenStyles.foreground,
                             ]}
                           >
+                            {compactContextValue(
+                              agentContext.ticket.ticket_number,
+                            )}
+                          </Text>
+                        ) : null}
+                        {[
+                          [
+                            "Weitere Tickets",
+                            agentContext.requesterTickets.length,
+                          ],
+                          ["Assets", agentContext.assets.length],
+                          ["Assetverlauf", agentContext.assetHistory.length],
+                          [
+                            "Lösungsbestätigungen",
+                            agentContext.resolutionConfirmations.length,
+                          ],
+                        ].map(([label, value]) => (
+                          <View key={label} style={styles.contextSummaryRow}>
+                            <Text
+                              style={[styles.timelineText, tokenStyles.muted]}
+                            >
+                              {label}
+                            </Text>
                             <Text
                               style={[
-                                styles.timelineText,
+                                styles.contextSummaryValue,
                                 tokenStyles.foreground,
                               ]}
                             >
-                              {request.reason}
+                              {value}
                             </Text>
-                            <Text
-                              style={[styles.timelineDate, tokenStyles.muted]}
-                            >
-                              Eingereicht:{" "}
-                              {formatWorkbenchDate(request.created_at)}
-                            </Text>
-                            <View style={styles.decisionActions}>
-                              <Pressable
-                                accessibilityLabel="Wiedereröffnungsantrag annehmen"
-                                accessibilityRole="button"
-                                onPress={() =>
-                                  setPendingReopenDecision({
-                                    decision: "accepted",
-                                    request,
-                                  })
-                                }
-                                style={[
-                                  styles.decisionButton,
-                                  {
-                                    backgroundColor: colors.successSoft,
-                                    borderColor: colors.successBorder,
-                                  },
-                                ]}
-                              >
-                                <Text style={styles.decisionAcceptText}>
-                                  Annehmen
-                                </Text>
-                              </Pressable>
-                              <Pressable
-                                accessibilityLabel="Wiedereröffnungsantrag ablehnen"
-                                accessibilityRole="button"
-                                onPress={() =>
-                                  setPendingReopenDecision({
-                                    decision: "declined",
-                                    request,
-                                  })
-                                }
-                                style={[
-                                  styles.decisionButton,
-                                  {
-                                    backgroundColor: colors.errorSoft,
-                                    borderColor: colors.errorBorder,
-                                  },
-                                ]}
-                              >
-                                <Text style={styles.decisionDeclineText}>
-                                  Ablehnen
-                                </Text>
-                              </Pressable>
-                            </View>
                           </View>
                         ))}
                       </View>
-                    ) : (
-                      <Text style={[styles.timelineText, tokenStyles.muted]}>
-                        Für dieses Ticket liegen keine offenen
-                        Wiedereröffnungsanfragen vor.
-                      </Text>
-                    )}
-                  </View>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {canUseAgentWorkbench ? (
+                  <>
+                    <View style={styles.detailsDivider} />
+                    <Pressable
+                      accessibilityLabel="Passende Agenten"
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: assigneeSuggestionsOpen }}
+                      disabled={suggestionsLoading}
+                      onPress={() => void toggleAssigneeSuggestions()}
+                      style={styles.detailsAccordionRow}
+                    >
+                      <View style={styles.detailsActionLead}>
+                        <Ionicons
+                          color={colors.primaryText}
+                          name="people-outline"
+                          size={19}
+                        />
+                        <Text style={styles.detailsActionLabel}>
+                          Passende Agenten
+                        </Text>
+                      </View>
+                      <View style={styles.detailsActionLead}>
+                        <Text numberOfLines={1} style={styles.detailsSummary}>
+                          {suggestionsLoading
+                            ? "Lädt …"
+                            : assigneeSuggestions
+                              ? assigneeSuggestions.length
+                                ? `${Math.min(assigneeSuggestions.length, 5)} Vorschläge`
+                                : "Keine"
+                              : "Aufklappen"}
+                        </Text>
+                        {suggestionsLoading ? (
+                          <ActivityIndicator
+                            color={colors.primaryText}
+                            size="small"
+                          />
+                        ) : (
+                          <Ionicons
+                            color={colors.primaryText}
+                            name={
+                              assigneeSuggestionsOpen
+                                ? "chevron-up"
+                                : "chevron-down"
+                            }
+                            size={18}
+                          />
+                        )}
+                      </View>
+                    </Pressable>
+                    {assigneeSuggestionsOpen ? (
+                      <View style={styles.detailsExpansion}>
+                        {suggestionsLoading ? (
+                          <View style={styles.inlineLoading}>
+                            <ActivityIndicator
+                              color={colors.primaryText}
+                              size="small"
+                            />
+                            <Text
+                              style={[styles.timelineText, tokenStyles.muted]}
+                            >
+                              Vorschläge werden geladen …
+                            </Text>
+                          </View>
+                        ) : assigneeSuggestions?.length ? (
+                          <View style={styles.suggestionList}>
+                            {assigneeSuggestions
+                              .slice(0, 5)
+                              .map((suggestion) => {
+                                const displayName =
+                                  suggestion.displayName?.trim() || "Agent";
+                                const confirming =
+                                  pendingAgentAssignment?.userId ===
+                                  suggestion.userId;
+                                return (
+                                  <View
+                                    key={suggestion.userId}
+                                    style={[
+                                      styles.suggestion,
+                                      {
+                                        backgroundColor: colors.surfaceSubtle,
+                                        borderColor: colors.border,
+                                      },
+                                    ]}
+                                  >
+                                    <View style={styles.suggestionHeader}>
+                                      <View style={styles.suggestionCopy}>
+                                        <Text
+                                          numberOfLines={1}
+                                          style={[
+                                            styles.suggestionUser,
+                                            tokenStyles.foreground,
+                                          ]}
+                                        >
+                                          {displayName}
+                                        </Text>
+                                        <Text
+                                          numberOfLines={1}
+                                          style={[
+                                            styles.timelineText,
+                                            tokenStyles.muted,
+                                          ]}
+                                        >
+                                          {suggestion.reasons
+                                            .slice(0, 2)
+                                            .join(" · ") ||
+                                            "Keine Begründung verfügbar"}
+                                        </Text>
+                                      </View>
+                                      {suggestion.isCurrentAssignee ? (
+                                        <View
+                                          accessibilityLabel={`${displayName} ist bereits zugewiesen`}
+                                          style={styles.assignedBadge}
+                                        >
+                                          <Text
+                                            style={styles.assignedBadgeText}
+                                          >
+                                            Zugewiesen
+                                          </Text>
+                                        </View>
+                                      ) : (
+                                        <Pressable
+                                          accessibilityLabel={`${displayName} zuweisen`}
+                                          accessibilityRole="button"
+                                          disabled={assigningAgent}
+                                          onPress={() => {
+                                            setManualAgentAssignment(null);
+                                            setManualAgentAssignmentError("");
+                                            setPendingAgentAssignment(
+                                              suggestion,
+                                            );
+                                            hapticSelection();
+                                          }}
+                                          style={styles.assignButton}
+                                        >
+                                          <Text style={styles.assignButtonText}>
+                                            Zuweisen
+                                          </Text>
+                                        </Pressable>
+                                      )}
+                                    </View>
+                                    {confirming ? (
+                                      <View
+                                        style={styles.assignmentConfirmation}
+                                      >
+                                        <Text
+                                          style={
+                                            styles.assignmentConfirmationText
+                                          }
+                                        >
+                                          {displayName} zuweisen?
+                                        </Text>
+                                        <View style={styles.assignmentActions}>
+                                          <Pressable
+                                            accessibilityLabel={`${displayName} zuweisen bestätigen`}
+                                            accessibilityRole="button"
+                                            disabled={assigningAgent}
+                                            onPress={() =>
+                                              void confirmAgentAssignment()
+                                            }
+                                            style={
+                                              styles.assignmentConfirmButton
+                                            }
+                                          >
+                                            {assigningAgent ? (
+                                              <ActivityIndicator
+                                                color={colors.onPrimary}
+                                                size="small"
+                                              />
+                                            ) : null}
+                                            <Text
+                                              style={
+                                                styles.assignmentConfirmText
+                                              }
+                                            >
+                                              Bestätigen
+                                            </Text>
+                                          </Pressable>
+                                          <Pressable
+                                            accessibilityLabel="Zuweisung abbrechen"
+                                            accessibilityRole="button"
+                                            disabled={assigningAgent}
+                                            onPress={() =>
+                                              setPendingAgentAssignment(null)
+                                            }
+                                            style={
+                                              styles.assignmentCancelButton
+                                            }
+                                          >
+                                            <Text
+                                              style={
+                                                styles.assignmentCancelText
+                                              }
+                                            >
+                                              Abbrechen
+                                            </Text>
+                                          </Pressable>
+                                        </View>
+                                      </View>
+                                    ) : null}
+                                  </View>
+                                );
+                              })}
+                            <Text style={styles.assignmentFootnote}>
+                              Zuweisung nur nach Bestätigung
+                            </Text>
+                          </View>
+                        ) : (
+                          <Text
+                            style={[styles.timelineText, tokenStyles.muted]}
+                          >
+                            Derzeit liegen keine Zuweisungsvorschläge vor.
+                          </Text>
+                        )}
+                        {!suggestionsLoading ? (
+                          <Pressable
+                            accessibilityHint="Öffnet alle für dieses Ticket berechtigten Agenten."
+                            accessibilityLabel="Anderen Agenten auswählen"
+                            accessibilityRole="button"
+                            disabled={assignableAgentsLoading || assigningAgent}
+                            onPress={() => {
+                              hapticSelection();
+                              void openAgentPicker();
+                            }}
+                            style={({ pressed }) => [
+                              styles.manualAssigneeButton,
+                              (assignableAgentsLoading || assigningAgent) &&
+                                styles.disabled,
+                              pressed && styles.pressed,
+                            ]}
+                          >
+                            <View style={styles.manualAssigneeCopy}>
+                              <Ionicons
+                                color={colors.primaryText}
+                                name="people-outline"
+                                size={18}
+                              />
+                              <View style={styles.suggestionCopy}>
+                                <Text style={styles.manualAssigneeTitle}>
+                                  Anderen Agenten auswählen
+                                </Text>
+                                <Text style={styles.manualAssigneeText}>
+                                  Alle berechtigten Agenten anzeigen
+                                </Text>
+                              </View>
+                            </View>
+                            {assignableAgentsLoading ? (
+                              <ActivityIndicator
+                                color={colors.primaryText}
+                                size="small"
+                              />
+                            ) : (
+                              <Ionicons
+                                color={colors.primaryText}
+                                name="chevron-forward"
+                                size={18}
+                              />
+                            )}
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {canUseAgentWorkbench ? (
+                  <>
+                    <DepartmentQuestions key={ticket.id} ticketId={ticket.id} />
+                    <View style={styles.detailsDivider} />
+                    <Pressable
+                      accessibilityLabel="Wiedereröffnungsanträge"
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: reopenRequestsOpen }}
+                      onPress={() => {
+                        setReopenRequestsOpen((current) => !current);
+                        hapticSelection();
+                      }}
+                      style={styles.detailsAccordionRow}
+                    >
+                      <View style={styles.detailsActionLead}>
+                        <Ionicons
+                          color={colors.warning}
+                          name="git-pull-request-outline"
+                          size={19}
+                        />
+                        <Text style={styles.detailsActionLabel}>
+                          Wiedereröffnungsanträge
+                        </Text>
+                      </View>
+                      <View style={styles.detailsActionLead}>
+                        {reopenRequestsLoading ? (
+                          <ActivityIndicator
+                            color={colors.primaryText}
+                            size="small"
+                          />
+                        ) : (
+                          <>
+                            <View style={styles.detailsCountBadge}>
+                              <Text style={styles.detailsCountBadgeText}>
+                                {reopenRequests.length || "Keine"}
+                              </Text>
+                            </View>
+                            <Ionicons
+                              color={colors.primaryText}
+                              name={
+                                reopenRequestsOpen
+                                  ? "chevron-up"
+                                  : "chevron-down"
+                              }
+                              size={18}
+                            />
+                          </>
+                        )}
+                      </View>
+                    </Pressable>
+                    {reopenRequestsOpen ? (
+                      <View style={styles.detailsExpansion}>
+                        {reopenRequestsLoading ? (
+                          <View style={styles.inlineLoading}>
+                            <ActivityIndicator
+                              color={colors.primaryText}
+                              size="small"
+                            />
+                            <Text
+                              style={[styles.timelineText, tokenStyles.muted]}
+                            >
+                              Anfragen werden geladen …
+                            </Text>
+                          </View>
+                        ) : reopenRequests.length ? (
+                          <View style={styles.reopenRequestList}>
+                            {reopenRequests.map((request) => (
+                              <View
+                                key={request.id}
+                                style={[
+                                  styles.reopenRequest,
+                                  {
+                                    backgroundColor: colors.surfaceSubtle,
+                                    borderColor: colors.border,
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.timelineText,
+                                    tokenStyles.foreground,
+                                  ]}
+                                >
+                                  {request.reason}
+                                </Text>
+                                <Text
+                                  style={[
+                                    styles.timelineDate,
+                                    tokenStyles.muted,
+                                  ]}
+                                >
+                                  Eingereicht:{" "}
+                                  {formatWorkbenchDate(request.created_at)}
+                                </Text>
+                                <View style={styles.decisionActions}>
+                                  <Pressable
+                                    accessibilityLabel="Wiedereröffnungsantrag annehmen"
+                                    accessibilityRole="button"
+                                    onPress={() =>
+                                      setPendingReopenDecision({
+                                        decision: "accepted",
+                                        request,
+                                      })
+                                    }
+                                    style={[
+                                      styles.decisionButton,
+                                      {
+                                        backgroundColor: colors.successSoft,
+                                        borderColor: colors.successBorder,
+                                      },
+                                    ]}
+                                  >
+                                    <Text style={styles.decisionAcceptText}>
+                                      Annehmen
+                                    </Text>
+                                  </Pressable>
+                                  <Pressable
+                                    accessibilityLabel="Wiedereröffnungsantrag ablehnen"
+                                    accessibilityRole="button"
+                                    onPress={() =>
+                                      setPendingReopenDecision({
+                                        decision: "declined",
+                                        request,
+                                      })
+                                    }
+                                    style={[
+                                      styles.decisionButton,
+                                      {
+                                        backgroundColor: colors.errorSoft,
+                                        borderColor: colors.errorBorder,
+                                      },
+                                    ]}
+                                  >
+                                    <Text style={styles.decisionDeclineText}>
+                                      Ablehnen
+                                    </Text>
+                                  </Pressable>
+                                </View>
+                              </View>
+                            ))}
+                          </View>
+                        ) : (
+                          <Text
+                            style={[styles.timelineText, tokenStyles.muted]}
+                          >
+                            Für dieses Ticket liegen keine offenen
+                            Wiedereröffnungsanfragen vor.
+                          </Text>
+                        )}
+                      </View>
+                    ) : null}
+                  </>
                 ) : null}
               </>
             ) : null}
@@ -2974,10 +3483,94 @@ export default function TicketDetailScreen() {
           ) : null}
 
           <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
-            <Text style={[styles.cardLabel, tokenStyles.muted]}>
-              BESCHREIBUNG
-            </Text>
-            {ticket.canUpdate && editingField === "description" ? (
+            <Pressable
+              accessibilityLabel={
+                descriptionExpanded
+                  ? "Beschreibung einklappen"
+                  : "Beschreibung aufklappen"
+              }
+              accessibilityRole="button"
+              accessibilityState={{ expanded: descriptionExpanded }}
+              disabled={editingField === "description"}
+              hitSlop={8}
+              onPress={() => {
+                hapticSelection();
+                setDescriptionOpen(!descriptionExpanded);
+              }}
+              style={styles.descriptionHeader}
+            >
+              <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                BESCHREIBUNG
+              </Text>
+              <Ionicons
+                color={colors.muted}
+                name={descriptionExpanded ? "chevron-up" : "chevron-down"}
+                size={18}
+              />
+            </Pressable>
+            {splitNote && editingField !== "description" ? (
+              <View
+                accessibilityLabel={`${ticketSplitNoteText(splitNote)}.${
+                  splitNote.siblingTicketNumbers.length
+                    ? ` Weitere Teile: ${splitNote.siblingTicketNumbers.join(", ")}.`
+                    : ""
+                }`}
+                style={[
+                  styles.splitNote,
+                  {
+                    backgroundColor: colors.primarySoft,
+                    borderColor: colors.primary,
+                  },
+                ]}
+              >
+                <Ionicons
+                  color={colors.primaryText}
+                  name="git-branch-outline"
+                  size={18}
+                />
+                <View style={styles.splitNoteText}>
+                  <Text
+                    style={[
+                      styles.splitNoteTitle,
+                      { color: colors.primaryText },
+                    ]}
+                  >
+                    {splitNote.part && splitNote.total
+                      ? `Teil ${splitNote.part} von ${splitNote.total} eines aufgeteilten Tickets`
+                      : "Teil eines aufgeteilten Tickets"}
+                  </Text>
+                  <Text style={[styles.splitNoteBody, { color: colors.text }]}>
+                    Entstanden beim Aufteilen von Ticket{" "}
+                    {splitNote.parentTicketNumber}.
+                    {splitNote.siblingTicketNumbers.length
+                      ? ` ${splitNote.siblingTicketNumbers.length === 1 ? "Weiterer Teil" : "Weitere Teile"}: ${splitNote.siblingTicketNumbers.join(", ")}`
+                      : ""}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            {!descriptionExpanded ? (
+              <Pressable
+                accessibilityHint="Antippen, um die ganze Beschreibung zu sehen."
+                accessibilityRole="button"
+                onPress={() => {
+                  hapticSelection();
+                  setDescriptionOpen(true);
+                }}
+              >
+                <Text
+                  numberOfLines={3}
+                  style={[styles.description, tokenStyles.muted]}
+                >
+                  {withoutEmailSignature(
+                    parseTicketSplitNote(ticket.description).body,
+                  )
+                    .replace(/^Eingegangene E-Mail von [^\n]*\n+/u, "")
+                    .replace(/\s+/gu, " ")
+                    .trim() || "Keine Beschreibung"}
+                </Text>
+              </Pressable>
+            ) : ticket.canUpdate && editingField === "description" ? (
               <View style={styles.inlineEdit}>
                 <TextInput
                   autoCapitalize="sentences"
@@ -3019,14 +3612,44 @@ export default function TicketDetailScreen() {
                 }}
               >
                 <Text style={styles.description}>
-                  {withoutEmailSignature(ticket.description)}
+                  {withoutEmailSignature(
+                    parseTicketSplitNote(ticket.description).body,
+                  )}
                 </Text>
               </Pressable>
             )}
-            <MessageAttachmentList
-              attachments={descriptionAttachments}
-              onOpen={(attachment) => void openTicketAttachment(attachment)}
-            />
+            {descriptionExpanded ? (
+              <MessageAttachmentList
+                attachments={descriptionAttachments}
+                onOpen={(attachment) => void openTicketAttachment(attachment)}
+              />
+            ) : null}
+            {ticket.canWriteInternalNotes ? (
+              <Pressable
+                accessibilityHint="Leitet die ursprüngliche Mail an andere Adressen weiter, nicht an die anfragende Person."
+                accessibilityRole="button"
+                onPress={() => {
+                  hapticSelection();
+                  setForwardError("");
+                  setForwardOpen(true);
+                }}
+                style={[styles.forwardButton, { borderColor: colors.border }]}
+              >
+                <Ionicons
+                  color={colors.primaryText}
+                  name="arrow-redo-outline"
+                  size={18}
+                />
+                <Text
+                  style={[
+                    styles.forwardButtonText,
+                    { color: colors.primaryText },
+                  ]}
+                >
+                  Weiterleiten
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {canUseRequesterPortal && ticketIsResolved && !reopenSubmitted ? (
@@ -3096,6 +3719,7 @@ export default function TicketDetailScreen() {
               onDismissRestoredDraft={() => setRestoredDraftLabel(null)}
               isSending={sendingComment}
               onBodyChange={changeComment}
+              mentionCandidates={mentionCandidates}
               onSend={() => void sendComment()}
               onPolish={
                 tenant
@@ -3677,6 +4301,306 @@ export default function TicketDetailScreen() {
 
         <Modal
           animationType="slide"
+          onRequestClose={() => {
+            if (!handingOver) setLevelHandover(null);
+          }}
+          transparent
+          visible={levelHandover !== null}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.experienceSheetRoot}
+          >
+            <Pressable
+              accessibilityLabel="Übergabe abbrechen"
+              accessibilityRole="button"
+              disabled={handingOver}
+              onPress={() => setLevelHandover(null)}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
+              accessibilityViewIsModal
+              style={[
+                styles.experienceSheet,
+                { backgroundColor: colors.surface },
+              ]}
+            >
+              <View style={styles.experienceSheetHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.selectionEyebrow, tokenStyles.muted]}>
+                    SUPPORTSTUFE
+                  </Text>
+                  <Text
+                    style={[
+                      styles.experienceSheetTitle,
+                      tokenStyles.foreground,
+                    ]}
+                  >
+                    An {levelHandover?.teamName ?? "Team"} übergeben
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="Übergabe abbrechen"
+                  accessibilityRole="button"
+                  disabled={handingOver}
+                  hitSlop={10}
+                  onPress={() => setLevelHandover(null)}
+                  style={[
+                    styles.selectionClose,
+                    { backgroundColor: colors.primarySoft },
+                  ]}
+                >
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
+                </Pressable>
+              </View>
+              <ScrollView
+                automaticallyAdjustKeyboardInsets
+                contentContainerStyle={styles.experienceSheetContent}
+                keyboardDismissMode="interactive"
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <Text
+                  style={[styles.experienceSheetDescription, tokenStyles.muted]}
+                >
+                  Dieses Team gehört zu einer anderen Supportstufe. Für den
+                  Wechsel ist eine Übergabenotiz nötig: Was wurde bereits
+                  gemacht, was ist offen?
+                </Text>
+                <View style={styles.resolutionField}>
+                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                    ÜBERGABENOTIZ
+                  </Text>
+                  <TextInput
+                    autoCapitalize="sentences"
+                    maxLength={4_000}
+                    multiline
+                    onChangeText={setLevelHandoverNote}
+                    placeholder="Was wurde gemacht, was ist offen?"
+                    placeholderTextColor={colors.subtle}
+                    style={[
+                      styles.resolutionInput,
+                      {
+                        backgroundColor: colors.surfaceSubtle,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                    textAlignVertical="top"
+                    value={levelHandoverNote}
+                  />
+                </View>
+                {levelHandoverError ? (
+                  <View style={[styles.feedback, tokenStyles.error]}>
+                    <Ionicons
+                      color={colors.error}
+                      name="alert-circle-outline"
+                      size={20}
+                    />
+                    <Text
+                      style={[styles.feedbackText, { color: colors.error }]}
+                    >
+                      {levelHandoverError}
+                    </Text>
+                  </View>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={handingOver || !levelHandoverNote.trim()}
+                  onPress={() => void submitLevelHandover()}
+                  style={[
+                    styles.experienceSaveButton,
+                    { backgroundColor: colors.primary },
+                    (handingOver || !levelHandoverNote.trim()) &&
+                      styles.disabled,
+                  ]}
+                >
+                  {handingOver ? (
+                    <ActivityIndicator color={colors.onPrimary} size="small" />
+                  ) : (
+                    <Ionicons
+                      color={colors.onPrimary}
+                      name="swap-vertical-outline"
+                      size={20}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.experienceSaveButtonText,
+                      tokenStyles.primaryText,
+                    ]}
+                  >
+                    {handingOver ? "Wird übergeben …" : "Übergeben"}
+                  </Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        <Modal
+          animationType="slide"
+          onRequestClose={() => {
+            if (!forwarding) setForwardOpen(false);
+          }}
+          transparent
+          visible={forwardOpen}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.experienceSheetRoot}
+          >
+            <Pressable
+              accessibilityLabel="Weiterleiten schliessen"
+              accessibilityRole="button"
+              disabled={forwarding}
+              onPress={() => setForwardOpen(false)}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
+              accessibilityViewIsModal
+              style={[
+                styles.experienceSheet,
+                { backgroundColor: colors.surface },
+              ]}
+            >
+              <View style={styles.experienceSheetHeader}>
+                <View>
+                  <Text style={[styles.selectionEyebrow, tokenStyles.muted]}>
+                    URSPRÜNGLICHE MAIL
+                  </Text>
+                  <Text
+                    style={[
+                      styles.experienceSheetTitle,
+                      tokenStyles.foreground,
+                    ]}
+                  >
+                    Weiterleiten
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="Weiterleiten schliessen"
+                  accessibilityRole="button"
+                  disabled={forwarding}
+                  hitSlop={10}
+                  onPress={() => setForwardOpen(false)}
+                  style={[
+                    styles.selectionClose,
+                    { backgroundColor: colors.primarySoft },
+                  ]}
+                >
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
+                </Pressable>
+              </View>
+              <ScrollView
+                automaticallyAdjustKeyboardInsets
+                contentContainerStyle={styles.experienceSheetContent}
+                keyboardDismissMode="interactive"
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <Text
+                  style={[styles.experienceSheetDescription, tokenStyles.muted]}
+                >
+                  Die ursprüngliche Mail wird mit den Anhängen weitergeleitet.
+                  Die anfragende Person erhält nichts; in der Unterhaltung
+                  erscheint eine interne Notiz.
+                </Text>
+                <View style={styles.resolutionField}>
+                  <Text style={[styles.cardLabel, tokenStyles.muted]}>AN</Text>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    autoCorrect={false}
+                    inputMode="email"
+                    maxLength={2_600}
+                    onChangeText={setForwardRecipients}
+                    placeholder="adresse@firma.ch, …"
+                    placeholderTextColor={colors.subtle}
+                    style={[
+                      styles.forwardInput,
+                      {
+                        backgroundColor: colors.surfaceSubtle,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                    value={forwardRecipients}
+                  />
+                </View>
+                <View style={styles.resolutionField}>
+                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                    NACHRICHT (OPTIONAL)
+                  </Text>
+                  <TextInput
+                    autoCapitalize="sentences"
+                    maxLength={10_000}
+                    multiline
+                    onChangeText={setForwardMessage}
+                    placeholder="Was soll die empfangende Person tun?"
+                    placeholderTextColor={colors.subtle}
+                    style={[
+                      styles.resolutionInput,
+                      {
+                        backgroundColor: colors.surfaceSubtle,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                    textAlignVertical="top"
+                    value={forwardMessage}
+                  />
+                </View>
+                {forwardError ? (
+                  <View style={[styles.feedback, tokenStyles.error]}>
+                    <Ionicons
+                      color={colors.error}
+                      name="alert-circle-outline"
+                      size={20}
+                    />
+                    <Text
+                      style={[styles.feedbackText, { color: colors.error }]}
+                    >
+                      {forwardError}
+                    </Text>
+                  </View>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={forwarding || !forwardRecipients.trim()}
+                  onPress={() => void submitForward()}
+                  style={[
+                    styles.experienceSaveButton,
+                    { backgroundColor: colors.primary },
+                    (forwarding || !forwardRecipients.trim()) &&
+                      styles.disabled,
+                  ]}
+                >
+                  {forwarding ? (
+                    <ActivityIndicator color={colors.onPrimary} size="small" />
+                  ) : (
+                    <Ionicons
+                      color={colors.onPrimary}
+                      name="arrow-redo-outline"
+                      size={20}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.experienceSaveButtonText,
+                      tokenStyles.primaryText,
+                    ]}
+                  >
+                    {forwarding ? "Wird weitergeleitet …" : "Weiterleiten"}
+                  </Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        <Modal
+          animationType="slide"
           onRequestClose={() => setReopenSheetOpen(false)}
           transparent
           visible={
@@ -3952,7 +4876,9 @@ export default function TicketDetailScreen() {
                   <Text style={styles.selectionTitle}>
                     {selection === "status"
                       ? "Status wählen"
-                      : "Priorität wählen"}
+                      : selection === "team"
+                        ? "Team wählen"
+                        : "Priorität wählen"}
                   </Text>
                 </View>
                 <Pressable
@@ -3970,12 +4896,23 @@ export default function TicketDetailScreen() {
               >
                 {(selection === "status"
                   ? editableStatuses
-                  : ticket.priorityOptions
+                  : selection === "team"
+                    ? [
+                        { id: "", key: "", label: "Kein Team" },
+                        ...ticket.teamOptions.map((team) => ({
+                          id: team.id,
+                          key: team.id,
+                          label: team.name,
+                        })),
+                      ]
+                    : ticket.priorityOptions
                 ).map((option) => {
                   const selected =
                     selection === "status"
                       ? statusKey === option.key
-                      : priorityKey === option.key;
+                      : selection === "team"
+                        ? (ticket.assignedTeamId ?? "") === option.key
+                        : priorityKey === option.key;
                   return (
                     <Pressable
                       accessibilityRole="button"
@@ -3986,6 +4923,8 @@ export default function TicketDetailScreen() {
                         setSelection(null);
                         if (field === "status") {
                           void saveChange({ statusKey: option.key });
+                        } else if (field === "team") {
+                          void saveTeam(option.key || null);
                         } else {
                           void saveChange({ priorityKey: option.key });
                         }
@@ -4721,9 +5660,94 @@ const useStyles = makeThemedStyles((c) => ({
     gap: 0,
   },
   detailsTitle: { fontSize: 16, fontWeight: "800", marginBottom: 5 },
+  detailsHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+  },
+  detailsHeaderText: { flex: 1 },
+  detailsCollapsedSummary: { fontSize: 13, lineHeight: 18 },
   detailsRequester: { gap: 4, paddingVertical: 2 },
   requesterPressable: { gap: 3, justifyContent: "center", minHeight: 44 },
   requesterName: { color: c.foreground, fontSize: 15, fontWeight: "800" },
+  mergeHint: {
+    alignItems: "center",
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  mergeHintText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  ticketIdRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  presenceRow: { alignItems: "center", flexDirection: "row" },
+  presenceAvatar: {
+    alignItems: "center",
+    borderRadius: 16,
+    borderWidth: 2,
+    height: 32,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 32,
+  },
+  presencePhoto: { height: 32, width: 32 },
+  presenceInitials: { fontSize: 12, fontWeight: "800" },
+  presenceMore: { fontSize: 12, fontWeight: "700", marginLeft: 4 },
+  splitNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderLeftWidth: 4,
+  },
+  splitNoteText: {
+    flex: 1,
+    gap: 2,
+  },
+  splitNoteTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  splitNoteBody: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  descriptionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  forwardButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  forwardButtonText: { fontSize: 14, fontWeight: "700" },
+  forwardInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 15,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   requesterMeta: { color: c.muted, fontSize: 13, lineHeight: 18 },
   detailsDivider: { backgroundColor: c.border, height: 1, marginVertical: 5 },
   detailsValueRow: {

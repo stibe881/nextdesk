@@ -243,7 +243,9 @@ export function TicketSupportLevelCard({
 
       <Modal
         animationType="slide"
-        onRequestClose={() => !saving && setMode(null)}
+        onRequestClose={() => {
+          if (!saving) setMode(null);
+        }}
         transparent
         visible={mode !== null}
       >

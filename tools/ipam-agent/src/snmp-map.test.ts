@@ -155,3 +155,38 @@ test("LLDP neighbours with capabilities and management address", () => {
   assert.equal(lldpPortName(23, local, new Map([[23, "A23"]])), "A23");
   assert.equal(lldpPortName(5, new Map(), new Map()), "5");
 });
+
+test("credentials from nextDesk take precedence over config.json", async () => {
+  const { parseLocalConfig, parseRemoteSnmp, snmpCredentialOf } =
+    await import("./config.ts");
+  const local = parseLocalConfig({
+    nextdeskUrl: "https://example.supabase.co/functions/v1/ipam-agent",
+    agentToken: `ndip_${"a".repeat(32)}_${"B".repeat(43)}`,
+    snmp: {
+      default: { version: "v2c", community: "local-default" },
+      hosts: { "10.0.0.1": { version: "v2c", community: "local-host" } },
+    },
+  });
+  assert.equal(
+    (snmpCredentialOf(local, "10.0.0.2") as { community: string }).community,
+    "local-default",
+  );
+  local.snmp.remote = parseRemoteSnmp({
+    default: { version: "v2c", community: "remote-default" },
+    hosts: {
+      "10.0.0.3": { version: "v3", user: "ro" },
+      "10.0.0.4": { version: "v3" },
+    },
+  })!;
+  // Device entries first (nextDesk, then config.json), then the defaults.
+  assert.equal(
+    (snmpCredentialOf(local, "10.0.0.1") as { community: string }).community,
+    "local-host",
+  );
+  assert.equal(snmpCredentialOf(local, "10.0.0.3")?.version, "v3");
+  assert.equal(
+    (snmpCredentialOf(local, "10.0.0.4") as { community: string }).community,
+    "remote-default",
+  );
+  assert.equal(parseRemoteSnmp("x"), null);
+});

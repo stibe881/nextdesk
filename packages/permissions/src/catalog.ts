@@ -51,6 +51,9 @@ export const permissionCodes = [
   "service_tasks.read",
   "service_tasks.execute",
   "service_tasks.manage",
+  "project.read",
+  "project.create",
+  "project.manage",
   "tenant.settings.manage",
   "platform.tenants.manage",
   "platform.support_access.request",
@@ -60,6 +63,7 @@ export type PermissionCode = (typeof permissionCodes)[number];
 
 export const sensitivePermissions: readonly PermissionCode[] = [
   "service_tasks.manage",
+  "project.manage",
   "shop.fulfill",
   "shop.manage",
   "ticket.export",

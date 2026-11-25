@@ -4,11 +4,19 @@ import { OnboardingDepartmentTasks } from "./onboarding-department-tasks";
 import {
   BadgeCheck,
   CalendarDays,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
+  FileText,
+  MapPin,
   Plus,
+  Filter,
   RefreshCw,
+  Trash2,
+  TriangleAlert,
   UserRound,
+  Users,
   Wrench,
 } from "lucide-react";
 import {
@@ -20,6 +28,17 @@ import {
   FormSummary,
 } from "./form-kit";
 import "./onboarding.css";
+import { confirmDialog } from "./app-dialog";
+import {
+  CHANGE_FIELDS,
+  CHANGE_TYPE_LABELS,
+  CHANGE_TYPES,
+  changeDetailsFor,
+  changeSummary,
+  missingChangeTypes,
+  type ChangeDetails,
+  type ChangeType,
+} from "./lib/onboarding-change";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -41,21 +60,41 @@ type Entry = {
   id: string;
   employeeName: string;
   startsOn: string;
+  /** Eingang der Eintrittsmeldung (Erfassung des Eintritts). */
+  createdAt?: string | null;
   organisationUnit: string | null;
   location: string | null;
   managerName: string;
   ictResponsibleName: string;
   templateId: string;
-  kind?: "onboarding" | "offboarding";
+  kind?: EntryKind;
+  /** Mutationsarten einer Mutation. */
+  changeTypes?: ChangeType[];
   canEdit?: boolean;
+  /** ICT-Verantwortung (Agent), änderbar mit «canAssign». */
+  ictResponsibleUserId?: string | null;
+  /** Abteilung, über die der Eintritt gemeldet wurde. */
+  departmentId?: string | null;
+  departmentName?: string | null;
+  /** Agenten der Teams dieser Abteilung. */
+  assignableAgentIds?: string[];
+  canAssign?: boolean;
+  /** Sichtbar als Stellvertretung für diese Person. */
+  delegatedFor?: string | null;
   source?: "email" | "manual";
   sourceTicketNumber?: string | null;
+  /** Die Eintrittsmeldung (PDF) ist beim Eintritt gespeichert. */
+  hasDocument?: boolean;
   details?: Record<string, unknown>;
   tasks: Task[];
 };
 type Workspace = {
   permissions: { canRequest: boolean; canManage: boolean };
   people: Person[];
+  /** Agenten, denen sich Eintritte zuweisen lassen. */
+  agents?: Person[];
+  /** Abteilungen mit Teams und ihren Agenten (Auswahl beim Erfassen). */
+  departments?: { id: string; name: string; agentIds: string[] }[];
   templates: Template[];
   entries: Entry[];
 };
@@ -74,9 +113,25 @@ const emptyDraft = () => ({
   location: "",
   managerUserId: "",
   ictResponsibleUserId: "",
+  departmentId: "",
   templateId: "",
-  kind: "onboarding" as "onboarding" | "offboarding",
+  kind: "onboarding" as EntryKind,
+  changeTypes: [] as ChangeType[],
+  changeDetails: {} as ChangeDetails,
 });
+type EntryKind = "onboarding" | "offboarding" | "change";
+/** «Eintritt», «Austritt» oder «Mutation». */
+export function entryKindLabel(kind: EntryKind | undefined): string {
+  return kind === "offboarding"
+    ? "Austritt"
+    : kind === "change"
+      ? "Mutation"
+      : "Eintritt";
+}
+/** Mit Artikel, z. B. «Der Eintritt» bzw. «Die Mutation». */
+function entryKindWithArticle(kind: EntryKind | undefined): string {
+  return `${kind === "change" ? "Die" : "Der"} ${entryKindLabel(kind)}`;
+}
 function isWorkspace(value: unknown): value is Workspace {
   return Boolean(
     value &&
@@ -746,6 +801,81 @@ function AssetReturnsPanel({
   );
 }
 
+/** Tage von heute (Zürich) bis zu einem Datum (YYYY-MM-DD); negativ = vorbei. */
+function daysUntil(value: string, today: Date = new Date()): number {
+  const local = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Zurich",
+  }).format(today);
+  return Math.round(
+    (Date.parse(`${value}T00:00:00Z`) - Date.parse(`${local}T00:00:00Z`)) /
+      86_400_000,
+  );
+}
+
+/** «heute», «morgen», «in 12 Tagen», «vor 3 Tagen». */
+export function relativeDays(days: number): string {
+  if (days === 0) return "heute";
+  if (days === 1) return "morgen";
+  if (days === -1) return "gestern";
+  return days > 0 ? `in ${days} Tagen` : `vor ${-days} Tagen`;
+}
+
+function shortDate(value: string) {
+  return new Intl.DateTimeFormat("de-CH", {
+    timeZone: "Europe/Zurich",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+type TaskGroup = { key: string; title: string; tasks: Task[] };
+
+/** Offene Aufgaben nach Fälligkeit gruppiert, erledigte am Schluss. */
+export function groupTasks(
+  tasks: Task[],
+  today: Date = new Date(),
+): TaskGroup[] {
+  const byDue = [...tasks].sort(
+    (a, b) => a.dueOn.localeCompare(b.dueOn) || a.title.localeCompare(b.title),
+  );
+  const open = byDue.filter((task) => task.status !== "completed");
+  const groups: TaskGroup[] = [
+    {
+      key: "overdue",
+      title: "Überfällig",
+      tasks: open.filter((task) => daysUntil(task.dueOn, today) < 0),
+    },
+    {
+      key: "soon",
+      title: "Nächste 7 Tage",
+      tasks: open.filter((task) => {
+        const days = daysUntil(task.dueOn, today);
+        return days >= 0 && days <= 7;
+      }),
+    },
+    {
+      key: "later",
+      title: "Später",
+      tasks: open.filter((task) => daysUntil(task.dueOn, today) > 7),
+    },
+    {
+      key: "done",
+      title: "Erledigt",
+      tasks: byDue.filter((task) => task.status === "completed"),
+    },
+  ];
+  return groups.filter((group) => group.tasks.length > 0);
+}
+
 function progress(tasks: Task[]) {
   const done = tasks.filter((task) => task.status === "completed").length;
   return {
@@ -753,6 +883,118 @@ function progress(tasks: Task[]) {
     total: tasks.length,
     percent: tasks.length ? Math.round((done / tasks.length) * 100) : 0,
   };
+}
+
+export type EntryFilter = "open" | "done" | "all";
+
+/**
+ * Auswahl «ICT-Verantwortung»: die Agenten der Teams der Abteilung; eine
+ * bisherige Person ausserhalb davon bleibt sichtbar. «Nicht zugewiesen»
+ * steht immer davor (leere ID).
+ */
+export function assignOptions(
+  agents: readonly { id: string; displayName: string }[],
+  allowedIds: readonly string[] | undefined,
+  currentId: string | null | undefined,
+  currentName: string,
+): { id: string; displayName: string }[] {
+  const allowed = allowedIds ? new Set(allowedIds) : null;
+  const options = agents.filter((agent) => !allowed || allowed.has(agent.id));
+  const current =
+    currentId && !options.some((agent) => agent.id === currentId)
+      ? [{ id: currentId, displayName: currentName }]
+      : [];
+  return [{ id: "", displayName: "Nicht zugewiesen" }, ...current, ...options];
+}
+
+/** Datumsbereiche (JJJJ-MM-TT, leer = offen) für Eintrittsdatum und Meldung. */
+export type EntryDateFilter = {
+  startsFrom: string;
+  startsTo: string;
+  reportedFrom: string;
+  reportedTo: string;
+};
+export const emptyEntryDateFilter: EntryDateFilter = {
+  startsFrom: "",
+  startsTo: "",
+  reportedFrom: "",
+  reportedTo: "",
+};
+export function activeEntryDateFilters(dates: EntryDateFilter): number {
+  return (
+    (dates.startsFrom || dates.startsTo ? 1 : 0) +
+    (dates.reportedFrom || dates.reportedTo ? 1 : 0)
+  );
+}
+const zurichDay = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Zurich",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+/** Kalendertag (Zürich) eines Zeitpunkts als JJJJ-MM-TT. */
+function dayOf(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : zurichDay.format(date);
+}
+function inRange(day: string | null, from: string, to: string): boolean {
+  if (!from && !to) return true;
+  if (!day) return false;
+  return (!from || day >= from) && (!to || day <= to);
+}
+
+/** Ein Eintritt ist erledigt, wenn alle seine Aufgaben erledigt sind. */
+export function entryDone(tasks: readonly { status: string }[]): boolean {
+  return tasks.length > 0 && tasks.every((task) => task.status === "completed");
+}
+
+/**
+ * Filter «Offen / Erledigt / Alle» und Suche über Name, Abteilung, Ort,
+ * Führung, ICT-Verantwortung und Ticketnummer der Eintrittsmeldung.
+ */
+export function filterEntries<
+  T extends {
+    employeeName: string;
+    organisationUnit: string | null;
+    location: string | null;
+    managerName: string;
+    ictResponsibleName: string;
+    sourceTicketNumber?: string | null;
+    startsOn?: string;
+    createdAt?: string | null;
+    tasks: readonly { status: string }[];
+  },
+>(
+  entries: readonly T[],
+  filter: EntryFilter,
+  query: string,
+  dates: EntryDateFilter = emptyEntryDateFilter,
+): T[] {
+  const words = query.toLocaleLowerCase("de-CH").split(/\s+/).filter(Boolean);
+  return entries.filter((entry) => {
+    const done = entryDone(entry.tasks);
+    if (filter === "open" && done) return false;
+    if (filter === "done" && !done) return false;
+    if (!inRange(dayOf(entry.startsOn), dates.startsFrom, dates.startsTo))
+      return false;
+    if (!inRange(dayOf(entry.createdAt), dates.reportedFrom, dates.reportedTo))
+      return false;
+    if (!words.length) return true;
+    const text = [
+      entry.employeeName,
+      entry.organisationUnit,
+      entry.location,
+      entry.managerName,
+      entry.ictResponsibleName,
+      entry.sourceTicketNumber,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("de-CH");
+    return words.every((word) => text.includes(word));
+  });
 }
 
 export function Onboarding({
@@ -777,6 +1019,57 @@ export function Onboarding({
   } | null>(null);
   const [ticketNumber, setTicketNumber] = useState("");
   const [exceptionReason, setExceptionReason] = useState("");
+  // Aus der globalen Suche geöffnet: alle zeigen, damit der Eintritt sichtbar ist.
+  const [entryFilter, setEntryFilter] = useState<EntryFilter>(
+    focusEntryId ? "all" : "open",
+  );
+  const [entryQuery, setEntryQuery] = useState("");
+  const [entryDates, setEntryDates] =
+    useState<EntryDateFilter>(emptyEntryDateFilter);
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
+  // Alle Ein- und Austritte sind eingeklappt; nur der aus der Suche geöffnete
+  // ist aufgeklappt.
+  const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(
+    () => new Set(focusEntryId ? [focusEntryId] : []),
+  );
+  const toggleEntry = (entryId: string) =>
+    setExpandedEntryIds((current) => {
+      const next = new Set(current);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return next;
+    });
+  // Öffnet die Eintrittsmeldung (PDF) über eine kurz gültige Adresse. Das
+  // Fenster wird sofort geöffnet, damit der Browser es nicht blockiert.
+  const openDocument = async (entryId: string) => {
+    if (!supabase) return;
+    const target = window.open("", "_blank");
+    try {
+      const { data, error } = await supabase.functions.invoke("onboarding", {
+        body: { type: "documentUrl", tenantId, entryId },
+      });
+      if (error) throw error;
+      const url =
+        data && typeof data === "object" && "data" in data
+          ? (data as { data?: { url?: unknown } }).data?.url
+          : null;
+      if (typeof url !== "string") throw new Error("document_unavailable");
+      if (target) {
+        target.opener = null;
+        target.location.href = url;
+      } else {
+        window.location.assign(url);
+      }
+    } catch (nextError) {
+      target?.close();
+      setErrorMessage(
+        await functionErrorMessage(
+          nextError,
+          "Die Eintrittsmeldung konnte nicht geöffnet werden.",
+        ),
+      );
+    }
+  };
   const load = async (preserve = false) => {
     if (!supabase) return;
     setLoading(true);
@@ -820,6 +1113,9 @@ export function Onboarding({
     ) {
       return;
     }
+    setExpandedEntryIds((current) =>
+      current.has(focusEntryId) ? current : new Set([...current, focusEntryId]),
+    );
     const frame = window.requestAnimationFrame(() => {
       document
         .getElementById(`onboarding-entry-${focusEntryId}`)
@@ -853,17 +1149,41 @@ export function Onboarding({
   async function createEntry(event: FormEvent) {
     event.preventDefault();
     if (!supabase) return;
+    const isChange = draft.kind === "change";
+    if (isChange) {
+      if (!draft.changeTypes.length) {
+        setErrorMessage(
+          tn(
+            "Bitte wähle mindestens eine Mutationsart.",
+            "Bitte wählen Sie mindestens eine Mutationsart.",
+          ),
+        );
+        return;
+      }
+      const missing = missingChangeTypes(
+        draft.changeTypes,
+        draft.changeDetails,
+      );
+      if (missing.length) {
+        setErrorMessage(
+          `Bitte die neue Angabe ergänzen: ${missing
+            .map((type) => CHANGE_TYPE_LABELS[type])
+            .join(", ")}.`,
+        );
+        return;
+      }
+    }
     if (
       !draft.employeeName.trim() ||
       !draft.startsOn ||
       !draft.managerUserId ||
-      !draft.ictResponsibleUserId ||
-      !draft.templateId
+      !draft.departmentId ||
+      (!isChange && !draft.templateId)
     ) {
       setErrorMessage(
         tn(
-          "Bitte fülle Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus.",
-          "Bitte füllen Sie Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus.",
+          "Bitte fülle Name, Datum, Führungsperson, Abteilung und Vorlage aus.",
+          "Bitte füllen Sie Name, Datum, Führungsperson, Abteilung und Vorlage aus.",
         ),
       );
       return;
@@ -880,9 +1200,18 @@ export function Onboarding({
           organisationUnit: draft.organisationUnit.trim() || null,
           location: draft.location.trim() || null,
           managerUserId: draft.managerUserId,
-          ictResponsibleUserId: draft.ictResponsibleUserId,
-          templateId: draft.templateId,
+          ictResponsibleUserId: draft.ictResponsibleUserId || null,
+          departmentId: draft.departmentId || null,
           kind: draft.kind,
+          ...(isChange
+            ? {
+                changeTypes: draft.changeTypes,
+                changeDetails: changeDetailsFor(
+                  draft.changeTypes,
+                  draft.changeDetails,
+                ),
+              }
+            : { templateId: draft.templateId }),
         },
       });
       if (error) throw error;
@@ -891,7 +1220,9 @@ export function Onboarding({
       setNotice(
         draft.kind === "offboarding"
           ? "Der Austritt wurde geplant. Die Aufgaben sind relativ zum Austrittsdatum terminiert."
-          : "Der Eintritt wurde geplant. Die Aufgaben sind relativ zum Eintrittsdatum terminiert.",
+          : draft.kind === "change"
+            ? "Die Mutation wurde geplant. Die Aufgaben sind relativ zum Stichtag terminiert."
+            : "Der Eintritt wurde geplant. Die Aufgaben sind relativ zum Eintrittsdatum terminiert.",
       );
       await load(true);
     } catch (error) {
@@ -902,6 +1233,78 @@ export function Onboarding({
             "Der Eintritt konnte nicht erstellt werden. Bitte versuche es erneut.",
             "Der Eintritt konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
           ),
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+  async function deleteEntry(entryId: string, name: string, kind: EntryKind) {
+    if (!supabase) return;
+    const label = entryKindLabel(kind);
+    const withArticle = entryKindWithArticle(kind);
+    if (
+      !(await confirmDialog(
+        `${label} von «${name}» endgültig löschen? Alle Aufgaben, Ausnahmetickets und die gespeicherte Meldung werden ebenfalls entfernt.`,
+        { confirmLabel: "Löschen", tone: "danger" },
+      ))
+    ) {
+      return;
+    }
+    setPending(true);
+    setErrorMessage("");
+    setNotice("");
+    try {
+      const { error } = await supabase.functions.invoke("onboarding", {
+        body: { type: "deleteEntry", tenantId, entryId },
+      });
+      if (error) throw error;
+      setNotice(`${withArticle} von «${name}» wurde gelöscht.`);
+      await load(true);
+    } catch (error) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          `${withArticle} konnte nicht gelöscht werden.`,
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+  async function assignEntry(entry: Entry, value: string) {
+    const userId = value || null;
+    if (!supabase || userId === (entry.ictResponsibleUserId ?? null)) return;
+    const label = entryKindWithArticle(entry.kind);
+    setPending(true);
+    setErrorMessage("");
+    setNotice("");
+    try {
+      const { data, error } = await supabase.functions.invoke("onboarding", {
+        body: { type: "assignEntry", tenantId, entryId: entry.id, userId },
+      });
+      if (error) throw error;
+      const result =
+        data && typeof data === "object" && "data" in data
+          ? ((data as { data: Record<string, unknown> }).data ?? {})
+          : {};
+      const assignedName =
+        typeof result.assignedName === "string" ? result.assignedName : null;
+      const requestedName =
+        typeof result.requestedName === "string" ? result.requestedName : null;
+      setNotice(
+        userId === null
+          ? `${label} von «${entry.employeeName}» ist nicht mehr zugewiesen.`
+          : result.redirected === true && assignedName
+            ? `${requestedName ?? "Die gewählte Person"} ist abwesend. ${label} von «${entry.employeeName}» ging an die Stellvertretung ${assignedName}.`
+            : `${label} von «${entry.employeeName}» ist jetzt ${assignedName ?? "der gewählten Person"} zugewiesen.`,
+      );
+      await load(true);
+    } catch (error) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          `${label} konnte nicht zugewiesen werden.`,
         ),
       );
     } finally {
@@ -970,7 +1373,21 @@ export function Onboarding({
         <p className="empty-state">Eintritte werden geladen …</p>
       </section>
     );
-  const entries = workspace?.entries ?? [];
+  const allEntries = workspace?.entries ?? [];
+  const entries = filterEntries(
+    allEntries,
+    entryFilter,
+    entryQuery,
+    entryDates,
+  );
+  // Die Zahlen bei «Offen / Erledigt / Alle» berücksichtigen die Datumsfilter.
+  const datedEntries = filterEntries(allEntries, "all", "", entryDates);
+  const entryCounts = {
+    open: datedEntries.filter((entry) => !entryDone(entry.tasks)).length,
+    done: datedEntries.filter((entry) => entryDone(entry.tasks)).length,
+    all: datedEntries.length,
+  };
+  const activeDateFilters = activeEntryDateFilters(entryDates);
   const canRequest = workspace?.permissions.canRequest ?? false;
   return (
     <section className="onboarding" aria-labelledby="onboarding-heading">
@@ -989,10 +1406,19 @@ export function Onboarding({
           {canRequest ? (
             <button
               className="primary-button"
-              onClick={() => setEditor(true)}
+              onClick={() => {
+                // Nur eine Abteilung mit Teams: gleich vorwählen.
+                const departments = workspace?.departments ?? [];
+                setDraft((current) =>
+                  current.departmentId || departments.length !== 1
+                    ? current
+                    : { ...current, departmentId: departments[0]!.id },
+                );
+                setEditor(true);
+              }}
               type="button"
             >
-              <Plus size={17} /> Eintritt oder Austritt planen
+              <Plus size={17} /> Eintritt, Austritt oder Mutation planen
             </button>
           ) : null}
           {workspace?.permissions.canManage ? (
@@ -1044,33 +1470,52 @@ export function Onboarding({
       ) : null}
       {editor && canRequest ? (
         <FormDialog
-          eyebrow="Neuer Eintritt"
+          eyebrow={draft.kind === "change" ? "Neue Mutation" : "Neuer Eintritt"}
           error={errorMessage}
           onClose={() => setEditor(false)}
           onSubmit={createEntry}
           side={
             <FormSummary
-              eyebrow={draft.kind === "offboarding" ? "Austritt" : "Eintritt"}
+              eyebrow={entryKindLabel(draft.kind)}
               rows={[
                 [
-                  draft.kind === "offboarding" ? "Austrittsdatum" : "Datum",
+                  draft.kind === "offboarding"
+                    ? "Austrittsdatum"
+                    : draft.kind === "change"
+                      ? "Gültig ab"
+                      : "Datum",
                   draft.startsOn,
                 ],
                 ["Abteilung", draft.organisationUnit],
                 ["Standort", draft.location],
-                [
-                  "Vorlage",
-                  workspace?.templates.find(
-                    (template) => template.id === draft.templateId,
-                  )?.name ?? "",
-                ],
+                draft.kind === "change"
+                  ? [
+                      "Art",
+                      draft.changeTypes
+                        .map((type) => CHANGE_TYPE_LABELS[type])
+                        .join(", "),
+                    ]
+                  : [
+                      "Vorlage",
+                      workspace?.templates.find(
+                        (template) => template.id === draft.templateId,
+                      )?.name ?? "",
+                    ],
               ]}
               title={draft.employeeName}
             />
           }
-          submitLabel="Eintritt planen"
+          submitLabel={
+            draft.kind === "change"
+              ? "Mutation planen"
+              : draft.kind === "offboarding"
+                ? "Austritt planen"
+                : "Eintritt planen"
+          }
           submitting={pending}
-          title="Onboarding planen"
+          title={
+            draft.kind === "change" ? "Mutation planen" : "Onboarding planen"
+          }
         >
           <FormCard title="Person">
             <FormGrid cols={3}>
@@ -1081,14 +1526,16 @@ export function Onboarding({
                     setDraft({
                       ...draft,
                       kind:
-                        event.target.value === "offboarding"
-                          ? "offboarding"
+                        event.target.value === "offboarding" ||
+                        event.target.value === "change"
+                          ? event.target.value
                           : "onboarding",
                     })
                   }
                 >
                   <option value="onboarding">Eintritt</option>
                   <option value="offboarding">Austritt</option>
+                  <option value="change">Mutation</option>
                 </select>
               </FormField>
               <FormField label="Name" required>
@@ -1100,14 +1547,20 @@ export function Onboarding({
                   onChange={(event) =>
                     setDraft({ ...draft, employeeName: event.target.value })
                   }
-                  placeholder="Vor- und Nachname"
+                  placeholder={
+                    draft.kind === "change"
+                      ? "Bisheriger Name"
+                      : "Vor- und Nachname"
+                  }
                 />
               </FormField>
               <FormField
                 label={
                   draft.kind === "offboarding"
                     ? "Austrittsdatum"
-                    : "Eintrittsdatum"
+                    : draft.kind === "change"
+                      ? "Gültig ab"
+                      : "Eintrittsdatum"
                 }
                 required
               >
@@ -1122,7 +1575,89 @@ export function Onboarding({
               </FormField>
             </FormGrid>
           </FormCard>
-          <FormCard title="Einsatz">
+          {draft.kind === "change" ? (
+            <FormCard title="Mutation">
+              <div
+                aria-label="Mutationsarten"
+                className="onboarding__change-types"
+                role="group"
+              >
+                {CHANGE_TYPES.map((type) => {
+                  const checked = draft.changeTypes.includes(type);
+                  return (
+                    <label
+                      className={`onboarding__change-type${checked ? " is-checked" : ""}`}
+                      key={type}
+                    >
+                      <input
+                        checked={checked}
+                        onChange={() =>
+                          setDraft({
+                            ...draft,
+                            changeTypes: checked
+                              ? draft.changeTypes.filter(
+                                  (candidate) => candidate !== type,
+                                )
+                              : CHANGE_TYPES.filter(
+                                  (candidate) =>
+                                    candidate === type ||
+                                    draft.changeTypes.includes(candidate),
+                                ),
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      {CHANGE_TYPE_LABELS[type]}
+                    </label>
+                  );
+                })}
+              </div>
+              {draft.changeTypes.map((type) => (
+                <div className="onboarding__change-fields" key={type}>
+                  <h5>{CHANGE_TYPE_LABELS[type]}</h5>
+                  <FormGrid cols={CHANGE_FIELDS[type].length > 1 ? 2 : 1}>
+                    {CHANGE_FIELDS[type].map((field) => (
+                      <FormField key={field.key} label={field.label}>
+                        <input
+                          maxLength={200}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              changeDetails: {
+                                ...draft.changeDetails,
+                                [field.key]: event.target.value,
+                              },
+                            })
+                          }
+                          placeholder={field.placeholder}
+                          value={draft.changeDetails[field.key] ?? ""}
+                        />
+                      </FormField>
+                    ))}
+                  </FormGrid>
+                </div>
+              ))}
+              <FormField label="Bemerkung">
+                <textarea
+                  maxLength={1000}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      changeDetails: {
+                        ...draft.changeDetails,
+                        note: event.target.value,
+                      },
+                    })
+                  }
+                  rows={2}
+                  value={draft.changeDetails.note ?? ""}
+                />
+              </FormField>
+            </FormCard>
+          ) : null}
+          <FormCard
+            title={draft.kind === "change" ? "Aktueller Einsatz" : "Einsatz"}
+          >
             <FormGrid cols={2}>
               <FormField label="Abteilung / Angebot" required>
                 <input
@@ -1168,9 +1703,29 @@ export function Onboarding({
                   ))}
                 </select>
               </FormField>
-              <FormField label="ICT-Verantwortung" required>
+              <FormField label="Zuständige Abteilung" required>
                 <select
                   required
+                  value={draft.departmentId}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      departmentId: event.target.value,
+                      ictResponsibleUserId: "",
+                    })
+                  }
+                >
+                  <option value="">Abteilung auswählen …</option>
+                  {workspace?.departments?.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="ICT-Verantwortung">
+                <select
+                  disabled={!draft.departmentId}
                   value={draft.ictResponsibleUserId}
                   onChange={(event) =>
                     setDraft({
@@ -1179,9 +1734,15 @@ export function Onboarding({
                     })
                   }
                 >
-                  <option value="">Person auswählen …</option>
-                  {workspace?.people.map((person) => (
-                    <option key={person.id} value={person.id}>
+                  {assignOptions(
+                    workspace?.agents ?? [],
+                    workspace?.departments?.find(
+                      (department) => department.id === draft.departmentId,
+                    )?.agentIds ?? [],
+                    null,
+                    "",
+                  ).map((person) => (
+                    <option key={person.id || "none"} value={person.id}>
                       {person.displayName}
                     </option>
                   ))}
@@ -1189,28 +1750,36 @@ export function Onboarding({
               </FormField>
             </FormGrid>
           </FormCard>
-          <FormCard title="Vorlage">
-            <FormField label="Onboarding-Vorlage" required>
-              <select
-                required
-                value={draft.templateId}
-                onChange={(event) =>
-                  setDraft({ ...draft, templateId: event.target.value })
-                }
-              >
-                {workspace?.templates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
+          {draft.kind === "change" ? (
             <FormNote>
-              Die Aufgaben werden jetzt einmalig relativ zum Eintrittsdatum
-              terminiert. Es gibt keinen Scheduler und keine automatische
-              Ticketanlage.
+              Die Aufgaben kommen aus der Vorlage pro Mutationsart und aus den
+              Abteilungsaufgaben der Art «Mutation» und werden relativ zum
+              Stichtag «Gültig ab» terminiert.
             </FormNote>
-          </FormCard>
+          ) : (
+            <FormCard title="Vorlage">
+              <FormField label="Onboarding-Vorlage" required>
+                <select
+                  required
+                  value={draft.templateId}
+                  onChange={(event) =>
+                    setDraft({ ...draft, templateId: event.target.value })
+                  }
+                >
+                  {workspace?.templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormNote>
+                Die Aufgaben werden jetzt einmalig relativ zum Eintrittsdatum
+                terminiert. Es gibt keinen Scheduler und keine automatische
+                Ticketanlage.
+              </FormNote>
+            </FormCard>
+          )}
         </FormDialog>
       ) : null}
       {exceptionTarget ? (
@@ -1271,187 +1840,574 @@ export function Onboarding({
           </div>
           <ClipboardList size={22} />
         </div>
+        <div className="onboarding__filters">
+          <div
+            aria-label="Eintritte filtern"
+            className="onboarding__filter-group"
+            role="group"
+          >
+            {(
+              [
+                ["open", "Offen"],
+                ["done", "Erledigt"],
+                ["all", "Alle"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                aria-pressed={entryFilter === key}
+                className={entryFilter === key ? "is-active" : undefined}
+                key={key}
+                onClick={() => setEntryFilter(key)}
+                type="button"
+              >
+                {label} ({entryCounts[key]})
+              </button>
+            ))}
+          </div>
+          <div className="onboarding__search-wrap">
+            <input
+              aria-label="Eintritte durchsuchen"
+              className="onboarding__search"
+              onChange={(event) => setEntryQuery(event.target.value)}
+              placeholder="Name, Abteilung, Ort, Ticketnummer …"
+              type="search"
+              value={entryQuery}
+            />
+            <button
+              aria-controls="onboarding-date-filter"
+              aria-expanded={dateFilterOpen}
+              aria-label={
+                activeDateFilters
+                  ? `Datumsfilter (${activeDateFilters} aktiv)`
+                  : "Datumsfilter"
+              }
+              className={`onboarding__filter-button${activeDateFilters ? " is-active" : ""}`}
+              onClick={() => setDateFilterOpen((open) => !open)}
+              title="Nach Eintrittsdatum oder Eintrittsmeldung filtern"
+              type="button"
+            >
+              <Filter aria-hidden="true" size={16} />
+              {activeDateFilters ? (
+                <span className="onboarding__filter-count">
+                  {activeDateFilters}
+                </span>
+              ) : null}
+            </button>
+          </div>
+        </div>
+        {dateFilterOpen ? (
+          <div className="onboarding__date-filter" id="onboarding-date-filter">
+            <fieldset>
+              <legend>Eintrittsdatum</legend>
+              <label>
+                <span>Von</span>
+                <input
+                  max={entryDates.startsTo || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      startsFrom: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.startsFrom}
+                />
+              </label>
+              <label>
+                <span>Bis</span>
+                <input
+                  min={entryDates.startsFrom || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      startsTo: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.startsTo}
+                />
+              </label>
+            </fieldset>
+            <fieldset>
+              <legend>Eintrittsmeldung eingegangen</legend>
+              <label>
+                <span>Von</span>
+                <input
+                  max={entryDates.reportedTo || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      reportedFrom: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.reportedFrom}
+                />
+              </label>
+              <label>
+                <span>Bis</span>
+                <input
+                  min={entryDates.reportedFrom || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      reportedTo: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.reportedTo}
+                />
+              </label>
+            </fieldset>
+            <button
+              className="text-button"
+              disabled={!activeDateFilters}
+              onClick={() => setEntryDates(emptyEntryDateFilter)}
+              type="button"
+            >
+              Filter zurücksetzen
+            </button>
+          </div>
+        ) : null}
         {entries.length ? (
           <div className="onboarding__list">
             {entries.map((entry) => {
               const state = progress(entry.tasks);
+              const expanded = expandedEntryIds.has(entry.id);
               return (
                 <article
-                  className={`onboarding__entry${focusEntryId === entry.id ? " global-search-target" : ""}`}
+                  className={`onboarding__entry${expanded ? " is-expanded" : " is-collapsed"}${focusEntryId === entry.id ? " global-search-target" : ""}`}
                   id={`onboarding-entry-${entry.id}`}
                   key={entry.id}
                 >
-                  <header>
-                    <div>
+                  <header
+                    className="onboarding__entry-head"
+                    onClick={(event) => {
+                      if (
+                        (event.target as HTMLElement).closest(
+                          "button, a, input, select",
+                        )
+                      )
+                        return;
+                      toggleEntry(entry.id);
+                    }}
+                  >
+                    <span aria-hidden="true" className="onboarding__avatar">
+                      {initials(entry.employeeName)}
+                    </span>
+                    <div className="onboarding__entry-title">
                       <h4>
-                        {entry.employeeName}{" "}
+                        {entry.employeeName}
                         <span
                           className={`onboarding__kind onboarding__kind--${entry.kind ?? "onboarding"}`}
                         >
-                          {entry.kind === "offboarding"
-                            ? "Austritt"
-                            : "Eintritt"}
+                          {entryKindLabel(entry.kind)}
                         </span>
-                      </h4>
-                      <p>
-                        {entry.kind === "offboarding" ? "Austritt" : "Eintritt"}{" "}
-                        am {dateLabel(entry.startsOn)}
-                        {entry.organisationUnit
-                          ? ` · ${entry.organisationUnit}`
-                          : ""}
-                        {entry.location ? ` · ${entry.location}` : ""}
-                      </p>
-                    </div>
-                    <strong>
-                      {state.done}/{state.total} erledigt
-                    </strong>
-                  </header>
-                  <div
-                    className="onboarding__progress"
-                    aria-label={`${state.percent}% erledigt`}
-                  >
-                    <span style={{ width: `${state.percent}%` }} />
-                  </div>
-                  {departmentProgress(entry.tasks).length ? (
-                    <ul
-                      aria-label="Fortschritt pro Abteilung"
-                      className="onboarding__departments"
-                    >
-                      {departmentProgress(entry.tasks).map((department) => (
-                        <li
-                          className={
-                            department.done === department.total
-                              ? "is-done"
-                              : ""
-                          }
-                          key={department.name}
-                        >
-                          <span>{department.name}</span>
+                        {entry.delegatedFor ? (
                           <span
-                            aria-hidden="true"
-                            className="onboarding__department-bar"
+                            className="onboarding__delegated"
+                            title={tn(
+                              "Du siehst diesen Eintritt als Stellvertretung.",
+                              "Sie sehen diesen Eintritt als Stellvertretung.",
+                            )}
                           >
-                            <span
-                              style={{
-                                width: `${Math.round((department.done / department.total) * 100)}%`,
-                              }}
-                            />
+                            Stellvertretung für {entry.delegatedFor}
                           </span>
-                          <strong>
-                            {department.done}/{department.total}
-                          </strong>
+                        ) : null}
+                      </h4>
+                      <p className="onboarding__entry-when">
+                        <CalendarDays aria-hidden="true" size={14} />
+                        {dateLabel(entry.startsOn)}
+                        <strong>
+                          {relativeDays(daysUntil(entry.startsOn))}
+                        </strong>
+                      </p>
+                      <ul className="onboarding__facts">
+                        {entry.organisationUnit ? (
+                          <li>
+                            <Users aria-hidden="true" size={13} />
+                            {entry.organisationUnit}
+                          </li>
+                        ) : null}
+                        {entry.location ? (
+                          <li>
+                            <MapPin aria-hidden="true" size={13} />
+                            {entry.location}
+                          </li>
+                        ) : null}
+                        <li>
+                          <UserRound aria-hidden="true" size={13} />
+                          Führung: {entry.managerName}
                         </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  <dl>
-                    <div>
-                      <dt>Führung</dt>
-                      <dd>{entry.managerName}</dd>
+                        <li>
+                          <UserRound aria-hidden="true" size={13} />
+                          ICT:{" "}
+                          {entry.ictResponsibleUserId ? (
+                            entry.ictResponsibleName
+                          ) : (
+                            <strong className="onboarding__unassigned">
+                              Nicht zugewiesen
+                            </strong>
+                          )}
+                        </li>
+                      </ul>
+                      {entry.kind === "change" && entry.changeTypes?.length ? (
+                        <ul
+                          aria-label="Mutation"
+                          className="onboarding__change-summary"
+                        >
+                          {changeSummary(
+                            entry.changeTypes,
+                            entry.details ?? {},
+                            entry.employeeName,
+                          ).map((row) => (
+                            <li key={row.type}>
+                              <strong>{row.label}</strong>
+                              {row.text ? ` ${row.text}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
-                    <div>
-                      <dt>ICT</dt>
-                      <dd>{entry.ictResponsibleName}</dd>
-                    </div>
-                  </dl>
-                  {entry.source === "email" ? (
-                    <details className="onboarding__details">
-                      <summary>
-                        Angaben aus der Eintrittsmeldung
-                        {entry.sourceTicketNumber
-                          ? ` (E-Mail ${entry.sourceTicketNumber})`
-                          : ""}
-                      </summary>
-                      <dl>
-                        {entryDetailRows(entry.details).map((row) => (
-                          <div key={row.label}>
-                            <dt>{row.label}</dt>
-                            <dd>{row.value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </details>
-                  ) : null}
-                  <div className="onboarding__tasks">
-                    {entry.tasks.map((task) => (
+                    <div
+                      className={`onboarding__entry-progress${state.total > 0 && state.done === state.total ? " is-done" : ""}`}
+                    >
+                      <strong>
+                        {state.done}
+                        <span> / {state.total}</span>
+                      </strong>
+                      <small>Aufgaben erledigt</small>
                       <div
-                        className={`onboarding__task onboarding__task--${task.status}`}
-                        key={task.id}
+                        aria-label={`${state.percent}% erledigt`}
+                        className="onboarding__progress"
+                        role="img"
                       >
-                        <div>
-                          <strong>{task.title}</strong>
-                          <span>
-                            Fällig {dateLabel(task.dueOn)} ·{" "}
-                            {task.responsibleName}
-                          </span>
-                          {task.exception ? (
-                            <small>
-                              Ausnahmeticket {task.exception.ticketNumber}{" "}
-                              verknüpft
-                            </small>
-                          ) : null}
-                        </div>
-                        {task.canUpdate ? (
-                          <label>
-                            <span className="sr-only">
-                              Status für {task.title}
-                            </span>
+                        <span style={{ width: `${state.percent}%` }} />
+                      </div>
+                    </div>
+                    <button
+                      aria-controls={`onboarding-entry-body-${entry.id}`}
+                      aria-expanded={expanded}
+                      aria-label={`${expanded ? "Aufgaben ausblenden" : "Aufgaben anzeigen"}: ${entry.employeeName}`}
+                      className="onboarding__entry-toggle"
+                      onClick={() => toggleEntry(entry.id)}
+                      title={expanded ? "Einklappen" : "Aufklappen"}
+                      type="button"
+                    >
+                      <ChevronDown aria-hidden="true" size={18} />
+                    </button>
+                  </header>
+                  {expanded ? (
+                    <div id={`onboarding-entry-body-${entry.id}`}>
+                      {departmentProgress(entry.tasks).length > 1 ? (
+                        <ul
+                          aria-label="Fortschritt pro Abteilung"
+                          className="onboarding__departments"
+                        >
+                          {departmentProgress(entry.tasks).map((department) => (
+                            <li
+                              className={
+                                department.done === department.total
+                                  ? "is-done"
+                                  : ""
+                              }
+                              key={department.name}
+                            >
+                              <span>{department.name}</span>
+                              <span
+                                aria-hidden="true"
+                                className="onboarding__department-bar"
+                              >
+                                <span
+                                  style={{
+                                    width: `${Math.round((department.done / department.total) * 100)}%`,
+                                  }}
+                                />
+                              </span>
+                              <strong>
+                                {department.done}/{department.total}
+                              </strong>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="onboarding__task-groups">
+                        {groupTasks(entry.tasks).map((group) => {
+                          const rows = (
+                            <ul className="onboarding__tasks">
+                              {group.tasks.map((task) => {
+                                const days = daysUntil(task.dueOn);
+                                const done = task.status === "completed";
+                                const due = done
+                                  ? "erledigt"
+                                  : days < 0
+                                    ? `${-days} ${-days === 1 ? "Tag" : "Tage"} überfällig`
+                                    : relativeDays(days);
+                                const dueTone = done
+                                  ? "done"
+                                  : days < 0
+                                    ? "overdue"
+                                    : days <= 7
+                                      ? "soon"
+                                      : "later";
+                                const showResponsible =
+                                  task.responsibleName !==
+                                  entry.ictResponsibleName;
+                                return (
+                                  <li
+                                    className={`onboarding__task onboarding__task--${task.status}`}
+                                    key={task.id}
+                                  >
+                                    {task.canUpdate ? (
+                                      <button
+                                        aria-label={
+                                          done
+                                            ? `«${task.title}» wieder öffnen`
+                                            : `«${task.title}» als erledigt markieren`
+                                        }
+                                        aria-pressed={done}
+                                        className="onboarding__check"
+                                        disabled={pending}
+                                        onClick={() =>
+                                          void changeTask(
+                                            task.id,
+                                            done ? "open" : "completed",
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        {done ? (
+                                          <Check aria-hidden="true" size={15} />
+                                        ) : null}
+                                      </button>
+                                    ) : (
+                                      <span
+                                        aria-hidden="true"
+                                        className={`onboarding__check is-static${done ? " is-done" : ""}`}
+                                      >
+                                        {done ? <Check size={15} /> : null}
+                                      </span>
+                                    )}
+                                    <div className="onboarding__task-text">
+                                      <strong>{task.title}</strong>
+                                      {showResponsible ||
+                                      task.departmentName ? (
+                                        <span>
+                                          {[
+                                            task.departmentName,
+                                            showResponsible
+                                              ? task.responsibleName
+                                              : null,
+                                          ]
+                                            .filter(Boolean)
+                                            .join(" · ")}
+                                        </span>
+                                      ) : null}
+                                      {task.exception ? (
+                                        <small>
+                                          <TriangleAlert
+                                            aria-hidden="true"
+                                            size={12}
+                                          />
+                                          Ausnahmeticket{" "}
+                                          {task.exception.ticketNumber}
+                                        </small>
+                                      ) : null}
+                                    </div>
+                                    <span
+                                      className={`onboarding__due onboarding__due--${dueTone}`}
+                                      title={`Fällig am ${dateLabel(task.dueOn)}`}
+                                    >
+                                      <span>{shortDate(task.dueOn)}</span>
+                                      <small>{due}</small>
+                                    </span>
+                                    {task.canUpdate ? (
+                                      <label className="onboarding__status">
+                                        <span className="sr-only">
+                                          Status für {task.title}
+                                        </span>
+                                        <select
+                                          value={task.status}
+                                          disabled={pending}
+                                          onChange={(event) =>
+                                            void changeTask(
+                                              task.id,
+                                              event.target.value as TaskStatus,
+                                            )
+                                          }
+                                        >
+                                          {Object.entries(statuses).map(
+                                            ([key, label]) => (
+                                              <option key={key} value={key}>
+                                                {label}
+                                              </option>
+                                            ),
+                                          )}
+                                        </select>
+                                      </label>
+                                    ) : (
+                                      <em className="onboarding__status">
+                                        {statuses[task.status]}
+                                      </em>
+                                    )}
+                                    {task.canUpdate &&
+                                    !task.exception &&
+                                    !done ? (
+                                      <button
+                                        aria-label={`Ausnahmeticket für «${task.title}» verknüpfen`}
+                                        className="onboarding__exception-button"
+                                        disabled={pending}
+                                        onClick={() =>
+                                          setExceptionTarget({
+                                            entryId: entry.id,
+                                            taskId: task.id,
+                                            taskTitle: task.title,
+                                          })
+                                        }
+                                        title="Ausnahme oder Verzögerung: Ticket verknüpfen"
+                                        type="button"
+                                      >
+                                        <Wrench aria-hidden="true" size={15} />
+                                      </button>
+                                    ) : (
+                                      <span aria-hidden="true" />
+                                    )}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          );
+                          return group.key === "done" ? (
+                            <details
+                              className="onboarding__task-group onboarding__task-group--done"
+                              key={group.key}
+                            >
+                              <summary>
+                                {group.title}
+                                <span>{group.tasks.length}</span>
+                              </summary>
+                              {rows}
+                            </details>
+                          ) : (
+                            <section
+                              className={`onboarding__task-group onboarding__task-group--${group.key}`}
+                              key={group.key}
+                            >
+                              <h5>
+                                {group.title}
+                                <span>{group.tasks.length}</span>
+                              </h5>
+                              {rows}
+                            </section>
+                          );
+                        })}
+                      </div>
+                      {entry.kind === "offboarding" && entry.canEdit ? (
+                        <AssetReturnsPanel
+                          entry={entry}
+                          onCreated={() => load(true)}
+                          tenantId={tenantId}
+                        />
+                      ) : null}
+                      <footer className="onboarding__entry-foot">
+                        {entry.canAssign ? (
+                          <label className="onboarding__assign">
+                            <span>ICT-Verantwortung</span>
                             <select
-                              value={task.status}
                               disabled={pending}
                               onChange={(event) =>
-                                void changeTask(
-                                  task.id,
-                                  event.target.value as TaskStatus,
-                                )
+                                void assignEntry(entry, event.target.value)
                               }
+                              value={entry.ictResponsibleUserId ?? ""}
                             >
-                              {Object.entries(statuses).map(([key, label]) => (
-                                <option key={key} value={key}>
-                                  {label}
+                              {assignOptions(
+                                workspace?.agents ?? [],
+                                entry.assignableAgentIds,
+                                entry.ictResponsibleUserId,
+                                entry.ictResponsibleName,
+                              ).map((person) => (
+                                <option
+                                  key={person.id || "none"}
+                                  value={person.id}
+                                >
+                                  {person.displayName}
                                 </option>
                               ))}
                             </select>
                           </label>
-                        ) : (
-                          <em>{statuses[task.status]}</em>
-                        )}
-                        {task.canUpdate && !task.exception ? (
+                        ) : null}
+                        {entry.hasDocument ? (
                           <button
-                            className="text-button"
-                            disabled={pending}
-                            onClick={() =>
-                              setExceptionTarget({
-                                entryId: entry.id,
-                                taskId: task.id,
-                                taskTitle: task.title,
-                              })
-                            }
+                            className="text-button onboarding__document"
+                            onClick={() => void openDocument(entry.id)}
                             type="button"
                           >
-                            Ausnahmeticket
+                            <FileText aria-hidden="true" size={15} />
+                            Eintrittsmeldung (PDF) öffnen
                           </button>
                         ) : null}
-                      </div>
-                    ))}
-                  </div>
-                  {entry.kind === "offboarding" && entry.canEdit ? (
-                    <AssetReturnsPanel
-                      entry={entry}
-                      onCreated={() => load(true)}
-                      tenantId={tenantId}
-                    />
+                        {entry.source === "email" ? (
+                          <details className="onboarding__details">
+                            <summary>
+                              Angaben aus der Eintrittsmeldung
+                              {entry.sourceTicketNumber
+                                ? ` (E-Mail ${entry.sourceTicketNumber})`
+                                : ""}
+                            </summary>
+                            <dl>
+                              {entryDetailRows(entry.details).map((row) => (
+                                <div key={row.label}>
+                                  <dt>{row.label}</dt>
+                                  <dd>{row.value}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </details>
+                        ) : null}
+                        <div className="onboarding__foot-row">
+                          <p className="onboarding__exception">
+                            <Wrench aria-hidden="true" size={13} />
+                            {tn(
+                              "Verzögert sich eine Aufgabe, verknüpfst du über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
+                              "Verzögert sich eine Aufgabe, verknüpfen Sie über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
+                            )}
+                          </p>
+                          {workspace?.permissions.canManage ? (
+                            <button
+                              className="text-button onboarding__delete"
+                              disabled={pending}
+                              onClick={() =>
+                                void deleteEntry(
+                                  entry.id,
+                                  entry.employeeName,
+                                  entry.kind ?? "onboarding",
+                                )
+                              }
+                              type="button"
+                            >
+                              <Trash2 aria-hidden="true" size={15} />
+                              {`${entryKindLabel(entry.kind)} löschen`}
+                            </button>
+                          ) : null}
+                        </div>
+                      </footer>
+                    </div>
                   ) : null}
-                  <p className="onboarding__exception">
-                    <Wrench size={15} /> Bei einer Ausnahme oder Verzögerung
-                    wird ein Ticket bewusst im Bereich «Tickets» erstellt und
-                    danach mit diesem Eintritt verknüpft; aus dem Onboarding
-                    entstehen nie automatisch Tickets.
-                  </p>
                 </article>
               );
             })}
           </div>
+        ) : allEntries.length ? (
+          <p className="empty-state">
+            {entryQuery.trim() || activeDateFilters
+              ? "Kein Eintritt passt zur Suche oder zu den Filtern."
+              : entryFilter === "open"
+                ? tn(
+                    "Keine offenen Eintritte. Erledigte findest du unter «Erledigt».",
+                    "Keine offenen Eintritte. Erledigte finden Sie unter «Erledigt».",
+                  )
+                : "Keine erledigten Eintritte."}
+          </p>
         ) : (
           <div className="onboarding__empty">
             <BadgeCheck size={25} />

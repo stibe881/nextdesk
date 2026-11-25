@@ -18,6 +18,7 @@ import {
 } from "./service-report-dashboards";
 import { supabase } from "./lib/supabase";
 import { SupportLevelReportPanel } from "./support-level-report";
+import { MergeReportPanel } from "./merge-report";
 import {
   drilldownLabel,
   drilldownPeriodLabel,
@@ -1379,6 +1380,14 @@ export function ServiceReporting({
             ) : null}
 
             <SupportLevelReportPanel
+              range={{
+                startsAt: report.period.startsAt,
+                endsAt: report.period.endsAt,
+              }}
+              tenantId={tenantId}
+            />
+
+            <MergeReportPanel
               range={{
                 startsAt: report.period.startsAt,
                 endsAt: report.period.endsAt,

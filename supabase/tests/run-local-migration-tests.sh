@@ -14517,12 +14517,28 @@ begin
     raise exception 'automation test: reorder notification wrong';
   end if;
 
-  -- 8. Inventur-Erinnerung nach Intervall, nicht doppelt.
+  -- 8. Inventur-Erinnerung pro Lager nach Intervall, nicht doppelt.
+  insert into public.inventory_warehouses (tenant_id, name, count_interval_days)
+  values (v_tenant, 'Lager Test', 30);
+  -- Ein Intervall am Lagerort selbst löst nichts mehr aus (nur Lager erinnern).
   update public.inventory_locations set count_interval_days = 30, created_at = now() - interval '40 days'
+  where id = v_lager;
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'automation test: a location interval must not remind any more';
+  end if;
+  -- Ein Lager ohne Lagerplätze erinnert nicht.
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'automation test: a warehouse without places must not remind';
+  end if;
+  update public.inventory_locations
+  set warehouse_id = (select id from public.inventory_warehouses where tenant_id = v_tenant and name = 'Lager Test')
   where id = v_lager;
   v_count := public.inventory_send_count_reminders();
   if v_count < 1 or not exists (select 1 from public.ticket_notifications where user_id = v_owner
-      and kind = 'inventory.count_due' and payload ->> 'inventoryLocationId' = v_lager::text) then
+      and kind = 'inventory.count_due'
+      and payload ->> 'inventoryWarehouseId' = (select id::text from public.inventory_warehouses
+                                                 where tenant_id = v_tenant and name = 'Lager Test')
+      and payload ->> 'locationName' = 'Lager Test') then
     raise exception 'automation test: count reminder missing';
   end if;
   perform public.inventory_send_count_reminders();
@@ -16611,6 +16627,742 @@ begin
     raise exception 'handbook articles: personal workspace must not receive handbook articles';
   end if;
   raise notice 'handbook knowledge article sync checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# Lagerbereiche (z. B. G10.2.1 bis G10.2.4): ein Bereich ist ein Lagerplatz mit
+# einmal gebuchter Menge; solange Bestand liegt, sind alle Plätze belegt.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'a6800000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_x uuid;
+  v_y uuid;
+  v_a1 uuid; v_a2 uuid; v_a3 uuid; v_a4 uuid; v_b1 uuid; v_inactive uuid;
+  v_event uuid;
+  v_again uuid;
+  v_state text;
+  v_qty numeric;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'lagerbereich@example.ch', 'Lagerbereich');
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'g10-2-1', 'G10.2.1') returning id into v_a1;
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'g10-2-2', 'G10.2.2') returning id into v_a2;
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'g10-2-3', 'G10.2.3') returning id into v_a3;
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'g10-2-4', 'G10.2.4') returning id into v_a4;
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'g10-2-5', 'G10.2.5') returning id into v_b1;
+  insert into public.inventory_locations (tenant_id, code, name, active) values (v_tenant, 'g10-2-6', 'G10.2.6', false) returning id into v_inactive;
+  insert into public.inventory_items (tenant_id, article_number, name) values (v_tenant, 'bereich-x', 'Artikel X') returning id into v_x;
+  insert into public.inventory_items (tenant_id, article_number, name) values (v_tenant, 'bereich-y', 'Artikel Y') returning id into v_y;
+
+  -- 1. Der Bereich bucht die Menge einmal auf den ersten Platz.
+  v_event := public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_x,
+    array[v_a1, v_a2, v_a3, v_a4], 5);
+  select sum(physical_quantity) into v_qty from public.inventory_stock_balances
+  where tenant_id = v_tenant and item_id = v_x;
+  if v_qty <> 5
+     or (select count(*) from public.inventory_stock_balances
+         where tenant_id = v_tenant and item_id = v_x and location_id = v_a1 and physical_quantity = 5) <> 1
+     or (select count(*) from public.inventory_placement_slots where tenant_id = v_tenant) <> 4 then
+    raise exception 'range receipt: total quantity or slots wrong (%)', v_qty;
+  end if;
+
+  -- 2. Ein Wiederholen derselben Anfrage bucht nicht doppelt.
+  v_again := public.post_inventory_range_receipt(v_owner, v_tenant,
+    (select client_request_id from public.inventory_events where id = v_event), v_x,
+    array[v_a1, v_a2, v_a3, v_a4], 5);
+  if v_again <> v_event
+     or (select count(*) from public.inventory_placements where tenant_id = v_tenant) <> 1
+     or (select sum(physical_quantity) from public.inventory_stock_balances
+         where tenant_id = v_tenant and item_id = v_x) <> 5 then
+    raise exception 'range receipt: retry changed the stock';
+  end if;
+
+  -- 3. Etwas anderes auf einen Platz des belegten Bereichs: nicht möglich.
+  begin
+    perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'receipt',
+      jsonb_build_array(jsonb_build_object('item_id', v_y, 'location_id', v_a3, 'quantity', 1)), null);
+    raise exception 'range receipt: another item was booked into an occupied area';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'ND411' then raise; end if;
+  end;
+  -- ... auch derselbe Artikel nicht auf einen Platz ausser dem Anker.
+  begin
+    perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'receipt',
+      jsonb_build_array(jsonb_build_object('item_id', v_x, 'location_id', v_a2, 'quantity', 1)), null);
+    raise exception 'range receipt: a non-anchor place of the area accepted stock';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'ND411' then raise; end if;
+  end;
+  -- ... und ein überlappender neuer Bereich auch nicht.
+  begin
+    perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_y,
+      array[v_a4, v_b1], 2);
+    raise exception 'range receipt: an overlapping area was accepted';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'ND411' then raise; end if;
+  end;
+  if exists (select 1 from public.inventory_stock_balances
+             where tenant_id = v_tenant and item_id = v_y and physical_quantity > 0) then
+    raise exception 'range receipt: a rejected booking left stock behind';
+  end if;
+
+  -- 4. Ein Platz ausserhalb des Bereichs bleibt frei buchbar.
+  perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_y, 'location_id', v_b1, 'quantity', 2)), null);
+
+  -- 5. Mehr vom selben Artikel auf denselben Bereich: gleicher Bereich, höhere Menge.
+  perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_x,
+    array[v_a1, v_a2, v_a3, v_a4], 3);
+  if (select count(*) from public.inventory_placements where tenant_id = v_tenant) <> 1
+     or (select physical_quantity from public.inventory_stock_balances
+         where tenant_id = v_tenant and item_id = v_x and location_id = v_a1) <> 8 then
+    raise exception 'range receipt: adding to the same area failed';
+  end if;
+
+  -- 6. Teilweise ausbuchen: der Bereich bleibt belegt.
+  perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'issue',
+    jsonb_build_array(jsonb_build_object('item_id', v_x, 'location_id', v_a1, 'quantity', 3)), null);
+  begin
+    perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'receipt',
+      jsonb_build_array(jsonb_build_object('item_id', v_y, 'location_id', v_a4, 'quantity', 1)), null);
+    raise exception 'range receipt: area was released with stock left';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'ND411' then raise; end if;
+  end;
+
+  -- 7. Ganz ausbuchen: alle vier Plätze sind wieder frei.
+  perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'issue',
+    jsonb_build_array(jsonb_build_object('item_id', v_x, 'location_id', v_a1, 'quantity', 5)), null);
+  perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_y, 'location_id', v_a3, 'quantity', 1)), null);
+  -- Ein neuer Bereich auf noch freien Plätzen räumt den leeren alten Bereich auf.
+  perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_y,
+    array[v_a1, v_a2], 4);
+  if exists (select 1 from public.inventory_placements where tenant_id = v_tenant and item_id = v_x) then
+    raise exception 'range receipt: finished area was not cleaned up';
+  end if;
+
+  -- 8. Plätze, die es nicht gibt oder die inaktiv sind, lehnen alles ab.
+  begin
+    perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_x,
+      array[v_b1, v_inactive], 1);
+    raise exception 'range receipt: inactive place accepted';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'P0002' then raise; end if;
+  end;
+  begin
+    perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_x,
+      array[v_b1, gen_random_uuid()], 1);
+    raise exception 'range receipt: unknown place accepted';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'P0002' then raise; end if;
+  end;
+  begin
+    perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_x,
+      array[v_b1], 1);
+    raise exception 'range receipt: a single place counted as an area';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> '22023' then raise; end if;
+  end;
+  raise notice 'inventory location range checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# Lagerort-Codes mit Punkt («WSICT.01.01») werden gespeichert (Tabelle und
+# Funktion), ungültige Codes bleiben abgelehnt.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'a6900000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_location uuid;
+  v_code text;
+  v_state text;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'ortscode@example.ch', 'Ortscode');
+  v_location := public.upsert_inventory_location(v_owner, v_tenant, gen_random_uuid(), null,
+    'h-01', 'Wandschrank ICT', true);
+  -- Ändern auf einen Code mit Punkt und Grossbuchstaben: klein gespeichert.
+  perform public.upsert_inventory_location(v_owner, v_tenant, gen_random_uuid(), v_location,
+    'WSICT.01.01', 'Wandschrank ICT', true);
+  select code into v_code from public.inventory_locations where id = v_location;
+  if v_code <> 'wsict.01.01' then
+    raise exception 'location code with dots was stored as %', v_code;
+  end if;
+  -- Direkter Zugriff: derselbe Constraint.
+  update public.inventory_locations set code = 'g10.2.1' where id = v_location;
+  -- Abgelehnt: Punkt am Anfang, Leerzeichen, Sonderzeichen.
+  foreach v_code in array array['.abc', 'a b', 'a/b'] loop
+    begin
+      perform public.upsert_inventory_location(v_owner, v_tenant, gen_random_uuid(), v_location,
+        v_code, 'Wandschrank ICT', true);
+      raise exception 'location code % was accepted', v_code;
+    exception when others then
+      get stacked diagnostics v_state = returned_sqlstate;
+      if v_state <> '22023' then raise; end if;
+    end;
+  end loop;
+  begin
+    update public.inventory_locations set code = '.abc' where id = v_location;
+    raise exception 'table accepted a code starting with a dot';
+  exception when check_violation then null;
+  end;
+  raise notice 'inventory location code checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# Lager mit Standort (Migration 0371): Lagerplätze gehören optional zu einem
+# Lager, ein Lager gehört genau einem Mandanten; aus der Bezeichnung wird die
+# Bemerkung, der Lagerort heisst wie sein Code.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_a constant uuid := 'a7100000-0000-4000-8000-000000000001';
+  v_b constant uuid := 'a7100000-0000-4000-8000-000000000002';
+  v_tenant_a uuid;
+  v_tenant_b uuid;
+  v_warehouse uuid;
+  v_foreign uuid;
+  v_location uuid;
+  v_old uuid;
+  v_name text;
+  v_note text;
+begin
+  insert into auth.users (id) values (v_a), (v_b);
+  v_tenant_a := public.provision_personal_workspace(v_a, 'lager-a@example.ch', 'Lager A');
+  v_tenant_b := public.provision_personal_workspace(v_b, 'lager-b@example.ch', 'Lager B');
+  insert into public.inventory_warehouses (tenant_id, name, site)
+  values (v_tenant_a, 'Lager Bern', 'Bern, Hauptstrasse 1') returning id into v_warehouse;
+  insert into public.inventory_warehouses (tenant_id, name)
+  values (v_tenant_b, 'Fremdes Lager') returning id into v_foreign;
+
+  -- Der Name des Lagers ist je Mandant eindeutig (ohne Gross-/Kleinschreibung).
+  begin
+    insert into public.inventory_warehouses (tenant_id, name) values (v_tenant_a, 'LAGER BERN');
+    raise exception 'duplicate warehouse name accepted';
+  exception when unique_violation then null;
+  end;
+
+  -- Ein Lagerplatz kann dem eigenen Lager zugeordnet werden, einem fremden nicht.
+  insert into public.inventory_locations (tenant_id, code, name, warehouse_id)
+  values (v_tenant_a, 'wsict.01.01', 'WSICT.01.01', v_warehouse) returning id into v_location;
+  begin
+    update public.inventory_locations set warehouse_id = v_foreign where id = v_location;
+    raise exception 'a place was assigned to the warehouse of another tenant';
+  exception when foreign_key_violation then null;
+  end;
+
+  -- Wird ein Lager gelöscht, bleiben die Plätze (ohne Lager).
+  delete from public.inventory_warehouses where id = v_warehouse;
+  if (select warehouse_id from public.inventory_locations where id = v_location) is not null then
+    raise exception 'deleting a warehouse must only detach its places';
+  end if;
+
+  -- Die Bemerkung ist optional und begrenzt.
+  update public.inventory_locations set note = 'Wandschrank im Flur' where id = v_location;
+  begin
+    update public.inventory_locations set note = repeat('x', 501) where id = v_location;
+    raise exception 'an over-long remark was accepted';
+  exception when check_violation then null;
+  end;
+
+  -- Bestehende Bezeichnungen werden zu Bemerkungen (Daten der Migration, erneut ausgeführt).
+  insert into public.inventory_locations (tenant_id, code, name)
+  values (v_tenant_a, 'wsict.01.02', 'Wandschrank ICT') returning id into v_old;
+  insert into public.inventory_locations (tenant_id, code, name)
+  values (v_tenant_a, 'h-01', 'H-01') returning id into v_location;
+  update public.inventory_locations
+  set note = case when lower(name) = code then null else name end,
+      name = upper(code)
+  where note is null and name <> upper(code) and tenant_id = v_tenant_a;
+  select name, note into v_name, v_note from public.inventory_locations where id = v_old;
+  if v_name <> 'WSICT.01.02' or v_note <> 'Wandschrank ICT' then
+    raise exception 'former designation was not turned into a remark (%, %)', v_name, v_note;
+  end if;
+  select name, note into v_name, v_note from public.inventory_locations where id = v_location;
+  if v_name <> 'H-01' or v_note is not null then
+    raise exception 'a designation equal to the code must not become a remark';
+  end if;
+  raise notice 'inventory warehouse checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# Inventur-Erinnerung pro Lager (Migration 0371): fällig, sobald der am längsten
+# nicht gezählte Lagerplatz überfällig ist; keine Erinnerung während einer
+# laufenden Inventur an einem Platz des Lagers; nicht doppelt.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'a7200000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_warehouse uuid;
+  v_old uuid;
+  v_new uuid;
+  v_count integer;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'inventur-lager@example.ch', 'Inventur Lager');
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key = 'inventory.management';
+  insert into public.inventory_warehouses (tenant_id, name, count_interval_days)
+  values (v_tenant, 'Lager Bern', 30) returning id into v_warehouse;
+  insert into public.inventory_locations (tenant_id, code, name, warehouse_id, created_at)
+  values (v_tenant, 'a1', 'A1', v_warehouse, now() - interval '40 days') returning id into v_old;
+  insert into public.inventory_locations (tenant_id, code, name, warehouse_id)
+  values (v_tenant, 'a2', 'A2', v_warehouse) returning id into v_new;
+
+  -- Ein Intervall am Lagerplatz selbst löst nichts mehr aus.
+  update public.inventory_locations set count_interval_days = 7 where id in (v_old, v_new);
+  update public.inventory_warehouses set count_interval_days = null where id = v_warehouse;
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'warehouse reminder: a location interval must not remind';
+  end if;
+
+  -- Ein Lager mit Intervall erinnert, weil sein ältester Platz überfällig ist,
+  -- auch wenn ein anderer Platz neu ist.
+  update public.inventory_warehouses set count_interval_days = 30 where id = v_warehouse;
+  v_count := public.inventory_send_count_reminders();
+  if v_count <> 1 or not exists (
+    select 1 from public.ticket_notifications
+    where tenant_id = v_tenant and kind = 'inventory.count_due'
+      and payload ->> 'inventoryWarehouseId' = v_warehouse::text
+      and payload ->> 'locationName' = 'Lager Bern'
+      and (payload ->> 'intervalDays')::integer = 30
+  ) then
+    raise exception 'warehouse reminder: warehouse was not reminded (%)', v_count;
+  end if;
+  -- Nicht doppelt.
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'warehouse reminder: reminded twice';
+  end if;
+
+  -- Läuft an einem Platz des Lagers eine Inventur, wird nicht erinnert.
+  update public.inventory_warehouses set count_reminded_at = null where id = v_warehouse;
+  insert into public.inventory_counts (tenant_id, location_id, status, client_request_id, started_by)
+  values (v_tenant, v_new, 'counting', gen_random_uuid(), v_owner);
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'warehouse reminder: reminded during a running count';
+  end if;
+  delete from public.inventory_counts where tenant_id = v_tenant;
+
+  -- Ein Lager ohne aktive Lagerplätze erinnert nicht.
+  update public.inventory_locations set active = false where warehouse_id = v_warehouse;
+  update public.inventory_warehouses set count_reminded_at = null where id = v_warehouse;
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'warehouse reminder: a warehouse without places reminded';
+  end if;
+  raise notice 'inventory warehouse reminder checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0373: Kategorien für überwachte Geräte – eine Ebene, gleicher Mandant, eindeutige Namen.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_other uuid;
+  v_asset uuid;
+  v_top uuid;
+  v_sub uuid;
+  v_top2 uuid;
+  v_level3 uuid;
+  v_level4 uuid;
+  v_failed boolean;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  select id into v_other from public.tenants where id <> v_tenant order by created_at limit 1;
+  insert into public.monitoring_device_groups (tenant_id, name) values (v_tenant, 'Standort Baar') returning id into v_top;
+  insert into public.monitoring_device_groups (tenant_id, name) values (v_tenant, 'Aussenstelle') returning id into v_top2;
+  insert into public.monitoring_device_groups (tenant_id, parent_id, name)
+  values (v_tenant, v_top, 'Verteiler 2. OG') returning id into v_sub;
+
+  -- Gleicher Name auf derselben Ebene ist nicht erlaubt, unter anderer Kategorie schon.
+  v_failed := false;
+  begin
+    insert into public.monitoring_device_groups (tenant_id, name) values (v_tenant, ' standort baar ');
+  exception when unique_violation then v_failed := true;
+  end;
+  if not v_failed then raise exception 'device groups: duplicate name accepted'; end if;
+  insert into public.monitoring_device_groups (tenant_id, parent_id, name) values (v_tenant, v_top2, 'Verteiler 2. OG');
+
+  -- Bis zu vier Ebenen (Migration 0376); eine fünfte wird abgelehnt.
+  insert into public.monitoring_device_groups (tenant_id, parent_id, name)
+  values (v_tenant, v_sub, 'Ebene 3') returning id into v_level3;
+  insert into public.monitoring_device_groups (tenant_id, parent_id, name)
+  values (v_tenant, v_level3, 'Ebene 4') returning id into v_level4;
+  v_failed := false;
+  begin
+    insert into public.monitoring_device_groups (tenant_id, parent_id, name) values (v_tenant, v_level4, 'Zu tief');
+  exception when check_violation then v_failed := true;
+  end;
+  if not v_failed then raise exception 'device groups: fifth level accepted'; end if;
+  -- Eine Kategorie hängt nicht unter sich selbst, auch nicht über Umwege.
+  v_failed := false;
+  begin
+    update public.monitoring_device_groups set parent_id = v_level4 where id = v_top;
+  exception when check_violation then v_failed := true;
+  end;
+  if not v_failed then raise exception 'device groups: cycle accepted'; end if;
+  -- Beim Verschieben zählen die Ebenen darunter mit.
+  v_failed := false;
+  begin
+    update public.monitoring_device_groups set parent_id = v_top2 where id = v_top;
+  exception when check_violation then v_failed := true;
+  end;
+  if not v_failed then raise exception 'device groups: moved tree became too deep'; end if;
+  update public.monitoring_device_groups set parent_id = v_top2 where id = v_level4;
+  update public.monitoring_device_groups set parent_id = v_sub where id = v_level4;
+
+  -- Übergeordnete Kategorie muss zum selben Mandanten gehören.
+  if v_other is not null then
+    v_failed := false;
+    begin
+      insert into public.monitoring_device_groups (tenant_id, parent_id, name) values (v_other, v_top, 'Fremd');
+    exception when foreign_key_violation then v_failed := true;
+    end;
+    if not v_failed then raise exception 'device groups: parent of another tenant accepted'; end if;
+  end if;
+
+  -- Löschen einer Kategorie entfernt die Unterkategorien; Geräte bleiben, ohne Kategorie.
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'S-0373', 'server', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address, monitoring_group_id)
+  values (v_asset, v_tenant, 'server', '10.73.0.2', v_sub);
+  delete from public.monitoring_device_groups where id = v_top;
+  if exists (select 1 from public.monitoring_device_groups where id = v_sub) then
+    raise exception 'device groups: subcategory survived';
+  end if;
+  if (select monitoring_group_id from public.asset_infrastructure where asset_id = v_asset) is not null
+     or not exists (select 1 from public.assets where id = v_asset) then
+    raise exception 'device groups: device not released';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.monitoring_device_groups', 'select') then
+    raise exception 'device groups: readable for authenticated';
+  end if;
+  raise notice 'monitoring device group checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0374: Dienste intern/extern und Push «Störungen» für Mitarbeitende.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_all uuid := gen_random_uuid();
+  v_some uuid := gen_random_uuid();
+  v_off uuid := gen_random_uuid();
+  v_external uuid;
+  v_other uuid;
+  v_internal uuid;
+  v_notice uuid;
+  v_users uuid[];
+  v_claim jsonb;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into auth.users (id) values (v_all), (v_some), (v_off);
+  insert into public.user_profiles (id, display_name)
+  values (v_all, 'Alle Dienste'), (v_some, 'Ein Dienst'), (v_off, 'Aus');
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_all, 'active', now()), (v_tenant, v_some, 'active', now()),
+         (v_tenant, v_off, 'active', now());
+  insert into public.services (tenant_id, name) values (v_tenant, 'E-Mail 0374') returning id into v_external;
+  insert into public.services (tenant_id, name) values (v_tenant, 'Telefonie 0374') returning id into v_other;
+  insert into public.services (tenant_id, name, audience)
+  values (v_tenant, 'Backup 0374', 'internal') returning id into v_internal;
+  if (select audience from public.services where id = v_external) <> 'external' then
+    raise exception 'incident push: services are not external by default';
+  end if;
+  insert into public.service_incident_push_subscriptions (tenant_id, user_id, enabled, service_ids)
+  values (v_tenant, v_all, true, null), (v_tenant, v_some, true, array[v_other]),
+         (v_tenant, v_off, false, null);
+
+  -- Externer Dienst: «alle» bekommt die Meldung, die Auswahl «Telefonie» nicht.
+  insert into public.service_incident_notices (tenant_id, title, description, created_by)
+  values (v_tenant, 'E-Mail gestört', 'Untersuchung läuft.', v_all) returning id into v_notice;
+  insert into public.service_incident_notice_services (tenant_id, notice_id, service_id)
+  values (v_tenant, v_notice, v_external), (v_tenant, v_notice, v_internal);
+  if not exists (select 1 from public.service_incident_push_queue where notice_id = v_notice) then
+    raise exception 'incident push: notice was not queued';
+  end if;
+  select coalesce(array_agg(u), '{}') into v_users from public.service_incident_push_recipients(v_notice) u;
+  if v_users <> array[v_all] then
+    raise exception 'incident push: wrong recipients for an external service (%)', v_users;
+  end if;
+  if public.service_incident_notice_internal_only(v_notice) then
+    raise exception 'incident push: mixed notice counted as internal';
+  end if;
+
+  -- Noch nicht fällig (15 Sekunden Wartezeit), danach genau einmal.
+  if public.service_incident_push_due()
+     or jsonb_array_length(public.service_incident_push_claim(20)) <> 0 then
+    raise exception 'incident push: claimed too early';
+  end if;
+  update public.service_incident_push_queue set created_at = created_at - interval '1 minute'
+   where notice_id = v_notice;
+  if not public.service_incident_push_due() then
+    raise exception 'incident push: not due';
+  end if;
+  v_claim := public.service_incident_push_claim(20);
+  if jsonb_array_length(v_claim) <> 1
+     or v_claim -> 0 ->> 'title' <> 'E-Mail gestört'
+     or v_claim -> 0 -> 'services' <> '["E-Mail 0374"]'::jsonb
+     or v_claim -> 0 -> 'userIds' <> to_jsonb(array[v_all]) then
+    raise exception 'incident push: wrong claim (%)', v_claim;
+  end if;
+  if jsonb_array_length(public.service_incident_push_claim(20)) <> 0 then
+    raise exception 'incident push: claimed twice';
+  end if;
+
+  -- Nur interner Dienst: niemand, und für Mitarbeitende unsichtbar.
+  insert into public.service_incident_notices (tenant_id, title, description, created_by)
+  values (v_tenant, 'Backup gestört', 'Untersuchung läuft.', v_all) returning id into v_notice;
+  insert into public.service_incident_notice_services (tenant_id, notice_id, service_id)
+  values (v_tenant, v_notice, v_internal);
+  if exists (select 1 from public.service_incident_push_recipients(v_notice))
+     or not public.service_incident_notice_internal_only(v_notice) then
+    raise exception 'incident push: internal notice reached employees';
+  end if;
+
+  -- Ohne Dienst: alle mit eingeschalteter Bestellung, auch mit Auswahl.
+  insert into public.service_incident_notices (tenant_id, title, description, created_by)
+  values (v_tenant, 'Allgemeine Störung', 'Untersuchung läuft.', v_all) returning id into v_notice;
+  if (select count(*) from public.service_incident_push_recipients(v_notice)) <> 2
+     or public.service_incident_notice_internal_only(v_notice) then
+    raise exception 'incident push: notice without services not sent to all subscribers';
+  end if;
+
+  -- Gewählter Dienst trifft; alte Meldungen werden nur abgehakt.
+  insert into public.service_incident_notices (tenant_id, title, description, created_by)
+  values (v_tenant, 'Telefonie gestört', 'Untersuchung läuft.', v_all) returning id into v_notice;
+  insert into public.service_incident_notice_services (tenant_id, notice_id, service_id)
+  values (v_tenant, v_notice, v_other);
+  if (select count(*) from public.service_incident_push_recipients(v_notice)) <> 2 then
+    raise exception 'incident push: chosen service did not match';
+  end if;
+  update public.service_incident_push_queue set created_at = created_at - interval '2 hours'
+   where processed_at is null;
+  if jsonb_array_length(public.service_incident_push_claim(20)) <> 0 then
+    raise exception 'incident push: stale notices were sent';
+  end if;
+  if exists (select 1 from public.service_incident_push_queue where processed_at is null) then
+    raise exception 'incident push: stale notices were kept';
+  end if;
+
+  -- Eine bereits behobene Meldung wird nicht eingereiht.
+  insert into public.service_incident_notices (tenant_id, title, description, status, resolved_at, created_by)
+  values (v_tenant, 'Schon behoben', 'Erledigt.', 'resolved', timezone('utc', now()), v_all)
+  returning id into v_notice;
+  if exists (select 1 from public.service_incident_push_queue where notice_id = v_notice) then
+    raise exception 'incident push: resolved notice queued';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.service_incident_push_subscriptions', 'select')
+     or has_function_privilege('authenticated', 'public.service_incident_push_claim(integer)', 'execute') then
+    raise exception 'incident push: reachable for authenticated';
+  end if;
+  raise notice 'service audience and incident push checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0375: SNMP-Zugangsdaten pro Gerät und Sonde; Geheimnisse im Vault.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+-- Ersatz für den Supabase Vault in der lokalen Prüfung.
+create schema if not exists vault;
+create table if not exists vault.secrets (id uuid primary key default gen_random_uuid(), secret text not null);
+create or replace view vault.decrypted_secrets as select id, secret as decrypted_secret from vault.secrets;
+create or replace function vault.create_secret(new_secret text, new_name text default null, new_description text default '', new_key_id uuid default null)
+returns uuid language sql as $f$ insert into vault.secrets (secret) values (new_secret) returning id $f$;
+create or replace function vault.update_secret(secret_id uuid, new_secret text default null, new_name text default null, new_description text default null, new_key_id uuid default null)
+returns void language sql as $f$ update vault.secrets set secret = new_secret where id = secret_id $f$;
+do $$
+declare
+  v_tenant uuid;
+  v_other uuid;
+  v_asset uuid;
+  v_agent uuid;
+  v_id uuid;
+  v_revision text;
+  v_result jsonb;
+  v_failed boolean;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  select id into v_other from public.tenants where id <> v_tenant order by created_at limit 1;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'SW-0375', 'server', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address, hostname)
+  values (v_asset, v_tenant, 'switch', '10.75.0.2', 'SW-0375.example');
+  insert into public.ipam_agents (tenant_id, name, token_hash)
+  values (v_tenant, 'Sonde 0375', repeat('a', 64)) returning id into v_agent;
+
+  if public.monitoring_snmp_revision(v_tenant, v_agent) <> 'none' then
+    raise exception 'snmp: revision without credentials';
+  end if;
+
+  -- Gerät: SNMPv3 mit beiden Schlüsseln.
+  v_id := public.monitoring_snmp_credential_save(
+    v_tenant, v_asset, null, 'v3', ' nextdesk ', 'sha256', 'aes',
+    '{"authKey": "auth-key-1", "privKey": "priv-key-1"}', null);
+  v_revision := public.monitoring_snmp_revision(v_tenant, v_agent);
+  v_result := public.monitoring_snmp_credentials_for_agent(v_tenant, v_agent);
+  if v_result -> 'hosts' -> '10.75.0.2' <> '{"version":"v3","user":"nextdesk","authProtocol":"sha256","authKey":"auth-key-1","privProtocol":"aes","privKey":"priv-key-1"}'::jsonb
+     or v_result -> 'hosts' -> 'sw-0375.example' is null
+     or v_result -> 'default' <> 'null'::jsonb then
+    raise exception 'snmp: wrong credentials for the probe (%)', v_result;
+  end if;
+  -- Die Tabelle selbst enthält kein Geheimnis.
+  if exists (select 1 from public.monitoring_snmp_credentials c where to_jsonb(c)::text like '%auth-key-1%') then
+    raise exception 'snmp: secret stored in the table';
+  end if;
+
+  -- Ohne neues Geheimnis bleibt das gespeicherte; ein neuer Schlüssel ersetzt nur diesen.
+  perform pg_sleep(0.01);
+  perform public.monitoring_snmp_credential_save(
+    v_tenant, v_asset, null, 'v3', 'nextdesk', 'sha256', 'aes', '{"authKey": null, "privKey": "priv-key-2"}', null);
+  v_result := public.monitoring_snmp_credentials_for_agent(v_tenant, v_agent) -> 'hosts' -> '10.75.0.2';
+  if v_result ->> 'authKey' <> 'auth-key-1' or v_result ->> 'privKey' <> 'priv-key-2' then
+    raise exception 'snmp: stored secret not kept (%)', v_result;
+  end if;
+  if (select count(*) from public.monitoring_snmp_credentials where asset_id = v_asset) <> 1
+     or (select count(*) from vault.secrets) <> 1 then
+    raise exception 'snmp: duplicate credential or secret';
+  end if;
+
+  -- Wechsel auf v2c verlangt eine Community; alte Schlüssel werden nicht übernommen.
+  v_failed := false;
+  begin
+    perform public.monitoring_snmp_credential_save(v_tenant, v_asset, null, 'v2c', null, null, null, null, null);
+  exception when invalid_parameter_value then v_failed := true;
+  end;
+  if not v_failed then raise exception 'snmp: v2c without community accepted'; end if;
+  -- Verschlüsselung ohne Schlüssel und zu kurzer Schlüssel werden abgelehnt.
+  v_failed := false;
+  begin
+    perform public.monitoring_snmp_credential_save(
+      v_tenant, null, v_agent, 'v3', 'ro', 'sha', 'aes', '{"authKey": "long-enough"}', null);
+  exception when invalid_parameter_value then v_failed := true;
+  end;
+  if not v_failed then raise exception 'snmp: priv protocol without key accepted'; end if;
+
+  -- Standard der Sonde: v2c.
+  perform public.monitoring_snmp_credential_save(
+    v_tenant, null, v_agent, 'v2c', null, null, null, '{"community": "public-ro"}', null);
+  v_result := public.monitoring_snmp_credentials_for_agent(v_tenant, v_agent);
+  if v_result -> 'default' <> '{"version":"v2c","community":"public-ro"}'::jsonb then
+    raise exception 'snmp: wrong default (%)', v_result;
+  end if;
+  if public.monitoring_snmp_revision(v_tenant, v_agent) = v_revision then
+    raise exception 'snmp: revision did not change';
+  end if;
+
+  -- Fremder Mandant: weder speichern noch lesen.
+  if v_other is not null then
+    v_failed := false;
+    begin
+      perform public.monitoring_snmp_credential_save(
+        v_other, v_asset, null, 'v2c', null, null, null, '{"community": "x"}', null);
+    exception when foreign_key_violation then v_failed := true;
+    end;
+    if not v_failed then raise exception 'snmp: device of another tenant accepted'; end if;
+    if public.monitoring_snmp_credentials_for_agent(v_other, v_agent) -> 'hosts' <> '{}'::jsonb then
+      raise exception 'snmp: credentials visible for another tenant';
+    end if;
+  end if;
+
+  -- Löschen entfernt auch den Vault-Eintrag; ebenso das Löschen des Geräts.
+  if not public.monitoring_snmp_credential_delete(v_tenant, null, v_agent) then
+    raise exception 'snmp: default not deleted';
+  end if;
+  delete from public.assets where id = v_asset;
+  if exists (select 1 from public.monitoring_snmp_credentials where tenant_id = v_tenant)
+     or exists (select 1 from vault.secrets) then
+    raise exception 'snmp: credentials or secrets left behind';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.monitoring_snmp_credentials', 'select')
+     or has_function_privilege('authenticated', 'public.monitoring_snmp_credentials_for_agent(uuid, uuid)', 'execute')
+     or has_table_privilege('service_role', 'public.monitoring_snmp_credentials', 'insert') then
+    raise exception 'snmp: privileges too wide';
+  end if;
+  raise notice 'monitoring snmp credential checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# Ohne Mindestbestand (0, z. B. Software) gibt es keinen Unterbestand
+# (Migration 0375): keine neue Episode, aber mit Mindestbestand weiterhin.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'a7300000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_loc uuid;
+  v_with uuid;
+  v_without uuid;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'ohne-minimum@example.ch', 'Ohne Minimum');
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key in ('inventory.management', 'notifications.push');
+  insert into public.inventory_locations (tenant_id, code, name)
+  values (v_tenant, 'l1', 'L1') returning id into v_loc;
+  insert into public.inventory_items (tenant_id, article_number, name, minimum_quantity, target_quantity)
+  values (v_tenant, 'mit-minimum', 'Mit Minimum', 5, 10) returning id into v_with;
+  insert into public.inventory_items (tenant_id, article_number, name, minimum_quantity, target_quantity)
+  values (v_tenant, 'ohne-minimum', 'Software', 0, 0) returning id into v_without;
+  -- Beide Artikel: Bestand 3 eingebucht und wieder ausgebucht (landet bei 0).
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(
+      jsonb_build_object('item_id', v_with, 'location_id', v_loc, 'physical_delta', 3, 'reserved_delta', 0),
+      jsonb_build_object('item_id', v_without, 'location_id', v_loc, 'physical_delta', 3, 'reserved_delta', 0)),
+    null, null);
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_issue',
+    jsonb_build_array(
+      jsonb_build_object('item_id', v_with, 'location_id', v_loc, 'physical_delta', -3, 'reserved_delta', 0),
+      jsonb_build_object('item_id', v_without, 'location_id', v_loc, 'physical_delta', -3, 'reserved_delta', 0)),
+    null, null);
+  if not exists (select 1 from public.inventory_low_stock_episodes
+                 where tenant_id = v_tenant and item_id = v_with) then
+    raise exception 'no minimum: an article with a minimum must still open a low-stock episode';
+  end if;
+  if exists (select 1 from public.inventory_low_stock_episodes
+             where tenant_id = v_tenant and item_id = v_without) then
+    raise exception 'no minimum: an article without a minimum opened a low-stock episode';
+  end if;
+  raise notice 'inventory no-minimum checks ran';
 end;
 $$;
 rollback;

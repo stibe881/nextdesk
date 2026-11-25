@@ -577,7 +577,8 @@
   color: var(--tone-warning);
 }
 
-.ticket-timeline__gap--idle {
+/* Rot nur bei einer SLA-Verletzung in der Lücke, sonst orange (Hinweis). */
+.ticket-timeline__gap--breach {
   border-color: var(--tone-danger);
   background: var(--tone-danger-soft);
   color: var(--tone-danger);

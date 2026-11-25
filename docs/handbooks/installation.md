@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-17
+updated: 2026-11-20
 ---
 
 # Installationsanleitung
@@ -130,10 +130,10 @@ Ausführlich: «Schritt 5: Exchange Online (E-Mail-Kanal)».
 
 1. Stelle sicher, dass SSO mit deiner eigenen Tenant-ID konfiguriert ist (nicht `common`).
 2. Lass die Zustimmung für die Berechtigung _User.Read.All_ erteilen (Link vom Betreiber, Aufgabe des Microsoft-Admins).
-3. Öffne **Einstellungen → Personen → Microsoft Entra-Verzeichnis**.
-4. Aktiviere den _Connector für manuelle Abgleiche_ und wähle **Konfiguration speichern**.
-5. Wähle **Verbindung testen** und danach **Manuellen Abgleich starten**.
-6. Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
+3. Öffne **Einstellungen → Funktionen → Microsoft Entra-Verzeichnis**.
+4. Aktiviere den _Connector (Abgleich jede Nacht automatisch)_ und wähle **Konfiguration speichern**.
+5. Wähle **Verbindung testen** und danach **Jetzt abgleichen**.
+6. Danach gleicht nextDesk das Verzeichnis jede Nacht automatisch ab; es werden keine Personen gelöscht. Die **Abgleichshistorie** zeigt die letzten Läufe.
 
 Ausführlich: «Microsoft-Entra-Verzeichnisabgleich».
 
@@ -141,7 +141,7 @@ Ausführlich: «Microsoft-Entra-Verzeichnisabgleich».
 
 1. Lass die Zustimmung für die Intune-App mit _DeviceManagementManagedDevices.Read.All_ (nur lesend) erteilen (Aufgabe des Microsoft-Admins).
 2. Aktiviere die Funktion **Asset-Management** und öffne **Konfigurieren**.
-3. Gib den _Manuellen Microsoft-Graph-Abgleich für diesen Mandanten_ frei.
+3. Gib den _Microsoft-Graph-Abgleich für diesen Mandanten_ frei.
 4. Prüfe die Vorschau und wähle **Übernahme ausdrücklich bestätigen**.
 5. Wähle **Jetzt einmalig abgleichen**.
 6. Danach läuft der Abgleich zusätzlich jede Nacht automatisch. Geräte mit bereits vorhandener Seriennummer werden übersprungen, es wird nie etwas gelöscht.
@@ -237,12 +237,21 @@ Ausführlich: «Eigene Überwachung (Sonde)».
 ### Wie richte ich SNMP-Sensoren für die Sonde ein?
 
 1. Richte auf den Geräten SNMP nur lesend ein.
-2. Ergänze in der `config.json` der Sonde den Block `snmp` mit den Zugangsdaten. nextDesk speichert sie nie. Den Aufbau zeigt der Abschnitt «Eigene Überwachung (Sonde)».
+2. Ergänze in der `config.json` der Sonde den Block `snmp` mit den Zugangsdaten – oder hinterlege sie in nextDesk (nächste Anleitung). Den Aufbau zeigt der Abschnitt «Eigene Überwachung (Sonde)».
 3. `default` gilt für alle Geräte, `hosts` für einzelne Geräte mit anderen Zugangsdaten.
 4. Erlaube der Sonde UDP 161 zu den Geräten.
 5. Starte die Sonde neu.
 
 Ausführlich: «Eigene Überwachung (Sonde)».
+
+### Wie hinterlege ich SNMP-Zugangsdaten in nextDesk?
+
+1. Öffne in der **Überwachung** das Gerät und klicke auf **SNMP**. Das dürfen nur Mandantenadministratoren.
+2. Wähle die Version und gib Community bzw. Benutzer, Verfahren und Schlüssel ein.
+3. Speichere. Die Sonde (ab Version 1.4.0) übernimmt die Angaben innert einer Minute.
+4. Für einen Standard pro Sonde: **Einstellungen → Monitoring → Überwachung**, Stift bei der Sonde, **SNMP-Standard**.
+
+Gespeicherte Schlüssel werden nie wieder angezeigt; ein leeres Schlüsselfeld behält den gespeicherten. Ausführlich: «Eigene Überwachung (Sonde)».
 
 ### Wie aktualisiere ich die Sonde?
 
@@ -266,7 +275,8 @@ Ausführlich: «Externe Statusquellen (Microsoft 365, GitHub, Claude …)».
 
 1. Öffne das Register **Monitoring** (dasselbe Register wie bei den externen Statusquellen).
 2. Erfasse **Zertifikate und Domains**, damit nextDesk vor dem Ablauf erinnert.
-3. Richte die **Backup-Überwachung** ein (z. B. Veeam per E-Mail oder Webhook) mit erwartetem Intervall und Toleranz.
+   Wähle dort **Abteilung für Tickets** und **Team für Tickets**, damit die Tickets beim richtigen Team landen.
+3. Richte die **Backup-Überwachung** ein (z. B. Veeam per E-Mail oder Webhook) mit erwartetem Intervall und Toleranz; auch hier legst du Abteilung und Team für die Tickets fest.
 
 Ausführlich: «Zertifikate, Domains und Backups».
 
@@ -486,20 +496,26 @@ dargestellt).
   (nicht `common`).
 - **[Microsoft-Admin]** Zustimmung für die Berechtigung _User.Read.All_
   erteilen (Link vom Betreiber).
-- **[Admin]** **Einstellungen → Personen → Microsoft Entra-Verzeichnis**:
-  _Connector für manuelle Abgleiche aktivieren_ → **Konfiguration speichern**
-  → **Verbindung testen** → **Manuellen Abgleich starten**.
+- **[Admin]** **Einstellungen → Funktionen → Microsoft Entra-Verzeichnis**
+  (am Ende der Seite): _Connector aktivieren (Abgleich jede Nacht
+  automatisch)_ → **Konfiguration speichern** → **Verbindung testen** →
+  **Jetzt abgleichen**.
 
-Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
+Ist der Connector aktiv, läuft der Abgleich jede Nacht automatisch (um 01:41
+UTC); **Jetzt abgleichen** startet ihn zusätzlich von Hand. Es werden keine
+Personen gelöscht. Die **Abgleichshistorie** zeigt die letzten drei Läufe mit
+_Automatischer Abgleich_ bzw. _Manueller Abgleich_, verarbeiteten und aktiven
+Personen; **Ältere Läufe anzeigen** klappt bis zu 20 Läufe auf. Die
+abgeglichenen Personen erscheinen unter **Einstellungen → Personen**.
 
-![Microsoft Entra-Verzeichnis im Register Personen](images/in-verzeichnis.jpg)
+![Microsoft Entra-Verzeichnis im Register Funktionen](images/in-verzeichnis.jpg)
 
 ### Microsoft Intune (Geräte)
 
 - **[Microsoft-Admin]** Zustimmung für die Intune-App mit
   _DeviceManagementManagedDevices.Read.All_ (nur lesend) erteilen.
 - **[Admin]** Funktion **Asset-Management** aktivieren →
-  **Konfigurieren** → _Manuellen Microsoft-Graph-Abgleich für diesen Mandanten
+  **Konfigurieren** → _Microsoft-Graph-Abgleich für diesen Mandanten
   freigeben_ → Vorschau prüfen → **Übernahme ausdrücklich bestätigen** →
   **Jetzt einmalig abgleichen**.
 
@@ -515,6 +531,12 @@ liefert derselbe Geräteabruf auch die MAC-Adressen; der bisherige separate
 nächtliche Intune-Abruf der IP-Adressverwaltung entfällt dann.
 Voraussetzung ist die Dispatch-Konfiguration für Cron-Aufrufe (wie bei
 PRTG/IP-Adressverwaltung).
+
+Die Historie unter dem Abgleich zeigt die letzten drei Läufe; **Ältere Läufe
+anzeigen** klappt bis zu 20 auf. Der nächtliche Lauf heisst dort
+**Automatischer Abgleich abgeschlossen** («Synchronisation (täglich,
+automatisch)»), von Hand gestartete Läufe **Manueller Abgleich
+abgeschlossen** bzw. «Synchronisation (von Hand)».
 
 ![Microsoft-Intune-Abgleich](images/in-intune.jpg)
 
@@ -695,8 +717,9 @@ Verbindungen: 1.3.0).
    dem Download- und dem Paketordner löschen.
 
 **SNMP-Sensoren** (Laufzeit, Port-Traffic, eigene OID, ab Sonde 1.2.0)
-brauchen Zugangsdaten in der `config.json` der Sonde. nextDesk speichert sie
-nie. Den Block `snmp` ergänzen und die Sonde neu starten:
+brauchen Zugangsdaten – in der `config.json` der Sonde oder in nextDesk
+(siehe unten). Für die Datei den Block `snmp` ergänzen und die Sonde neu
+starten:
 
 ```json
 "snmp": {
@@ -724,6 +747,19 @@ einen Eintrag unter `hosts`, mit der IP-Adresse wie in nextDesk. Ein `"` oder
 `\` in einem Schlüssel wird als `\"` bzw. `\\` geschrieben. SNMPv3 mit
 DES-Verschlüsselung (ältere APC-USV) funktioniert ab Sonde 1.3.2; sicherer ist
 AES auf dem Gerät.
+
+**SNMP-Zugangsdaten in nextDesk** (ab Sonde 1.4.0): Statt in der
+`config.json` lassen sich die Zugangsdaten auch in nextDesk pflegen – pro
+Gerät im Gerätedetail der Überwachung über **SNMP**, als Standard einer Sonde
+unter **Einstellungen → Monitoring → Überwachung** im Dialog der Sonde
+(**SNMP-Standard**). Das dürfen nur Mandantenadministratoren. Community und
+Schlüssel liegen verschlüsselt im Tresor der Datenbank (Supabase Vault),
+werden in nextDesk nie wieder angezeigt und gehen nur über die verschlüsselte
+Verbindung an die Sonde, die sie im Arbeitsspeicher hält. Die Sonde übernimmt
+Änderungen innert einer Minute, ohne Neustart. Reihenfolge: Eintrag des
+Geräts in nextDesk, Eintrag des Geräts unter `hosts`, Standard der Sonde in
+nextDesk, `default` der `config.json`. Wer die Zugangsdaten nicht in der
+Cloud speichern will, pflegt sie weiterhin nur in der `config.json`.
 
 **Verbindungen** (welcher Port führt zu welchem Gerät, ab Sonde 1.3.0):
 Mit denselben SNMP-Zugangsdaten liest die Sonde bei Switches, Firewalls und
@@ -775,7 +811,8 @@ und liefert sie nach.
 
 1. **[Admin]** **Einstellungen → Monitoring → Externe Statusquellen**: die
    gewünschten Anbieter anhaken und **Speichern**. Die öffentlichen Quellen
-   (GitHub, Claude, Gemini, App Store, Google Play, Init7) brauchen keine
+   (GitHub, Claude, Gemini, App Store, Google Play, Init7, Swisscom, Salt)
+   brauchen keine
    weitere Einrichtung.
 2. Für **Microsoft 365** liest nextDesk den Dienststatus deines Mandanten über
    Microsoft Graph mit derselben Entra-App wie der Verzeichnisabgleich. In
@@ -797,6 +834,11 @@ Im selben Register erfasst du **Zertifikate und Domains** (Erinnerung vor
 Ablauf) und die **Backup-Überwachung** (z. B. Veeam per E-Mail oder Webhook mit
 erwartetem Intervall und Toleranz).
 
+Bei **Zertifikate und Domains** und bei der **Backup-Überwachung** wählst du neben der **Abteilung für Tickets**
+auch das **Team für Tickets**: Die Tickets (vor dem Ablauf bzw. bei fehlgeschlagenen oder ausbleibenden Backups) werden diesem Team
+zugewiesen. Zur Auswahl stehen die aktiven Teams der gewählten Abteilung; ohne
+Abteilung landet das Ticket in der Abteilung des Teams.
+
 ### IP-Adressverwaltung und Netzwerkagent
 
 1. Unter **Module** die _IP-Adressverwaltung_ einschalten (für alle oder
@@ -814,8 +856,10 @@ erwartetem Intervall und Toleranz).
      und DNS) `tools/ipam-agent` aus dem Repository bereitstellen und
      `config.example.json` als `config.json` kopieren: Adresse
      `https://<projekt>.supabase.co/functions/v1/ipam-agent`, Token und die
-     SNMP-Zugangsdaten. **SNMP-Schlüssel stehen nur in dieser Datei**, nie in
-     nextDesk; nextDesk lehnt Einstellungen mit Zugangsdaten ab.
+     SNMP-Zugangsdaten. **SNMP-Schlüssel stehen in dieser Datei** oder,
+     ab Sonde 1.4.0, verschlüsselt in nextDesk (Überwachung → Gerät →
+     **SNMP**); die Einstellungen des Agenten selbst nehmen keine
+     Zugangsdaten an.
    - Linux: Image mit `docker build` erstellen, mit `--check` die Verbindung
      prüfen und mit `docker run -d --network host --restart unless-stopped`
      starten. Windows: `npm ci && npm run build`, danach

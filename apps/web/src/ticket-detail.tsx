@@ -24,17 +24,20 @@ import {
   Circle,
   BookOpen,
   CircleCheck,
+  Forward,
   Clock,
   ListChecks,
   Paperclip,
   Pencil,
   ChevronDown,
+  FolderKanban,
   Clock3,
   Eye,
   EyeOff,
   ImagePlus,
   LoaderCircle,
   Mail,
+  GitBranch,
   MessageSquare,
   Phone,
   Plus,
@@ -47,6 +50,10 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
+import {
+  parseTicketSplitNote,
+  type TicketSplitNote,
+} from "./lib/ticket-split-note";
 import {
   ticketCommentComposerCopy,
   ticketCommentComposerModeForTicketContext,
@@ -78,9 +85,28 @@ import {
   shouldLoadTicketCatalog,
 } from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
+import { useProjectsAvailable } from "./lib/project-navigation";
+import { ProjectLinkCard } from "./project-link-card";
 import { recordRecentItem } from "./lib/recent-items";
-import { functionErrorMessage } from "./lib/function-error";
+import {
+  functionErrorDetails,
+  functionErrorMessage,
+} from "./lib/function-error";
 import { TicketControlPanel } from "./ticket-control";
+import { Deferred } from "./deferred";
+import { TicketForwardDialog } from "./ticket-forward";
+import { activeMentionQuery, mentionedAgentIds } from "./lib/ticket-mentions";
+import {
+  AffectedPeopleBadge,
+  DuplicateSuggestions,
+  loadMergePreview,
+  MergedIntoBanner,
+  MergedTicketsSection,
+  MergePreviewSummary,
+  parseMergeInsights,
+  type MergeInsights,
+  type MergePreview,
+} from "./ticket-merge-insights";
 import { knowledgeErrorBackendMessage } from "./lib/knowledge-errors";
 import {
   parseKnowledgeImageUrls,
@@ -128,7 +154,8 @@ import {
 } from "./ticket-workbench";
 import { slaPauseEventLabel } from "./lib/sla-pause";
 
-import { confirmDialog } from "./app-dialog";
+import { confirmDialog, promptDialog } from "./app-dialog";
+import { supportLevelLabel } from "./lib/support-levels";
 type CommentVisibility = "external" | "internal";
 type BillingKind = "internal" | "billable" | "goodwill";
 type RelationType =
@@ -481,6 +508,8 @@ type TicketPresencePerson = {
   photoUrl: string | null;
   editing: boolean;
   composing: "external" | "internal" | null;
+  /** «requester» = anfragende Person des Tickets. */
+  role: "agent" | "requester";
   lastSeenAt: string;
 };
 
@@ -783,6 +812,8 @@ type TicketDetailData = {
   canWriteInternalNotes: boolean;
   canCommentExternal: boolean;
   canTrackTime: boolean;
+  /** Zusammengeführte Tickets, betroffene Personen und Haupt-Ticket. */
+  mergeInsights: MergeInsights;
 };
 
 /** Lange Unterhaltungen scrollen im Fenster; es startet bei der neuesten Nachricht. */
@@ -1177,6 +1208,7 @@ function toTicketPresencePerson(value: unknown): TicketPresencePerson | null {
       person.composing === "external" || person.composing === "internal"
         ? person.composing
         : null,
+    role: person.role === "requester" ? "requester" : "agent",
     lastSeenAt: person.lastSeenAt,
   };
 }
@@ -2191,6 +2223,7 @@ function parseTicketDetail(
     canWriteInternalNotes: data.canWriteInternalNotes === true,
     canCommentExternal: data.canCommentExternal === true,
     canTrackTime: data.canTrackTime === true,
+    mergeInsights: parseMergeInsights(data),
   };
 }
 
@@ -2361,6 +2394,54 @@ function relationActionKey(relation: TicketRelation): string {
   return `${relation.relationType}:${relation.relatedTicketId}`;
 }
 
+/** Kurzfassung der Beschreibung für die eingeklappte Ansicht. */
+function descriptionPreview(description: string | null | undefined): string {
+  const text = parseTicketSplitNote(description ?? "")
+    .body.replace(/^Eingegangene E-Mail von [^\n]*\n+/u, "")
+    .replace(/\[[^\]\n]{1,120}\]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (!text) return "Keine Beschreibung";
+  return text.length > 220 ? `${text.slice(0, 220).trimEnd()} …` : text;
+}
+
+/** Hinweis über der Beschreibung eines Teil-Tickets (Vermerk beim Aufteilen). */
+function TicketSplitNoteBanner({ note }: { note: TicketSplitNote }) {
+  return (
+    <aside className="ticket-split-note" aria-label="Aufgeteiltes Ticket">
+      <GitBranch aria-hidden="true" size={18} />
+      <div>
+        <strong>
+          {note.part && note.total
+            ? `Teil ${note.part} von ${note.total} eines aufgeteilten Tickets`
+            : "Teil eines aufgeteilten Tickets"}
+        </strong>
+        <p>
+          Dieses Ticket ist beim Aufteilen von Ticket{" "}
+          <span className="ticket-split-note__number">
+            {note.parentTicketNumber}
+          </span>{" "}
+          entstanden.
+          {note.siblingTicketNumbers.length > 0 ? (
+            <>
+              {" "}
+              {note.siblingTicketNumbers.length === 1
+                ? "Weiterer Teil:"
+                : "Weitere Teile:"}{" "}
+              {note.siblingTicketNumbers.map((number, index) => (
+                <span key={number}>
+                  {index > 0 ? ", " : ""}
+                  <span className="ticket-split-note__number">{number}</span>
+                </span>
+              ))}
+            </>
+          ) : null}
+        </p>
+      </div>
+    </aside>
+  );
+}
+
 function eventLabel(
   eventType: string,
   payload?: Record<string, unknown> | null,
@@ -2374,6 +2455,7 @@ function eventLabel(
     "ticket.created": "Ticket erstellt",
     "comment.external_added": "Externer Kommentar hinzugefügt",
     "comment.internal_added": "Interne Notiz hinzugefügt",
+    "ticket.forwarded": "Per Mail weitergeleitet",
     "ticket.updated": "Ticket aktualisiert",
     "ticket.closed": "Ticket abgeschlossen",
     "ticket.category_changed": "Kategorie aktualisiert",
@@ -2382,6 +2464,9 @@ function eventLabel(
     "ticket.phishing_suspicion": "Spam-/Phishing-Verdacht gemeldet",
     "ticket.knowledge.sent":
       "Wissensartikel als externe Ticketantwort versendet",
+    "project.converted": "In ein Projekt umgewandelt",
+    "project.linked": "Mit einem Projekt verknüpft",
+    "project.unlinked": "Verknüpfung mit einem Projekt entfernt",
   };
   return (
     labels[eventType] ??
@@ -4062,6 +4147,7 @@ export function TicketDetail({
   onOpenPerson,
   onOpenIncident,
 }: TicketDetailProps) {
+  const projectsAvailable = useProjectsAvailable();
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   // Answers from a ticket template form (only tickets created with one).
   const [storedFormAnswers, setStoredFormAnswers] = useState<{
@@ -4194,6 +4280,22 @@ export function TicketDetail({
   const [mergeError, setMergeError] = useState("");
   const [mergeConfirmationTarget, setMergeConfirmationTarget] =
     useState<MergeSearchTarget | null>(null);
+  const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
+  const [forwardSource, setForwardSource] = useState<{
+    commentId: string | null;
+    label: string;
+  } | null>(null);
+  const [forwardNotice, setForwardNotice] = useState("");
+  // Beschreibung: aufgeklappt, solange die Unterhaltung leer ist; danach
+  // eingeklappt. Ein Klick überschreibt das bis zum nächsten Ticket.
+  const [descriptionOpen, setDescriptionOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    setDescriptionOpen(null);
+  }, [ticketId]);
+  useEffect(() => {
+    setForwardSource(null);
+    setForwardNotice("");
+  }, [ticketId]);
   const [pendingChecklistItemId, setPendingChecklistItemId] = useState<
     string | null
   >(null);
@@ -5682,6 +5784,23 @@ export function TicketDetail({
         }) || left.id.localeCompare(right.id),
     );
   }, [assignableAgents, detail?.agents, detail?.assignedAgent]);
+  // «@» im Text: passende Agenten vorschlagen (nur Mitarbeitenden-Ansicht).
+  const mentionQuery =
+    detail?.canUseInternalNotes && !requesterView
+      ? activeMentionQuery(commentBody)
+      : null;
+  const mentionSuggestions =
+    mentionQuery === null
+      ? []
+      : visibleAssignableAgents
+          .filter(
+            (agent) =>
+              agent.id !== currentUserId &&
+              agent.displayName
+                .toLocaleLowerCase("de-CH")
+                .includes(mentionQuery.toLocaleLowerCase("de-CH")),
+          )
+          .slice(0, 6);
   const hasContentChanges = Boolean(
     detail &&
     (isEditingTicket || isEditingDescription) &&
@@ -6393,6 +6512,25 @@ export function TicketDetail({
       if (change.assignedTeamId !== undefined) {
         setSelectedTeamId(detail.ticket.assigned_team_id ?? "");
       }
+      // Team einer anderen Supportstufe: wie «Heraufstufen/Herunterstufen»
+      // mit Pflicht-Übergabenotiz.
+      const details =
+        change.assignedTeamId && functionErrorStatus(nextError) === 409
+          ? await functionErrorDetails(nextError)
+          : null;
+      if (
+        details?.code === "support_level_handover_required" &&
+        typeof details.currentLevel === "number" &&
+        change.assignedTeamId
+      ) {
+        setPendingAction(null);
+        await handoverToTeam(
+          change.assignedTeamId,
+          details.currentLevel,
+          typeof details.targetLevel === "number" ? details.targetLevel : null,
+        );
+        return;
+      }
       if (change.assignedAgentId !== undefined) {
         setSelectedAgentId(detail.ticket.assigned_agent_id ?? "");
       }
@@ -6415,6 +6553,66 @@ export function TicketDetail({
       } else {
         setError(errorMessage(nextError));
       }
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  /** Teamwechsel in eine andere Supportstufe: Übergabe mit Notiz. */
+  async function handoverToTeam(
+    teamId: string,
+    currentLevel: number,
+    targetLevel: number | null,
+  ) {
+    const teamName =
+      detail?.teams.find((team) => team.id === teamId)?.name ?? "das Team";
+    const levelLabel = (level: number | null) =>
+      level === 1 || level === 2 || level === 3
+        ? supportLevelLabel(level)
+        : "andere Stufe";
+    const direction =
+      targetLevel !== null && targetLevel > currentLevel
+        ? "heraufgestuft"
+        : "zurückgegeben";
+    const note = await promptDialog(
+      `Das Ticket wird an ${teamName} ${direction} (${levelLabel(currentLevel)} → ${levelLabel(targetLevel)}). Bitte eine Übergabenotiz erfassen (Pflicht): Was wurde bereits gemacht, was ist offen?`,
+      { confirmLabel: "Übergeben", multiline: true },
+    );
+    if (note === null) return;
+    if (Array.from(note.trim()).length < 10) {
+      setError(
+        "Die Übergabenotiz ist Pflicht (mindestens 10 Zeichen). Das Team wurde nicht geändert.",
+      );
+      return;
+    }
+    setPendingAction("update");
+    setError("");
+    try {
+      if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+      const { error: handoverError } = await supabase.functions.invoke(
+        "ticket-support-levels",
+        {
+          body: {
+            type: "handover",
+            tenantId,
+            ticketId,
+            targetTeamId: teamId,
+            targetAgentId: null,
+            note: note.trim(),
+            expectedLevel: currentLevel,
+          },
+        },
+      );
+      if (handoverError) throw handoverError;
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(
+        await functionErrorMessage(
+          nextError,
+          "Die Übergabe an das Team ist nicht gelungen.",
+        ),
+      );
     } finally {
       setPendingAction(null);
     }
@@ -6601,8 +6799,14 @@ export function TicketDetail({
         : commentBody,
       activeCommentImageAttachments.length,
     );
+    // Ausgewählte Personen und von Hand getippte «@Name» im Text.
     const mentionRecipients = detail?.canUseInternalNotes
-      ? mentionedUserIds.filter((userId) => userId !== currentUserId)
+      ? [
+          ...new Set([
+            ...mentionedUserIds,
+            ...mentionedAgentIds(body, visibleAssignableAgents),
+          ]),
+        ].filter((userId) => userId !== currentUserId)
       : [];
     if (!body) {
       setError(
@@ -7176,6 +7380,27 @@ export function TicketDetail({
     }
   }
 
+  useEffect(() => {
+    setMergePreview(null);
+    if (!mergeConfirmationTarget) return;
+    let active = true;
+    void loadMergePreview(
+      tenantId,
+      ticketId,
+      [ticketId, mergeConfirmationTarget.id],
+      mergeConfirmationTarget.id,
+    )
+      .then((preview) => {
+        if (active) setMergePreview(preview);
+      })
+      .catch(() => {
+        // Die Vorschau ist eine Hilfe; das Zusammenführen bleibt möglich.
+      });
+    return () => {
+      active = false;
+    };
+  }, [mergeConfirmationTarget, tenantId, ticketId]);
+
   async function markMerged(primaryTicket: MergeSearchTarget) {
     if (!detail || !detail.canMerge || busy || primaryTicket.id === ticketId) {
       return;
@@ -7355,6 +7580,9 @@ export function TicketDetail({
   }
 
   const watchPresentation = ticketWatchPresentation(detail.watching);
+  const descriptionExpanded =
+    isEditingDescription || (descriptionOpen ?? detail.comments.length === 0);
+  const splitNote = parseTicketSplitNote(detail.ticket.description ?? "").note;
 
   return (
     <section
@@ -7372,9 +7600,12 @@ export function TicketDetail({
             {detail.ticket.ticket_number}
           </p>
           <h2>{detail.ticket.subject}</h2>
+          {requesterView ? null : (
+            <AffectedPeopleBadge count={detail.mergeInsights.affectedPeople} />
+          )}
         </div>
         <div className="ticket-detail-header-actions">
-          {!requesterView && presence.length > 0 ? (
+          {presence.length > 0 ? (
             <ul
               aria-label="Personen, die dieses Ticket gerade geöffnet haben"
               className="ticket-presence-avatars"
@@ -7387,10 +7618,11 @@ export function TicketDetail({
                       : "ticket-presence-avatar"
                   }
                   key={`${person.displayName}-${index}`}
+                  aria-label={`${person.displayName}${person.role === "requester" ? " (anfragende Person)" : ""}`}
                   title={
                     person.editing
                       ? `${person.displayName} bearbeitet gerade`
-                      : `${person.displayName} hat das Ticket geöffnet`
+                      : `${person.displayName}${person.role === "requester" ? " (anfragende Person)" : ""} schaut das Ticket gerade an`
                   }
                 >
                   {person.photoUrl ? (
@@ -7506,22 +7738,82 @@ export function TicketDetail({
         </p>
       )}
 
+      <Deferred mode="idle" resetKey={ticketId}>
+        {!requesterView && (
+          <TicketMonitoringIncidentHint
+            onOpenIncident={onOpenIncident}
+            tenantId={tenantId}
+            ticketId={ticketId}
+          />
+        )}
+      </Deferred>
+
+      {forwardNotice ? (
+        <p className="ticket-detail-message success" role="status">
+          <CircleCheck aria-hidden="true" size={17} />
+          {forwardNotice}
+        </p>
+      ) : null}
+      {forwardSource ? (
+        <TicketForwardDialog
+          onClose={() => setForwardSource(null)}
+          onForwarded={async (count) => {
+            setForwardSource(null);
+            setForwardNotice(
+              count === 1
+                ? "Die Mail wurde weitergeleitet."
+                : `Die Mail wurde an ${count} Adressen weitergeleitet.`,
+            );
+            onChanged();
+            await loadTicket();
+          }}
+          sourceCommentId={forwardSource.commentId}
+          sourceLabel={forwardSource.label}
+          tenantId={tenantId}
+          ticketId={ticketId}
+        />
+      ) : null}
       {!requesterView && (
-        <TicketMonitoringIncidentHint
-          onOpenIncident={onOpenIncident}
+        <MergedIntoBanner
+          canUnmerge={detail.canMerge}
+          mergedInto={detail.mergeInsights.mergedInto}
+          onChanged={async () => {
+            onChanged();
+            await loadTicket();
+          }}
+          onOpenTicket={onOpenTicket}
           tenantId={tenantId}
           ticketId={ticketId}
         />
       )}
 
-      {detail.canUpdate && (
-        <TicketIncidentBanner
-          refreshKey={`${detail.ticket.id}:${detail.ticket.subject}`}
-          subject={detail.ticket.subject}
-          tenantId={tenantId}
-          ticketId={ticketId}
-        />
-      )}
+      <Deferred mode="idle" resetKey={ticketId}>
+        {!requesterView &&
+          detail.canMerge &&
+          !detail.mergeInsights.mergedInto && (
+            <DuplicateSuggestions
+              onChanged={async () => {
+                onChanged();
+                await loadTicket();
+              }}
+              onOpenTicket={onOpenTicket}
+              refreshKey={`${detail.ticket.id}:${detail.mergeInsights.mergedTickets.length}`}
+              tenantId={tenantId}
+              ticketId={ticketId}
+            />
+          )}
+      </Deferred>
+
+      <Deferred mode="idle" resetKey={ticketId}>
+        {detail.canUpdate && (
+          <TicketIncidentBanner
+            refreshKey={`${detail.ticket.id}:${detail.ticket.subject}:${detail.mergeInsights.affectedPeople}`}
+            subject={detail.ticket.subject}
+            tenantId={tenantId}
+            ticketId={ticketId}
+          />
+        )}
+      </Deferred>
 
       {undoChange && (
         <div className="ticket-workbench__undo" role="status">
@@ -7574,283 +7866,355 @@ export function TicketDetail({
                 <p className="eyebrow">ANLIEGEN</p>
                 <h3 id="ticket-description-heading">Beschreibung</h3>
               </div>
-              {detail.canUpdate && !requesterView && !isEditingDescription ? (
-                <button
-                  aria-label="Beschreibung bearbeiten"
-                  className="ticket-description-edit"
-                  disabled={busy}
-                  onClick={startDescriptionEdit}
-                  title="Beschreibung bearbeiten"
-                  type="button"
-                >
-                  <Pencil aria-hidden="true" size={16} strokeWidth={1.9} />
-                </button>
-              ) : null}
-            </div>
-            {isEditingDescription ? (
-              <form
-                className="ticket-description-editor"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void saveTicketContent();
-                }}
-              >
-                <label className="ticket-description-editor__subject">
-                  <span>Betreff</span>
-                  <input
-                    disabled={busy}
-                    maxLength={240}
-                    onChange={(event) => setEditSubject(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        event.stopPropagation();
-                        cancelDescriptionEdit();
-                      }
-                    }}
-                    required
-                    type="text"
-                    value={editSubject}
-                  />
-                </label>
-                <label className="ticket-comment-body">
-                  <span className="sr-only">Beschreibung</span>
-                  <textarea
-                    autoFocus
-                    disabled={busy}
-                    maxLength={10_000}
-                    onChange={(event) => setEditDescription(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        event.stopPropagation();
-                        cancelDescriptionEdit();
-                      }
-                      if (
-                        event.key === "Enter" &&
-                        (event.metaKey || event.ctrlKey)
-                      ) {
-                        event.preventDefault();
-                        void saveTicketContent();
-                      }
-                    }}
-                    required
-                    rows={Math.min(
-                      18,
-                      Math.max(6, editDescription.split("\n").length + 1),
-                    )}
-                    value={editDescription}
-                  />
-                </label>
-                <div className="ticket-description-editor__actions">
-                  <span className="data-caption" aria-live="polite">
-                    {[...editDescription].length}/10&apos;000 Zeichen · Strg/⌘ +
-                    Enter speichert
-                  </span>
+              <div className="ticket-detail-heading-actions">
+                {isEditingDescription ? null : (
                   <button
-                    className="secondary-button"
-                    disabled={busy}
-                    onClick={cancelDescriptionEdit}
+                    aria-expanded={descriptionExpanded}
+                    aria-label={
+                      descriptionExpanded
+                        ? "Beschreibung einklappen"
+                        : "Beschreibung aufklappen"
+                    }
+                    className="ticket-description-edit"
+                    onClick={() => setDescriptionOpen(!descriptionExpanded)}
+                    title={descriptionExpanded ? "Einklappen" : "Aufklappen"}
                     type="button"
                   >
-                    Abbrechen
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={
+                        descriptionExpanded
+                          ? "ticket-description-chevron is-open"
+                          : "ticket-description-chevron"
+                      }
+                      size={18}
+                      strokeWidth={1.9}
+                    />
                   </button>
+                )}
+                {detail.canWriteInternalNotes && !requesterView ? (
                   <button
-                    className="primary-button"
-                    disabled={busy || !hasContentChanges}
-                    type="submit"
+                    aria-label="Ursprüngliche Mail weiterleiten"
+                    className="secondary-button ticket-forward-button"
+                    disabled={busy}
+                    onClick={() =>
+                      setForwardSource({
+                        commentId: null,
+                        label: "Die ursprüngliche Mail",
+                      })
+                    }
+                    title="Weiterleiten"
+                    type="button"
                   >
-                    {pendingAction === "update" ? (
-                      <LoaderCircle
-                        aria-hidden="true"
-                        className="ticket-detail-spinner"
-                        size={16}
-                      />
-                    ) : (
-                      <Save aria-hidden="true" size={16} strokeWidth={1.8} />
-                    )}
-                    Beschreibung speichern
+                    <Forward aria-hidden="true" size={16} strokeWidth={1.9} />
+                    Weiterleiten
                   </button>
-                </div>
-              </form>
-            ) : (
-              <div className="ticket-detail-description">
-                <TicketTextWithInlineImages
-                  body={
-                    splitPlainTextSignature(detail.ticket.description).message
-                  }
-                  imagesByAttachmentId={inlineImagesByAttachmentId}
-                  loading={inlineImagesLoading}
-                  onImageError={refreshInlineImageAfterError}
-                />
-                {descriptionAttachments.length > 0
-                  ? renderMessageAttachments(descriptionAttachments)
-                  : null}
+                ) : null}
+                {detail.canUpdate && !requesterView && !isEditingDescription ? (
+                  <button
+                    aria-label="Beschreibung bearbeiten"
+                    className="ticket-description-edit"
+                    disabled={busy}
+                    onClick={startDescriptionEdit}
+                    title="Beschreibung bearbeiten"
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={16} strokeWidth={1.9} />
+                  </button>
+                ) : null}
               </div>
-            )}
-            {storedFormAnswers?.ticketId === detail.ticket.id && (
-              <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
-            )}
-            <div
-              aria-label="Anhänge"
-              className={`ticket-attachment-strip${
-                attachmentDragOver ? " is-dragover" : ""
-              }`}
-              onDragLeave={() => setAttachmentDragOver(false)}
-              onDragOver={(event) => {
-                if (!detail.canUpdate) return;
-                event.preventDefault();
-                setAttachmentDragOver(true);
-              }}
-              onDrop={(event) => {
-                if (!detail.canUpdate) return;
-                event.preventDefault();
-                setAttachmentDragOver(false);
-                void uploadAttachmentFiles(
-                  Array.from(event.dataTransfer.files),
-                );
-              }}
-              role="group"
-            >
-              <span className="ticket-attachment-strip__label">
-                <Paperclip aria-hidden="true" size={15} strokeWidth={1.8} />
-                {attachments.length > 0
-                  ? `${attachments.length} ${
-                      attachments.length === 1 ? "Anhang" : "Anhänge"
-                    }`
-                  : "Anhänge"}
-              </span>
-              {attachmentsLoading && !attachmentsLoaded ? (
-                <LoaderCircle
-                  aria-label="Anhänge werden geladen"
-                  className="ticket-detail-spinner"
-                  size={15}
-                />
-              ) : (
-                (attachmentsExpanded
-                  ? attachments
-                  : attachments.slice(0, ATTACHMENT_STRIP_LIMIT)
-                ).map((attachment) => {
-                  const image = inlineImagesByAttachmentId[attachment.id];
-                  const isBusy =
-                    pendingAttachmentId === attachment.id &&
-                    pendingAttachmentAction !== null;
-                  return (
-                    <span
-                      className="ticket-attachment-chip"
-                      key={attachment.id}
-                    >
+            </div>
+            {splitNote && !isEditingDescription ? (
+              <TicketSplitNoteBanner note={splitNote} />
+            ) : null}
+            {descriptionExpanded ? (
+              <>
+                {isEditingDescription ? (
+                  <form
+                    className="ticket-description-editor"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void saveTicketContent();
+                    }}
+                  >
+                    <label className="ticket-description-editor__subject">
+                      <span>Betreff</span>
+                      <input
+                        disabled={busy}
+                        maxLength={240}
+                        onChange={(event) => setEditSubject(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.stopPropagation();
+                            cancelDescriptionEdit();
+                          }
+                        }}
+                        required
+                        type="text"
+                        value={editSubject}
+                      />
+                    </label>
+                    <label className="ticket-comment-body">
+                      <span className="sr-only">Beschreibung</span>
+                      <textarea
+                        autoFocus
+                        disabled={busy}
+                        maxLength={10_000}
+                        onChange={(event) =>
+                          setEditDescription(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.stopPropagation();
+                            cancelDescriptionEdit();
+                          }
+                          if (
+                            event.key === "Enter" &&
+                            (event.metaKey || event.ctrlKey)
+                          ) {
+                            event.preventDefault();
+                            void saveTicketContent();
+                          }
+                        }}
+                        required
+                        rows={Math.min(
+                          18,
+                          Math.max(6, editDescription.split("\n").length + 1),
+                        )}
+                        value={editDescription}
+                      />
+                    </label>
+                    <div className="ticket-description-editor__actions">
+                      <span className="data-caption" aria-live="polite">
+                        {[...editDescription].length}/10&apos;000 Zeichen ·
+                        Strg/⌘ + Enter speichert
+                      </span>
                       <button
-                        aria-label={`${attachment.originalFilename} herunterladen`}
-                        className="ticket-attachment-chip__main"
-                        disabled={attachmentBusy || busy}
-                        onClick={() => void downloadAttachment(attachment)}
-                        title={`${attachment.originalFilename} · ${formatFileSize(
-                          attachment.byteSize,
-                        )} · ${formatDateTime(attachment.createdAt)}`}
+                        className="secondary-button"
+                        disabled={busy}
+                        onClick={cancelDescriptionEdit}
                         type="button"
                       >
-                        {isBusy ? (
+                        Abbrechen
+                      </button>
+                      <button
+                        className="primary-button"
+                        disabled={busy || !hasContentChanges}
+                        type="submit"
+                      >
+                        {pendingAction === "update" ? (
+                          <LoaderCircle
+                            aria-hidden="true"
+                            className="ticket-detail-spinner"
+                            size={16}
+                          />
+                        ) : (
+                          <Save
+                            aria-hidden="true"
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                        )}
+                        Beschreibung speichern
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="ticket-detail-description">
+                    <TicketTextWithInlineImages
+                      body={
+                        splitPlainTextSignature(
+                          parseTicketSplitNote(detail.ticket.description).body,
+                        ).message
+                      }
+                      imagesByAttachmentId={inlineImagesByAttachmentId}
+                      loading={inlineImagesLoading}
+                      onImageError={refreshInlineImageAfterError}
+                    />
+                    {descriptionAttachments.length > 0
+                      ? renderMessageAttachments(descriptionAttachments)
+                      : null}
+                  </div>
+                )}
+                {storedFormAnswers?.ticketId === detail.ticket.id && (
+                  <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
+                )}
+                <div
+                  aria-label="Anhänge"
+                  className={`ticket-attachment-strip${
+                    attachmentDragOver ? " is-dragover" : ""
+                  }`}
+                  onDragLeave={() => setAttachmentDragOver(false)}
+                  onDragOver={(event) => {
+                    if (!detail.canUpdate) return;
+                    event.preventDefault();
+                    setAttachmentDragOver(true);
+                  }}
+                  onDrop={(event) => {
+                    if (!detail.canUpdate) return;
+                    event.preventDefault();
+                    setAttachmentDragOver(false);
+                    void uploadAttachmentFiles(
+                      Array.from(event.dataTransfer.files),
+                    );
+                  }}
+                  role="group"
+                >
+                  <span className="ticket-attachment-strip__label">
+                    <Paperclip aria-hidden="true" size={15} strokeWidth={1.8} />
+                    {attachments.length > 0
+                      ? `${attachments.length} ${
+                          attachments.length === 1 ? "Anhang" : "Anhänge"
+                        }`
+                      : "Anhänge"}
+                  </span>
+                  {attachmentsLoading && !attachmentsLoaded ? (
+                    <LoaderCircle
+                      aria-label="Anhänge werden geladen"
+                      className="ticket-detail-spinner"
+                      size={15}
+                    />
+                  ) : (
+                    (attachmentsExpanded
+                      ? attachments
+                      : attachments.slice(0, ATTACHMENT_STRIP_LIMIT)
+                    ).map((attachment) => {
+                      const image = inlineImagesByAttachmentId[attachment.id];
+                      const isBusy =
+                        pendingAttachmentId === attachment.id &&
+                        pendingAttachmentAction !== null;
+                      return (
+                        <span
+                          className="ticket-attachment-chip"
+                          key={attachment.id}
+                        >
+                          <button
+                            aria-label={`${attachment.originalFilename} herunterladen`}
+                            className="ticket-attachment-chip__main"
+                            disabled={attachmentBusy || busy}
+                            onClick={() => void downloadAttachment(attachment)}
+                            title={`${attachment.originalFilename} · ${formatFileSize(
+                              attachment.byteSize,
+                            )} · ${formatDateTime(attachment.createdAt)}`}
+                            type="button"
+                          >
+                            {isBusy ? (
+                              <LoaderCircle
+                                aria-hidden="true"
+                                className="ticket-detail-spinner"
+                                size={14}
+                              />
+                            ) : image?.signedUrl ? (
+                              <img
+                                alt=""
+                                loading="lazy"
+                                onError={() =>
+                                  refreshInlineImageAfterError(attachment.id)
+                                }
+                                src={image.signedUrl}
+                              />
+                            ) : (
+                              <span className="ticket-attachment-chip__ext">
+                                {attachmentExtension(
+                                  attachment.originalFilename,
+                                )}
+                              </span>
+                            )}
+                            <span className="ticket-attachment-chip__name">
+                              {attachment.originalFilename}
+                            </span>
+                            <small>{formatFileSize(attachment.byteSize)}</small>
+                          </button>
+                          {detail.canUpdate && (
+                            <button
+                              aria-label={`${attachment.originalFilename} löschen`}
+                              className="ticket-attachment-chip__remove"
+                              disabled={attachmentBusy || busy}
+                              onClick={async () => {
+                                if (
+                                  await confirmDialog(
+                                    `«${attachment.originalFilename}» wirklich löschen?`,
+                                  )
+                                ) {
+                                  void deleteAttachment(attachment);
+                                }
+                              }}
+                              type="button"
+                            >
+                              <X aria-hidden="true" size={13} strokeWidth={2} />
+                            </button>
+                          )}
+                        </span>
+                      );
+                    })
+                  )}
+                  {attachments.length > ATTACHMENT_STRIP_LIMIT && (
+                    <button
+                      className="ticket-attachment-more"
+                      onClick={() => setAttachmentsExpanded((value) => !value)}
+                      type="button"
+                    >
+                      {attachmentsExpanded
+                        ? "Weniger"
+                        : `+${attachments.length - ATTACHMENT_STRIP_LIMIT} weitere`}
+                    </button>
+                  )}
+                  {detail.canUpdate && (
+                    <>
+                      <input
+                        accept={ATTACHMENT_ACCEPT}
+                        aria-label="Dateien als Anhang auswählen"
+                        className="sr-only"
+                        disabled={attachmentBusy || busy}
+                        multiple
+                        onChange={(event) =>
+                          void uploadAttachmentFiles(
+                            Array.from(event.target.files ?? []),
+                          )
+                        }
+                        ref={attachmentInputRef}
+                        tabIndex={-1}
+                        type="file"
+                      />
+                      <button
+                        className="ticket-attachment-add"
+                        disabled={attachmentBusy || busy}
+                        onClick={() => attachmentInputRef.current?.click()}
+                        title={`Erlaubt sind ${ATTACHMENT_ALLOWLIST_LABEL}. Maximal 25 MiB pro Datei. Dateien können auch hierher gezogen werden.`}
+                        type="button"
+                      >
+                        {pendingAttachmentAction === "upload" ? (
                           <LoaderCircle
                             aria-hidden="true"
                             className="ticket-detail-spinner"
                             size={14}
                           />
-                        ) : image?.signedUrl ? (
-                          <img
-                            alt=""
-                            loading="lazy"
-                            onError={() =>
-                              refreshInlineImageAfterError(attachment.id)
-                            }
-                            src={image.signedUrl}
-                          />
                         ) : (
-                          <span className="ticket-attachment-chip__ext">
-                            {attachmentExtension(attachment.originalFilename)}
-                          </span>
+                          <Plus aria-hidden="true" size={14} strokeWidth={2} />
                         )}
-                        <span className="ticket-attachment-chip__name">
-                          {attachment.originalFilename}
-                        </span>
-                        <small>{formatFileSize(attachment.byteSize)}</small>
+                        Anhang
                       </button>
-                      {detail.canUpdate && (
-                        <button
-                          aria-label={`${attachment.originalFilename} löschen`}
-                          className="ticket-attachment-chip__remove"
-                          disabled={attachmentBusy || busy}
-                          onClick={async () => {
-                            if (
-                              await confirmDialog(
-                                `«${attachment.originalFilename}» wirklich löschen?`,
-                              )
-                            ) {
-                              void deleteAttachment(attachment);
-                            }
-                          }}
-                          type="button"
-                        >
-                          <X aria-hidden="true" size={13} strokeWidth={2} />
-                        </button>
-                      )}
-                    </span>
-                  );
-                })
-              )}
-              {attachments.length > ATTACHMENT_STRIP_LIMIT && (
-                <button
-                  className="ticket-attachment-more"
-                  onClick={() => setAttachmentsExpanded((value) => !value)}
-                  type="button"
-                >
-                  {attachmentsExpanded
-                    ? "Weniger"
-                    : `+${attachments.length - ATTACHMENT_STRIP_LIMIT} weitere`}
-                </button>
-              )}
-              {detail.canUpdate && (
-                <>
-                  <input
-                    accept={ATTACHMENT_ACCEPT}
-                    aria-label="Dateien als Anhang auswählen"
-                    className="sr-only"
-                    disabled={attachmentBusy || busy}
-                    multiple
-                    onChange={(event) =>
-                      void uploadAttachmentFiles(
-                        Array.from(event.target.files ?? []),
-                      )
-                    }
-                    ref={attachmentInputRef}
-                    tabIndex={-1}
-                    type="file"
-                  />
-                  <button
-                    className="ticket-attachment-add"
-                    disabled={attachmentBusy || busy}
-                    onClick={() => attachmentInputRef.current?.click()}
-                    title={`Erlaubt sind ${ATTACHMENT_ALLOWLIST_LABEL}. Maximal 25 MiB pro Datei. Dateien können auch hierher gezogen werden.`}
-                    type="button"
-                  >
-                    {pendingAttachmentAction === "upload" ? (
-                      <LoaderCircle
-                        aria-hidden="true"
-                        className="ticket-detail-spinner"
-                        size={14}
-                      />
-                    ) : (
-                      <Plus aria-hidden="true" size={14} strokeWidth={2} />
-                    )}
-                    Anhang
-                  </button>
-                </>
-              )}
-              {attachmentError && (
-                <p className="ticket-attachment-strip__error" role="alert">
-                  <AlertCircle aria-hidden="true" size={14} />
-                  {attachmentError}
-                </p>
-              )}
-            </div>
+                    </>
+                  )}
+                  {attachmentError && (
+                    <p className="ticket-attachment-strip__error" role="alert">
+                      <AlertCircle aria-hidden="true" size={14} />
+                      {attachmentError}
+                    </p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <button
+                aria-controls="ticket-description-heading"
+                className="ticket-description-preview"
+                onClick={() => setDescriptionOpen(true)}
+                type="button"
+              >
+                <span>{descriptionPreview(detail.ticket.description)}</span>
+                <small>Beschreibung aufklappen</small>
+              </button>
+            )}
           </section>
 
           <section
@@ -7949,6 +8313,22 @@ export function TicketDetail({
                         <time dateTime={item.created_at}>
                           {formatDateTime(item.created_at)}
                         </time>
+                        {detail.canWriteInternalNotes && !requesterView ? (
+                          <button
+                            aria-label={`Nachricht von ${item.authorName} weiterleiten`}
+                            className="text-button ticket-forward-link"
+                            onClick={() =>
+                              setForwardSource({
+                                commentId: item.id,
+                                label: `Die Nachricht von ${item.authorName} (${formatDateTime(item.created_at)})`,
+                              })
+                            }
+                            type="button"
+                          >
+                            <Forward aria-hidden="true" size={13} />
+                            Weiterleiten
+                          </button>
+                        ) : null}
                       </div>
                       <TicketTextWithInlineImages
                         body={item.body}
@@ -8049,6 +8429,43 @@ export function TicketDetail({
                   value={commentBody}
                 />
               </label>
+              {mentionSuggestions.length > 0 ? (
+                <ul
+                  aria-label="Agenten erwähnen"
+                  className="ticket-mention-suggestions"
+                  role="listbox"
+                >
+                  {mentionSuggestions.map((agent) => (
+                    <li key={agent.id}>
+                      <button
+                        onClick={() => {
+                          const next = commentBody.replace(
+                            /@([^\s@]{0,30}(?: [^\s@]{0,30})?)$/u,
+                            `@${agent.displayName} `,
+                          );
+                          setCommentDrafts((current) =>
+                            updateTicketCommentDraft(
+                              current,
+                              commentVisibility,
+                              next,
+                            ),
+                          );
+                          setMentionedUserIds((current) =>
+                            current.includes(agent.id)
+                              ? current
+                              : [...current, agent.id],
+                          );
+                          commentTextareaRef.current?.focus();
+                        }}
+                        role="option"
+                        type="button"
+                      >
+                        @{agent.displayName}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {requesterView ? null : (
                 <TicketTextRewrite
                   audience={
@@ -9333,71 +9750,84 @@ export function TicketDetail({
             )}
           </section>
 
-          {requesterView ? null : (
-            <TicketCoordination
-              description={detail.ticket.description}
-              onChanged={() => {
-                onChanged();
-                void loadTicket();
-              }}
-              onOpenTicket={onOpenTicket}
-              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
-              subject={detail.ticket.subject}
-              tenantId={tenantId}
-              ticketId={detail.ticket.id}
-              ticketNumber={detail.ticket.ticket_number}
-              timelineHost={timelineHost}
-              supportLevel={
-                <TicketSupportLevel
-                  embedded
-                  onChanged={() => {
-                    onChanged();
-                    void loadTicket();
-                  }}
-                  refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
-                  tenantId={tenantId}
-                  ticketId={detail.ticket.id}
-                />
-              }
-            />
-          )}
+          <Deferred mode="idle" resetKey={ticketId}>
+            {requesterView ? null : (
+              <TicketCoordination
+                description={detail.ticket.description}
+                onChanged={() => {
+                  onChanged();
+                  void loadTicket();
+                }}
+                onOpenTicket={onOpenTicket}
+                refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+                subject={detail.ticket.subject}
+                tenantId={tenantId}
+                ticketId={detail.ticket.id}
+                ticketNumber={detail.ticket.ticket_number}
+                timelineHost={timelineHost}
+                supportLevel={
+                  <TicketSupportLevel
+                    embedded
+                    onChanged={() => {
+                      onChanged();
+                      void loadTicket();
+                    }}
+                    refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
+                    tenantId={tenantId}
+                    ticketId={detail.ticket.id}
+                  />
+                }
+              />
+            )}
+          </Deferred>
 
-          <TicketCustomFields
-            canUpdate={detail.canUpdate}
-            tenantId={tenantId}
-            ticketId={detail.ticket.id}
-          />
-
-          {!requesterView ? (
-            <IpamTicketPanel
+          <Deferred mode="visible" resetKey={ticketId}>
+            <TicketCustomFields
               canUpdate={detail.canUpdate}
-              comments={detail.comments.map((comment) => comment.body)}
-              description={detail.ticket.description}
-              onLinked={onChanged}
-              onOpenAsset={onOpenAsset}
-              ticketNumber={detail.ticket.ticket_number}
-              refreshKey={`${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
-              subject={detail.ticket.subject}
               tenantId={tenantId}
               ticketId={detail.ticket.id}
             />
-          ) : null}
+          </Deferred>
 
-          {!requesterView ? (
-            <TicketAiTriage
-              canUpdate={detail.canUpdate}
-              key={`triage-${detail.ticket.id}`}
-              onChanged={() => {
-                void loadTicket();
-                onChanged();
-              }}
-              tenantId={tenantId}
-              ticketId={detail.ticket.id}
-            />
-          ) : null}
-          {!requesterView ? (
-            <TicketAiSummary tenantId={tenantId} ticketId={detail.ticket.id} />
-          ) : null}
+          <Deferred mode="visible" resetKey={ticketId}>
+            {!requesterView ? (
+              <IpamTicketPanel
+                canUpdate={detail.canUpdate}
+                comments={detail.comments.map((comment) => comment.body)}
+                description={detail.ticket.description}
+                onLinked={onChanged}
+                onOpenAsset={onOpenAsset}
+                ticketNumber={detail.ticket.ticket_number}
+                refreshKey={`${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+                subject={detail.ticket.subject}
+                tenantId={tenantId}
+                ticketId={detail.ticket.id}
+              />
+            ) : null}
+          </Deferred>
+
+          <Deferred mode="visible" resetKey={ticketId}>
+            {!requesterView ? (
+              <TicketAiTriage
+                canUpdate={detail.canUpdate}
+                key={`triage-${detail.ticket.id}`}
+                onChanged={() => {
+                  void loadTicket();
+                  onChanged();
+                }}
+                tenantId={tenantId}
+                ticketId={detail.ticket.id}
+              />
+            ) : null}
+          </Deferred>
+          <Deferred mode="visible" resetKey={ticketId}>
+            {!requesterView ? (
+              <TicketAiSummary
+                tenantId={tenantId}
+                ticketId={detail.ticket.id}
+              />
+            ) : null}
+          </Deferred>
 
           {focusMode && (
             <p className="ticket-focus-notice" role="status">
@@ -9546,6 +9976,36 @@ export function TicketDetail({
             </details>
           ) : null}
 
+          {!requesterView && projectsAvailable ? (
+            <details className="ticket-detail-disclosure">
+              <summary>
+                <span className="ticket-detail-disclosure-label">
+                  <FolderKanban
+                    aria-hidden="true"
+                    size={17}
+                    strokeWidth={1.8}
+                  />
+                  Projekt
+                </span>
+                <span className="ticket-detail-disclosure-meta">
+                  Verknüpfen oder in ein Projekt umwandeln
+                  <ChevronDown
+                    aria-hidden="true"
+                    className="ticket-detail-disclosure-icon"
+                    size={18}
+                    strokeWidth={1.8}
+                  />
+                </span>
+              </summary>
+              <div className="ticket-detail-disclosure-content">
+                <ProjectLinkCard
+                  targetId={ticketId}
+                  targetKind="ticket"
+                  tenantId={tenantId}
+                />
+              </div>
+            </details>
+          ) : null}
           {!requesterView &&
           detail.ticketModules.timeTracking &&
           detail.canTrackTime ? (
@@ -9688,6 +10148,11 @@ export function TicketDetail({
             </details>
           ) : null}
 
+          <MergedTicketsSection
+            mergedTickets={detail.mergeInsights.mergedTickets}
+            onOpenTicket={requesterView ? undefined : onOpenTicket}
+          />
+
           {requesterView ? null : (
             <details
               className="ticket-detail-disclosure"
@@ -9808,8 +10273,14 @@ export function TicketDetail({
                                       <p className="data-caption" role="status">
                                         Bitte bestätigen: Das aktuelle Ticket
                                         wird als Duplikat geschlossen und in
-                                        diesem Hauptticket referenziert.
+                                        diesem Hauptticket weitergeführt.
                                       </p>
+                                      {mergePreview &&
+                                      mergePreview.primaryId === target.id ? (
+                                        <MergePreviewSummary
+                                          preview={mergePreview}
+                                        />
+                                      ) : null}
                                       <div className="ticket-detail-actions">
                                         <button
                                           className="primary-button"

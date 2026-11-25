@@ -9,6 +9,7 @@ import {
   ScrollView,
   Text,
   View,
+  type ScrollViewInstance,
 } from "react-native";
 
 import { useMobileNetworkStatus } from "@/components/offline-status";
@@ -67,7 +68,7 @@ export default function HandbookScreen() {
   const [error, setError] = useState("");
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   const [guidesOpen, setGuidesOpen] = useState<Record<number, boolean>>({});
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const articleY = useRef(0);
   const headingY = useRef<Record<number, number>>({});
   const styles = useStyles();
@@ -86,7 +87,10 @@ export default function HandbookScreen() {
       setHandbook(await loadMobileHandbook(tenant.id, handbookId));
     } catch {
       setError(
-        tn("Dieses Handbuch ist für dein Konto nicht verfügbar oder konnte nicht geladen werden.", "Dieses Handbuch ist für Ihr Konto nicht verfügbar oder konnte nicht geladen werden."),
+        tn(
+          "Dieses Handbuch ist für dein Konto nicht verfügbar oder konnte nicht geladen werden.",
+          "Dieses Handbuch ist für Ihr Konto nicht verfügbar oder konnte nicht geladen werden.",
+        ),
       );
     } finally {
       setLoading(false);
@@ -318,7 +322,8 @@ export default function HandbookScreen() {
                           onPress={() =>
                             setGuidesOpen((current) => ({
                               ...current,
-                              [section.blockIndex]: !current[section.blockIndex],
+                              [section.blockIndex]:
+                                !current[section.blockIndex],
                             }))
                           }
                           style={styles.tocToggle}

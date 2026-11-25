@@ -33,6 +33,8 @@ export type InboxIcon =
   | "document-text-outline"
   | "alarm-outline"
   | "checkmark-circle-outline"
+  | "repeat-outline"
+  | "albums-outline"
   | "notifications-outline";
 
 export type InboxPresentation = {
@@ -140,6 +142,7 @@ const EXACT_PUSH_KINDS: Record<string, string> = {
   "ticket.children_done": "children_done",
   "contract.deadline": "contract_deadline",
   "infrastructure.due": "infrastructure",
+  "problem.recurring_detected": "recurring_problem",
 };
 
 /**
@@ -158,6 +161,8 @@ export function pushKindForNotification(kind: string): string {
   if (kind.startsWith("service_task.")) return "service_task";
   if (IPAM_KINDS.has(kind)) return "ipam";
   if (kind.startsWith("monitoring.")) return "incident";
+  if (kind.startsWith("project.")) return "project";
+  if (kind.startsWith("onboarding.")) return "onboarding";
   return "";
 }
 
@@ -194,6 +199,16 @@ export function inboxNavigationData(
     const value = payloadId(payload, source);
     if (value) data[target] = value;
   }
+  if (kind === "onboarding") {
+    const entryId = payloadId(payload, "entryId");
+    if (entryId) data.onboardingEntryId = entryId;
+  }
+  if (kind === "project") {
+    const projectId = payloadId(payload, "projectId");
+    const taskId = payloadId(payload, "taskId");
+    if (projectId) data.projectId = projectId;
+    if (taskId) data.projectTaskId = taskId;
+  }
   if (kind === "ipam") {
     data.ipamEvent =
       notification.kind === "ipam.agent_offline"
@@ -216,15 +231,27 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
   assigned: ["Ticket zugewiesen", "ticket-outline"],
   requester_reply: ["Neue Antwort", "ticket-outline"],
   support_reply: ["Antwort vom Support", "ticket-outline"],
-  requester_reminder: [tn("Wir warten auf deine Antwort", "Wir warten auf Ihre Antwort"), "ticket-outline"],
+  requester_reminder: [
+    tn("Wir warten auf deine Antwort", "Wir warten auf Ihre Antwort"),
+    "ticket-outline",
+  ],
   mention: [tn("Du wurdest erwähnt", "Sie wurden erwähnt"), "ticket-outline"],
-  supervisor_request: [tn("Anfrage an dich", "Anfrage an Sie"), "ticket-outline"],
-  supervisor_answer: [tn("Antwort auf deine Anfrage", "Antwort auf Ihre Anfrage"), "ticket-outline"],
+  supervisor_request: [
+    tn("Anfrage an dich", "Anfrage an Sie"),
+    "ticket-outline",
+  ],
+  supervisor_answer: [
+    tn("Antwort auf deine Anfrage", "Antwort auf Ihre Anfrage"),
+    "ticket-outline",
+  ],
   watched: ["Beobachtetes Ticket geändert", "ticket-outline"],
   resolved: ["Ticket gelöst", "checkmark-circle-outline"],
   kudos: ["Lob erhalten", "checkmark-circle-outline"],
   approval: ["Freigabe benötigt", "checkmark-circle-outline"],
-  department_question_asked: [tn("Rückfrage an dein Team", "Rückfrage an Ihr Team"), "ticket-outline"],
+  department_question_asked: [
+    tn("Rückfrage an dein Team", "Rückfrage an Ihr Team"),
+    "ticket-outline",
+  ],
   department_question_answered: ["Rückfrage beantwortet", "ticket-outline"],
   escalation: ["Ticket eskaliert", "alarm-outline"],
   security_report: ["Phishing / Junk", "shield-outline"],
@@ -237,9 +264,11 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
   inventory_low_stock: ["Lager", "cube-outline"],
   shop: ["Shop", "bag-handle-outline"],
   service_task: ["Serviceaufgabe", "construct-outline"],
+  project: ["Projekt", "albums-outline"],
   infrastructure: ["Infrastruktur", "server-outline"],
   ipam: ["IP-Adressverwaltung", "git-network-outline"],
   incident: ["Störung", "pulse-outline"],
+  recurring_problem: ["Wiederkehrende Ausfälle", "repeat-outline"],
 });
 
 const SPECIFIC_TITLES: Record<string, string> = {
@@ -252,6 +281,9 @@ const SPECIFIC_TITLES: Record<string, string> = {
   "inventory.count_due": "Inventur fällig",
   "service_task.due": "Serviceaufgabe fällig",
   "service_task.overdue": "Serviceaufgabe überfällig",
+  "project.member_added": "Zu einem Projekt hinzugefügt",
+  "project.task_assigned": "Projektaufgabe zugewiesen",
+  "onboarding.assigned": "Eintritt zugewiesen",
   "ipam.agent_offline": "Netzwerkagent offline",
   "ipam.reservation_expiring": "Reservierung läuft ab",
   "ticket.sla.supervisor_no_response": "Team: Ticket ohne Antwort",
@@ -290,6 +322,25 @@ export function inboxPresentation(
     detail = [number, name].filter(Boolean).join(" · ") || null;
   } else if (kind === "service_task") {
     detail = text(payload.title, 80);
+  } else if (kind === "onboarding") {
+    const standIn = text(payload.delegatedFor, 80);
+    detail =
+      [
+        text(payload.employeeName, 80),
+        standIn ? `Stellvertretung für ${standIn}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null;
+  } else if (kind === "project") {
+    const count =
+      typeof payload.taskCount === "number" ? payload.taskCount : null;
+    detail =
+      [
+        text(payload.projectTitle, 80),
+        text(payload.taskTitle, 80) ?? (count ? `${count} Aufgaben` : null),
+      ]
+        .filter(Boolean)
+        .join(" · ") || null;
   } else if (kind === "infrastructure") {
     detail = text(payload.assetName, 80);
   } else if (kind === "ipam") {
@@ -307,6 +358,17 @@ export function inboxPresentation(
       text(payload.title, 80);
   } else if (kind === "contract_deadline") {
     detail = text(payload.title, 80) ?? text(payload.contractName, 80);
+  } else if (kind === "recurring_problem") {
+    const count =
+      typeof payload.alertCount === "number" ? payload.alertCount : null;
+    detail =
+      [
+        text(payload.assetName, 80),
+        count ? `${count} Ausfälle in 30 Tagen` : null,
+        "Fall eröffnet",
+      ]
+        .filter(Boolean)
+        .join(" · ") || null;
   }
   return { title, detail, icon };
 }

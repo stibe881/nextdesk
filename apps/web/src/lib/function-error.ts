@@ -38,6 +38,14 @@ export async function functionErrorCode(
   return errorCode(await errorPayload(error));
 }
 
+/** Zusatzfelder des Fehlers (z. B. currentLevel), sonst null. */
+export async function functionErrorDetails(
+  error: unknown,
+): Promise<Record<string, unknown> | null> {
+  const payload = await errorPayload(error);
+  return payload && isRecord(payload.error) ? payload.error : null;
+}
+
 export function functionErrorStatus(error: unknown): number | null {
   if (!isRecord(error)) return null;
   if (typeof error.status === "number") return error.status;
@@ -63,6 +71,16 @@ export async function functionErrorMessage(
   const status = functionErrorStatus(error);
 
   switch (code) {
+    case "ticket_merge_already_set":
+      return "Das Ticket wurde bereits in ein anderes Ticket zusammengeführt.";
+    case "merge_primary_ticket_closed":
+      return "Das Haupt-Ticket ist bereits geschlossen. Bitte ein offenes Ticket wählen.";
+    case "ticket_merge_cycle":
+      return "Diese Zusammenführung würde einen Kreis bilden und ist nicht möglich.";
+    case "ticket_merge_denied":
+      return "Für das Zusammenführen fehlt die Berechtigung.";
+    case "ticket_not_merged":
+      return "Das Ticket ist nicht (mehr) zusammengeführt.";
     case "ticket_status_new_locked":
       return "Ein Ticket kann nicht auf «Neu» zurückgesetzt werden.";
     case "ticket_assignee_required":
@@ -314,8 +332,8 @@ export async function functionErrorMessage(
       );
     case "event_space_permission_denied":
       return tn(
-        "Für die Raumplanung fehlt dir die erforderliche Berechtigung.",
-        "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.",
+        "Für die Anlässe fehlt dir die erforderliche Berechtigung.",
+        "Für die Anlässe fehlt Ihnen die erforderliche Berechtigung.",
       );
     case "event_space_reference_invalid":
       return tn(
@@ -335,14 +353,14 @@ export async function functionErrorMessage(
     case "event_space_template_unavailable":
     case "event_space_service_unavailable":
       return tn(
-        "Die Raumplanung ist derzeit nicht verfügbar. Bitte versuche es in wenigen Minuten erneut.",
-        "Die Raumplanung ist derzeit nicht verfügbar. Bitte versuchen Sie es in wenigen Minuten erneut.",
+        "Die Anlässe sind derzeit nicht verfügbar. Bitte versuche es in wenigen Minuten erneut.",
+        "Die Anlässe sind derzeit nicht verfügbar. Bitte versuchen Sie es in wenigen Minuten erneut.",
       );
     case "event_space_request_not_found":
     case "event_space_task_not_found":
       return tn(
-        "Der Raumauftrag oder die Aufgabe ist nicht mehr verfügbar. Bitte lade die Planung neu.",
-        "Der Raumauftrag oder die Aufgabe ist nicht mehr verfügbar. Bitte laden Sie die Planung neu.",
+        "Der Anlass oder die Aufgabe ist nicht mehr verfügbar. Bitte lade die Planung neu.",
+        "Der Anlass oder die Aufgabe ist nicht mehr verfügbar. Bitte laden Sie die Planung neu.",
       );
     case "onboarding_permission_denied":
       return tn(

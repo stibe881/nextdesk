@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-17
+updated: 2026-11-23
 ---
 
 # Handbuch für Administratoren
@@ -200,6 +200,15 @@ Mehr dazu unter «Ticket-Lebenszyklus».
 
 Antwortet die anfragende Person vorher, wird das Ticket wieder geöffnet. Mehr dazu unter «Ticket-Lebenszyklus».
 
+### Wie lasse ich doppelt gesendete Tickets automatisch zusammenführen?
+
+1. Öffne **Funktionen → SLA-Automatisierung → Konfigurieren**.
+2. Suche den Bereich **Neue Tickets automatisch einordnen**.
+3. Schalte **Eindeutige Duplikate automatisch zusammenführen (ohne KI)** ein. Die KI-Triage muss dafür nicht eingeschaltet sein.
+4. Ab jetzt wird ein neues Ticket derselben Person mit gleichem Betreff innerhalb von 10 Minuten ins erste Ticket zusammengeführt.
+
+Mehr dazu unter «SLA-Automatisierung konfigurieren».
+
 ### Wie stelle ich eine SLA-Regel ein?
 
 1. Öffne das Register **SLA**. Es erscheint, sobald die SLA-Automatisierung aktiv ist.
@@ -392,6 +401,14 @@ Mehr dazu unter «Eigene Überwachung».
 4. Speichere die Änderung.
 
 Mehr dazu unter «Eigene Überwachung».
+
+### Wie lege ich den SNMP-Standard einer Sonde fest?
+
+1. Öffne **Einstellungen → Monitoring → Überwachung** und wähle bei der Sonde den Stift.
+2. Wähle bei **SNMP-Standard** **Festlegen** bzw. **Ändern**.
+3. Gib Version, Benutzer, Verfahren und Schlüssel ein und speichere.
+
+Der Standard gilt für alle Geräte der Sonde ohne eigene Zugangsdaten. Eigene Zugangsdaten eines Geräts setzt du im Gerätedetail der Überwachung über **SNMP**. Mehr dazu unter «Eigene Überwachung».
 
 ### Wie erzeuge ich einen neuen Token für eine Sonde?
 
@@ -625,6 +642,32 @@ Voraussetzung für Statusmeldungen per E-Mail ist ein aktives Exchange-Postfach.
 
 Mehr dazu unter «Eigenes Profil und Handbücher».
 
+### Wie schalte ich das Modul Projekte ein?
+
+1. Öffne **Einstellungen** und das Register **Funktionen**.
+2. Suche die Funktion **Projekte**.
+3. Schalte sie ein. Der Menüpunkt **Projekte** erscheint danach bei allen, die Projekte sehen dürfen oder in einem Projekt mitarbeiten.
+
+Mehr dazu unter «Projekte».
+
+### Wie lege ich fest, wer Projekte sehen und anlegen darf?
+
+1. Öffne das Register **Rollen** und die Ansicht **Rollen definieren**.
+2. Öffne die Rolle und suche die Gruppe **Planung**.
+3. Setze die Rechte **Alle Projekte ansehen**, **Projekte anlegen** und **Alle Projekte und Projektvorlagen verwalten** nach Bedarf.
+4. Speichere die Rolle.
+
+Mehr dazu unter «Projekte».
+
+### Wie stelle ich die Annahmen der Auslastung ein?
+
+1. Öffne **Projekte** und das Register **Auslastung**.
+2. Klicke auf **Annahmen**.
+3. Trage die Pauschale je offenem Ticket in Minuten und die Arbeitszeit je Tag in Stunden ein.
+4. Klicke auf **Speichern**.
+
+Mehr dazu unter «Projekte».
+
 ## Einstellungen öffnen
 
 Der Menüpunkt **Einstellungen** ist nur für Administratoren sichtbar und
@@ -693,8 +736,17 @@ Wichtige Funktionen und ihre Konfiguration:
 | Asset-Management                                                      | Geräte und Microsoft Intune; Monitoring liegt im Register «Monitoring»                                                  |
 | IP-Adressverwaltung                                                   | Subnetze, VLANs, IP-Adressen und Funde unter «IP-Adressen»; je Abteilung abschaltbar                                    |
 | Service-Reporting                                                     | Berichte und Auswertungen                                                                                               |
-| Raumplanung, Eintritte, Bestandsverwaltung, Verträge, Serviceaufgaben | Zusatzmodule für einzelne Abteilungen                                                                                   |
+| Anlässe, Eintritte, Bestandsverwaltung, Verträge, Serviceaufgaben | Zusatzmodule für einzelne Abteilungen                                                                                   |
 | Single Sign-On                                                        | Anmeldung mit Microsoft Entra ID (siehe Installationsanleitung)                                                         |
+
+### Microsoft Entra-Verzeichnis
+
+Am Ende des Registers **Funktionen** liegt der Bereich **Microsoft
+Entra-Verzeichnis**. Ist der Connector aktiv, gleicht nextDesk die Personen
+jede Nacht automatisch mit Entra ab; **Jetzt abgleichen** startet einen
+Abgleich von Hand. Die **Abgleichshistorie** zeigt die letzten drei Läufe
+(_Automatischer_ bzw. _Manueller Abgleich_), **Ältere Läufe anzeigen** klappt
+bis zu 20 Läufe auf. Einrichtung: siehe Installationsanleitung.
 
 ### Microsoft Teams im Shop
 
@@ -749,7 +801,11 @@ Unter **Funktionen → SLA-Automatisierung → Konfigurieren**:
   «Zeitgesteuert». Im Teil **Wenn …** definierst du Bedingungen (z. B.
   Stichworte in Betreff oder Beschreibung), im Teil **… dann** die Aktion
   (Team zuweisen, Person zuweisen, Priorität setzen). **Regel speichern**.
-- **Neue Tickets automatisch einordnen** (KI-Triage).
+- **Neue Tickets automatisch einordnen** (KI-Triage). Dort steht auch
+  **Eindeutige Duplikate automatisch zusammenführen (ohne KI)**: Schickt
+  dieselbe Person innerhalb von 10 Minuten ein Ticket mit gleichem Betreff
+  (zum Beispiel eine doppelt gesendete Mail), wird es ins erste Ticket
+  zusammengeführt.
 - **Automatisierungen**: Mit **Vorschau ausführen** prüfst du Regeln vor
   dem Einsatz, das **Prüfintervall in Tagen** erinnert an die regelmässige
   Kontrolle.
@@ -942,7 +998,8 @@ Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
 - **Externe Statusquellen** – offizielle Statusmeldungen von Anbietern, die
   alle 5 Minuten gelesen werden: Microsoft 365 (alle Dienste deines Mandanten,
   auch Teams, Outlook, OneDrive, SharePoint), GitHub, Claude, Google Gemini,
-  Apple App Store, Google Play Store und Init7. Hake die gewünschten
+  Apple App Store, Google Play Store, Init7, Swisscom (schweizweite
+  Störungen als Ausfall, regionale als Warnung, ohne TV-Sender) und Salt. Hake die gewünschten
   Quellen an und **speichere** sie; **Jetzt prüfen** liest sie sofort. Eine
   gemeldete Störung erscheint unter **Störungen** als «Extern» und
   benachrichtigt das Team für die Alarmierung, ebenso jedes Update des Anbieters und die Behebung. Titel und Texte
@@ -1031,7 +1088,7 @@ bleiben ohne Sonde und werden nicht mehr gemessen. Unter «Bearbeiten»
 kannst du mit **Neuen Token erzeugen** den Token ersetzen, etwa wenn er
 in falsche Hände geraten ist: Der alte gilt sofort nicht mehr, der neue wird
 einmal angezeigt und gehört auf dem Server in die `config.json` der Sonde
-(Feld `agentToken`), danach den Dienst neu starten.
+(Feld `agentToken`), danach den Dienst neu starten. Als Mandantenadministrator legst du dort auch den **SNMP-Standard** der Sonde fest: Zugangsdaten für alle Geräte ohne eigene Angabe, verschlüsselt gespeichert und nie wieder angezeigt (ab Sonde 1.4.0; eigene Zugangsdaten eines Geräts: Gerätedetail der Überwachung, **SNMP**).
 
 Eine hier angelegte Sonde misst nur Sensoren. Die Netzwerk-Erkennung der
 IP-Adressverwaltung (Ping-Sweep der Subnetze) ist für sie ausgeschaltet und
@@ -1085,8 +1142,9 @@ Agentenzugang haben. Speichern mit **Person speichern**.
 
 ### Personen aus Microsoft Entra
 
-Ist der Verzeichnisabgleich eingerichtet, erscheinen Personen aus Entra in
-der Liste. Du kannst eine Person **als Agent vormerken** – Name, vorgesetzte
+Ist der Verzeichnisabgleich eingerichtet (Register **Funktionen →
+Microsoft Entra-Verzeichnis**, jede Nacht automatisch), erscheinen Personen
+aus Entra in der Liste. Du kannst eine Person **als Agent vormerken** – Name, vorgesetzte
 Person, Ticketzugriffsbereich und Team werden bei der ersten
 Microsoft-Anmeldung übernommen.
 
@@ -1161,6 +1219,44 @@ Die Basisrollen _Requester_ (alle angemeldeten Personen) und _Support agent_
 > folgt automatisch ihren Rollen: alle Mitglieder das Handbuch für
 > Mitarbeitende, Personen mit Ticketbearbeitung zusätzlich das Handbuch für
 > Agenten, Administratoren alle Handbücher inklusive Installationsanleitung.
+
+## Projekte
+
+Das Modul **Projekte** ist für neue und bestehende Mandanten ausgeschaltet.
+Du schaltest es im Register **Funktionen** ein. Wie Projekte bedient werden,
+beschreibt das _Handbuch für Agenten_ im Abschnitt «Projekte».
+
+### Rechte
+
+| Recht                                       | Wirkung                                                                                     | Standard                |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------- |
+| Alle Projekte ansehen                       | sieht jedes Projekt und die Auslastung, ohne Mitglied zu sein                               | Administration, Agenten |
+| Projekte anlegen                            | legt Projekte an, auch aus Tickets, Bestellungen und Vorlagen                               | Administration          |
+| Alle Projekte und Projektvorlagen verwalten | bearbeitet jedes Projekt, speichert und löscht Vorlagen, ändert die Annahmen der Auslastung | Administration          |
+
+Unabhängig von diesen Rechten gilt die Mitgliedschaft im Projekt: Die
+Projektleitung fügt unter **Team & Gäste** Personen als Mitarbeit oder als
+Gast hinzu. Wer weder ein Recht noch eine Mitgliedschaft hat, sieht den
+Menüpunkt nicht.
+
+### Externe Gäste
+
+Die Projektleitung kann Personen ausserhalb des Mandanten mit ihrer
+E-Mail-Adresse in ein einzelnes Projekt einladen. Mit der ersten Anmeldung
+wird die Person Mitglied des Mandanten, erhält aber **keine Rolle**. Der Gast sieht ausschliesslich den Menüpunkt **Projekte** mit den Projekten, in die er
+eingeladen ist, und darin nur den Plan sowie Dokumente und Kommentare, die als
+«für Gäste sichtbar» markiert sind.
+
+Du findest Gäste in der Benutzerverwaltung wie alle anderen Mitglieder. Wird
+ein Gast dort entfernt, endet sein Zugriff auf alle Projekte. Jede Einladung
+erscheint im Audit-Protokoll.
+
+### Auslastung
+
+Die Auslastung rechnet offene Tickets mit einer Pauschale ein, weil Tickets
+keinen Aufwandswert haben. Standard sind 30 Minuten je Ticket und 8 Stunden
+Arbeitszeit je Tag. Beide Werte änderst du unter **Projekte → Auslastung →
+Annahmen**.
 
 ## Datenschutz und Aufbewahrung
 

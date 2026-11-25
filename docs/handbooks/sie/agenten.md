@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-17
+updated: 2026-11-24
 ---
 
 # Handbuch für Agenten
@@ -144,6 +144,15 @@ Mehr dazu unter «Ticketliste».
 
 Mehr dazu unter «Ticketliste».
 
+### Wie suche ich in der App nach Tickets und Personen?
+
+1. Öffnen Sie in der App die **Tickets**.
+2. Tippen Sie ins Feld **Tickets durchsuchen** mindestens zwei Zeichen, zum Beispiel eine Ticketnummer, ein Stichwort oder einen Namen.
+3. Gesucht wird über alle Tickets: Status, Ansicht und Filter gelten während der Suche nicht. Die Liste heisst dann **Suchergebnisse**.
+4. Oben stehen passende **Personen**; ein Tipp öffnet die Personenübersicht mit ihren Tickets. Ältere oder geschlossene Tickets, die nicht in der Liste geladen sind, stehen unten unter **Weitere Tickets**.
+
+Mehr dazu unter «Ticketliste».
+
 ### Wie bediene ich die Ticketliste mit Tastenkürzeln?
 
 1. Drücken Sie `?`, um die Hilfe mit allen Kürzeln zu öffnen.
@@ -234,6 +243,7 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 
 1. Öffnen Sie das Ticket.
 2. Wählen Sie im Kopf- oder Infobereich die **Kategorie** bzw. das **Team**.
+3. In der App klappen Sie die Karte **Details** auf (sie ist zu Beginn eingeklappt) und tippen auf **Kategorie** bzw. **Team** (unter «Zugewiesen an») und wählen den neuen Wert. Zur Auswahl stehen die aktiven Teams der Abteilung des Tickets.
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 
@@ -250,7 +260,7 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 
 1. Öffnen Sie das Ticket.
 2. Oben rechts im Ticketkopf stehen runde Profilbilder (ohne Foto: Kürzel) aller, die das Ticket gerade geöffnet haben.
-3. Bewegen Sie die Maus über ein Bild, um den Namen zu sehen. Ein grüner Rand bedeutet, dass die Person gerade etwas ändert.
+3. Bewegen Sie die Maus über ein Bild, um den Namen zu sehen. In der App stehen die Bilder neben der Ticketnummer; ein Tipp darauf zeigt die Namen. Ein grüner Rand bedeutet, dass die Person gerade etwas ändert. Auch die anfragende Person erscheint, wenn sie das Ticket offen hat (mit «anfragende Person»).
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 
@@ -324,8 +334,8 @@ Mehr dazu unter «Antworten und interne Notizen».
 ### Wie erwähne ich Kolleginnen und Kollegen in einer Nachricht?
 
 1. Öffnen Sie das Ticket und wählen Sie im Antwortbereich den gewünschten Modus.
-2. Tippen Sie im Text `@` und den Namen der Person.
-3. Senden Sie die Nachricht oder speichern Sie die Notiz. Die Erwähnung erscheint bei der Person im Arbeitsplatz unter **Erwähnungen**.
+2. Tippen Sie im Text `@` und die ersten Buchstaben des Namens. Unter dem Textfeld erscheinen passende Agenten; tippen bzw. klicken Sie auf den richtigen (im Web und in der App).
+3. Senden Sie die Nachricht oder speichern Sie die Notiz. Die Person erhält eine Mitteilung «… hat Sie erwähnt» (Glocke, Push und Mail je nach Einstellung) mit der Bitte, einen Blick auf das Ticket zu werfen. Die Erwähnung steht zudem im Arbeitsplatz unter **Erwähnungen**.
 
 Mehr dazu unter «Antworten und interne Notizen».
 
@@ -425,15 +435,54 @@ Mehr dazu unter «IP-Adressen».
 
 Mehr dazu unter «Weitere Aktionen im Ticket».
 
+### Wie leite ich eine Mail aus einem Ticket weiter?
+
+1. Öffnen Sie das Ticket.
+2. Für die ursprüngliche Mail klicken Sie bei der Beschreibung auf **Weiterleiten**, für eine einzelne Nachricht in der Unterhaltung auf **Weiterleiten** neben der Nachricht. In der App tippen Sie unter der Beschreibung auf **Weiterleiten**.
+3. Tragen Sie unter **An** eine oder mehrere Mailadressen ein (durch Komma getrennt, höchstens zehn) und optional eine **Nachricht**.
+4. Klicken Sie auf **Weiterleiten**. Die Mail geht mit den Anhängen über das Support-Postfach an die genannten Adressen, nicht an die anfragende Person.
+5. In der Unterhaltung erscheint eine interne Notiz «Weitergeleitet an …».
+
+Mehr dazu unter «Mail weiterleiten».
+
 ### Wie führe ich doppelte Tickets zusammen?
 
 1. Öffnen Sie das Ticket, das ein Duplikat ist.
 2. Öffnen Sie **Ticket steuern** und wählen Sie **Tickets zusammenführen**.
 3. Suchen Sie unter **Hauptticket suchen** das Hauptticket.
 4. Klicken Sie beim richtigen Treffer auf **In dieses Ticket zusammenführen**.
-5. Bestätigen Sie mit **Zusammenführen bestätigen**. Das aktuelle Ticket wird als Duplikat geschlossen und im Hauptticket referenziert.
+5. Prüfen Sie die Vorschau: resultierende Priorität und Frist, Zuständigkeit, betroffene Personen, verschobene Zeiten und Checklistenpunkte sowie wer eine Info-Mail erhält.
+6. Bestätigen Sie mit **Zusammenführen bestätigen**. Das aktuelle Ticket wird gelöst und läuft im Hauptticket weiter.
+7. Kam das Ticket per Mail, erhält die anfragende Person eine Mail mit der Nummer des Haupttickets und dem Hinweis, weshalb sie kommt (statt der «gelöst»-Mail).
 
 Mehr dazu unter «Weitere Aktionen im Ticket».
+
+### Wie führe ich mehrere Tickets aus der Liste zusammen?
+
+1. Markieren Sie in der Ticketliste zwei bis zwanzig Tickets (in der App: **Auswählen** und die Tickets antippen).
+2. Wählen Sie in der blauen Leiste **Zusammenführen** (in der App unten **Zusammenführen**).
+3. Wählen Sie das **Haupt-Ticket**. Vorgewählt ist der **Vorschlag**: das offene Ticket mit den meisten Beiträgen, sonst ein zugewiesenes, sonst das älteste. Das Haupt-Ticket muss offen sein.
+4. Prüfen Sie die Vorschau (Priorität, Frist, Zuständigkeit, betroffene Personen, Info-Mails) und bestätigen Sie mit **Zusammenführen**. Die anderen Tickets werden gelöst, verweisen auf das Haupt-Ticket und erscheinen in dessen Verlauf.
+5. Kam ein zusammengeführtes Ticket per Mail, erhält die anfragende Person statt «Ihr Ticket wurde gelöst» eine eigene Mail. Darin steht, dass zu ihrem Anliegen mehrere Tickets entstanden sind, und nennt die Nummer, unter der es weitergeht.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie führe ich ein vorgeschlagenes Duplikat zusammen?
+
+1. Öffnen Sie das Ticket. Erkennt nextDesk mögliche Duplikate (gleiche Person in den letzten Tagen oder gleicher Betreff), erscheint oben der Kasten **Mögliche Duplikate**.
+2. Wählen Sie beim passenden Ticket **Hierhin zusammenführen**.
+3. Prüfen Sie die Vorschau und bestätigen Sie mit **Zusammenführen bestätigen**. Das vorgeschlagene Ticket läuft danach im geöffneten Ticket weiter.
+4. Ist es kein Duplikat, blenden Sie den Vorschlag mit **Kein Duplikat** aus.
+
+Mehr dazu unter «Tickets zusammenführen».
+
+### Wie hebe ich eine Zusammenführung auf?
+
+1. Öffnen Sie das zusammengeführte Ticket (zum Beispiel über **Zusammengeführte Tickets** im Haupt-Ticket).
+2. Wählen Sie im Hinweis «Zusammengeführt in …» **Zusammenführung aufheben** und bestätigen Sie.
+3. Das Ticket ist wieder offen. Verschobene Arbeitszeiten und Checklistenpunkte kommen zurück, beide Tickets erhalten eine interne Notiz.
+
+Mehr dazu unter «Tickets zusammenführen».
 
 ### Wie eröffne ich aus einem Ticket einen Fall?
 
@@ -447,7 +496,10 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 
 1. Öffnen Sie das Ticket.
 2. Klicken Sie in der Karte **Koordination** auf **Aufteilen**.
-3. Folgen Sie dem Formular, um Teil-Tickets anzulegen.
+3. Legen Sie im Formular die Teil-Tickets an (Betreff, Beschreibung, Abteilung, optional Team und Person) und klicken Sie auf **Teil-Tickets erstellen**.
+4. Jedes Teil-Ticket zeigt über der Beschreibung den Hinweis «Teil x von y eines aufgeteilten Tickets» mit der Nummer des ursprünglichen Tickets und den anderen Teilen.
+5. Das ursprüngliche Ticket wird danach gelöscht (90 Tage im Papierkorb wiederherstellbar), und Sie landen im ersten Teil-Ticket. Ohne Recht zum Löschen bleibt es bestehen.
+6. Die anfragende Person bleibt in allen Teil-Tickets dieselbe und erhält per Mail eine Nachricht, in welche Tickets ihre Anfrage aufgeteilt wurde, mit der Bitte, künftig pro Anliegen ein eigenes Ticket zu erstellen (nur bei Tickets mit Mailadresse und aktivem Postfach).
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 
@@ -457,6 +509,7 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 2. Klicken Sie in der Karte **Koordination** auf **An nächste Stufe übergeben**.
 3. Schreiben Sie die Übergabenotiz. Die Notiz ist Pflicht.
 4. Bestätigen Sie die Übergabe. Unter **Verlauf der Stufen** sehen Sie die bisherigen Übergaben.
+5. Wählen Sie stattdessen im Feld **Team** ein Team einer anderen Supportstufe (im Web oder in der App), fragt nextDesk ebenfalls nach der Übergabenotiz. Ohne Notiz bleibt das Team unverändert.
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 
@@ -654,6 +707,7 @@ Mehr dazu unter «Personen suchen und Personenübersicht».
 1. Öffnen Sie die Personenübersicht der Person.
 2. Wählen Sie das Register **Tickets**.
 3. Filtern Sie nach _Alle_, _Offen_ oder _Geschlossen_.
+4. Es erscheinen alle Tickets der Person, auch solche, die einem anderen Team zugewiesen sind (mit «Team …»). Tickets, die nur dieses Team öffnen darf, sind mit «nur für dieses Team zu öffnen» markiert und lassen sich nicht öffnen.
 
 Mehr dazu unter «Personen suchen und Personenübersicht».
 
@@ -730,7 +784,7 @@ Mehr dazu unter «Arbeitsplatz».
 1. Öffnen Sie **Arbeitsplatz → Stellvertretung**.
 2. Klicken Sie auf **Stellvertretung anlegen**.
 3. Wählen Sie die stellvertretende Person, Beginn und Ende und schreiben Sie eine Notiz.
-4. Klicken Sie auf **Stellvertretung speichern**. Ihre Tickets erscheinen in dieser Zeit bei der Stellvertretung.
+4. Klicken Sie auf **Stellvertretung speichern**. Ihre Tickets erscheinen in dieser Zeit bei der Stellvertretung, ebenso Ihre Eintritte und Austritte samt Aufgaben.
 
 Mehr dazu unter «Abwesenheit und Stellvertretung».
 
@@ -850,8 +904,10 @@ Mehr dazu unter «Kampagnen und IOC-Liste».
 ### Wie bearbeite ich Phishing-/Junk-Fälle in der App?
 
 1. Öffnen Sie in der unteren Leiste **Phishing / Junk**.
-2. Fällen Sie das Urteil, weisen Sie den Fall zu, haken Sie Massnahmen ab, fragen Sie die Melder nach einem Klick und schliessen Sie den Fall ab.
-3. Die Massnahmen selbst (zum Beispiel Sitzungen widerrufen) lösen Sie im Web aus.
+2. Lesen Sie zuerst die **Einschätzung**. Dort steht in Klartext, was für oder gegen Phishing spricht, und welches Urteil vorgeschlagen wird.
+3. Darunter stehen die **gemeldete Mail** (Betreff, Absender, Empfänger und Text mit entschärften Links, auf Wunsch die Kopfzeilen) und die **Analyse**.
+4. Fällen Sie das Urteil (der Vorschlag ist markiert), weisen Sie den Fall zu, haken Sie Massnahmen ab, fragen Sie die Melder nach einem Klick und schliessen Sie den Fall ab.
+5. Die Massnahmen selbst (zum Beispiel Sitzungen widerrufen) lösen Sie im Web aus.
 
 Mehr dazu unter «Eskalation».
 
@@ -1027,6 +1083,23 @@ Mehr dazu unter «Überwachung».
 
 Mehr dazu unter «Überwachung».
 
+### Wie ordne ich überwachte Geräte in Kategorien?
+
+1. Öffnen Sie die **Überwachung**. Dafür braucht es das Recht «Assets verwalten».
+2. Klicken Sie auf **Kategorien** und legen Sie mit **Kategorie hinzufügen** Kategorien an, zum Beispiel pro Standort. Das Plus neben einer Kategorie fügt eine Unterkategorie hinzu (bis zu vier Ebenen), der Stift benennt um, der Papierkorb löscht.
+3. Wählen Sie in der Geräteliste über die Kästchen die Geräte aus und klicken Sie auf **Kategorie zuweisen**.
+4. Wählen Sie die **Kategorie** und bei Bedarf die **Unterkategorie**. Mit **Neue Kategorie erstellen …** bzw. **Neue Unterkategorie erstellen …** legen Sie sie direkt an; nach jeder Wahl erscheint die nächste Ebene. Klicken Sie auf **Zuweisen**.
+
+Mehr dazu unter «Überwachung».
+
+### Wie nehme ich Geräte wieder aus einer Kategorie?
+
+1. Öffnen Sie die **Überwachung** und wählen Sie die Geräte über die Kästchen aus.
+2. Klicken Sie auf **Kategorie zuweisen** und wählen Sie **Ohne Kategorie**.
+3. Klicken Sie auf **Zuweisen**. Die Geräte bleiben überwacht.
+
+Mehr dazu unter «Überwachung».
+
 ### Wie erstelle ich ein Ticket zu einem Alarm?
 
 1. Öffnen Sie die **Überwachung** und suchen Sie unter **Aktive Alarme** das Gerät.
@@ -1174,6 +1247,14 @@ Mehr dazu unter «Überwachung».
 
 Mehr dazu unter «Überwachung».
 
+### Wie lege ich fest, ob ein Dienst intern oder extern ist?
+
+1. Öffnen Sie **Dienste** und bearbeiten Sie den Dienst.
+2. Schalten Sie **Interner Dienst** ein, wenn der Dienst nur die IT betrifft. Ausgeschaltet gilt er als extern.
+3. Speichern Sie den Dienst.
+
+Bei Störungsmeldungen, die nur interne Dienste betreffen, erhalten Mitarbeitende weder Banner noch Push-Mitteilung. Mehr dazu unter «Dienste und Systemstatus».
+
 ### Wie sehe ich die Verfügbarkeit eines Dienstes?
 
 1. Öffnen Sie **Dienste**.
@@ -1267,6 +1348,8 @@ Mehr dazu unter «Wissensdatenbank pflegen».
 3. Unter **Zuständige Abteilung** wählen Sie die Abteilung, die den Artikel betreut.
 4. Speichern Sie den Artikel.
 
+Software (Kategorie «Software») hat keinen Lagerbestand: Ist diese Kategorie gewählt, entfallen **Mindest- und Zielbestand**, und der Artikel erscheint nie unter «Unter Mindestbestand». Dasselbe gilt für Artikel ohne Mindestbestand (0), z. B. zum Ausleihen.
+
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 ### Wie übernehme ich Artikeldaten von Brack?
@@ -1310,6 +1393,24 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
+### Wie buche ich Ware auf mehrere Lagerplätze ein?
+
+1. Öffnen Sie **Lager → Artikel** und klicken Sie beim Artikel auf **Einbuchen**.
+2. Geben Sie die Menge ein und wählen Sie den ersten **Lagerort**, zum Beispiel «G10.2.1».
+3. Wählen Sie unter **Bis Lagerplatz (Bereich, optional)** den letzten Platz, zum Beispiel «G10.2.4». Das Feld erscheint, sobald es passende Plätze gibt.
+4. Bestätigen Sie die Buchung. Die Menge wird **einmal** gebucht: 5 Stück auf G10.2.1 bis G10.2.4 sind insgesamt 5 Stück, nicht je Platz.
+
+In der App tippen Sie in der Bestandsliste auf den Artikel, wählen den ersten Lagerort und danach unter **Bis Lagerplatz** den letzten Platz.
+
+Dabei gilt:
+
+- Nur die letzte Zahl darf sich unterscheiden. G10.2.1 bis G10.2.4 geht, G10.2.1 bis G11.2.4 nicht.
+- Alle Plätze dazwischen müssen als aktive Lagerorte existieren. Fehlt einer, wird nichts gebucht und die fehlenden Plätze werden genannt.
+- Der Bereich gilt als ein Lagerplatz. Solange dort Bestand liegt, kann auf keinem der Plätze etwas anderes gebucht werden, und ein neuer Bereich ist nur auf vollständig freien Plätzen möglich. Sobald der Bestand ausgebucht ist, sind alle Plätze wieder frei.
+- Mehr vom selben Artikel können Sie auf denselben Bereich einbuchen. Ausbuchen und Umlagern wählen Sie beim ersten Platz des Bereichs (hier G10.2.1).
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
 ### Wie buche ich Ware aus?
 
 1. Öffnen Sie **Lager → Artikel**. **Ausbuchen** sehen nur Personen mit der Rolle **Lagerverwaltung** (oder dem Recht «Bestände von Hand ausbuchen»).
@@ -1327,11 +1428,55 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
+### Wie öffne ich einen Artikel direkt aus der Lager-Übersicht?
+
+1. Öffnen Sie **Lager → Übersicht**.
+2. Klicken Sie unter **Unter Mindestbestand** oder in **Letzte Bewegungen** auf den Namen des Artikels. Dasselbe gilt für die Liste unter **Bewegungen**.
+3. Die Artikelliste zeigt nur diesen Artikel. Mit **Alle Artikel anzeigen** sehen Sie wieder alle.
+
+Die Kacheln oben führen ebenfalls direkt weiter: **Unterbestand** öffnet die Artikel, **Laufende Inventuren** die Inventur.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie lege ich ein Lager mit Standort an?
+
+1. Öffnen Sie **Lager → Lagerorte**.
+2. Klicken Sie oben rechts auf **Lager erfassen** und geben Sie den Namen des **Lagers** ein, z. B. «Hauptlager Bern».
+3. Tragen Sie bei Bedarf den **Standort** ein, z. B. «Bern, Hauptstrasse 1».
+4. Klicken Sie auf **Lager erfassen**.
+
+Jedes Lager erscheint als eigene Karte mit Standort und Anzahl Lagerplätze. Die Karten sind zugeklappt: Ein Klick auf den Namen oder den Pfeil klappt ein Lager auf und wieder zu. Mit dem Stift im Kopf der Karte ändern Sie Name und Standort, mit dem Papierkorb archivieren Sie ein Lager. Die Lagerplätze und ihr Bestand bleiben dabei erhalten.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie erfasse ich einen Lagerplatz in einem Lager?
+
+1. Öffnen Sie **Lager → Lagerorte**.
+2. Klicken Sie in der Karte des Lagers auf **Lagerplatz**.
+3. Geben Sie den **Lagerplatz** ein, z. B. «WSICT.01.02». Er steht später auf der Etikette.
+4. Tragen Sie bei Bedarf eine **Bemerkung** ein. Die Bemerkung dient nur als Notiz und erscheint weder auf Etiketten noch in Auswahllisten.
+5. Klicken Sie auf **Lagerplatz erfassen**. Das Formular bleibt offen, damit Sie weitere Plätze erfassen können; mit **Fertig** schliessen Sie es.
+
+Die Lagerplätze stehen als Liste in der Karte ihres Lagers, sortiert nach Code. Mit **Bestand** sehen Sie die Artikel an einem Lagerplatz. Plätze ohne Lager stehen in der Karte «Ohne Lager»; mit dem Stift ordnen Sie sie einem Lager zu.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie drucke ich Etiketten für Lagerorte?
+
+1. Öffnen Sie **Lager → Lagerorte**.
+2. Wählen Sie die Lagerorte mit dem Kästchen vor dem Lagerplatz aus. **Alle für Etiketten** in der Karte wählt alle Plätze eines Lagers, **Alle sichtbaren** alle Plätze.
+3. Klicken Sie auf **Etiketten drucken**.
+4. Wählen Sie im Druckdialog Format, QR-Inhalt (**App** oder **Web**) und **Anzahl Etiketten** und drucken Sie.
+
+Auf dem Etikett stehen der Lagerort in grosser, fetter Schrift und sein QR-Code, auf Wunsch auch das Lager. Die Bemerkung steht nicht auf dem Etikett. Wer den Code scannt, sieht in der App unter **Lager** die Artikel an diesem Lagerort, im Web die gefilterte Artikelliste.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
 ### Wie ändere ich einen Lagerort?
 
 1. Öffnen Sie **Lager → Lagerorte**.
-2. Klicken Sie auf den Stift (**Bearbeiten**).
-3. Ändern Sie Ortscode und Bezeichnung und speichern Sie.
+2. Klicken Sie in der Zeile des Lagerplatzes auf den Stift (**Bearbeiten**).
+3. Ändern Sie **Lagerort**, **Lager** und **Bemerkung** und speichern Sie. Der Lagerort darf Buchstaben, Ziffern, Punkte, Binde- und Unterstriche enthalten (z. B. «WSICT.01.01»).
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
@@ -1398,7 +1543,7 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 ### Wie stelle ich das Intervall der Inventur ein?
 
 1. Öffnen Sie **Lager → Automatik** und die Karte **Inventur**.
-2. Legen Sie pro Lagerort ein Intervall in Tagen fest. Ist es abgelaufen, erhält die Lagerverwaltung «Inventur fällig».
+2. Legen Sie pro **Lager** ein Intervall in Tagen fest. Ist es abgelaufen, erhält die Lagerverwaltung «Inventur fällig». Ein Lager gilt als fällig, sobald sein am längsten nicht gezählter Lagerplatz überfällig ist; läuft an einem Platz des Lagers gerade eine Inventur, gibt es keine Erinnerung.
 
 Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 
@@ -1418,6 +1563,95 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 4. Die Lizenz in Microsoft 365 entfernen Sie bei Bedarf weiterhin unter **Lizenzen**.
 
 Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
+
+### Wie erfasse ich eine Mutation, z. B. eine Namensänderung?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Eintritte** und klicken Sie auf **Eintritt, Austritt oder Mutation planen**.
+2. Wählen Sie bei **Art** die **Mutation**, tragen Sie den bisherigen Namen und den Stichtag (**Gültig ab**) ein.
+3. Wählen Sie eine oder mehrere Mutationsarten: **Namensänderung**, **Abteilung/Angebot**, **Funktion/Rolle** oder **Standort/Pensum**, und füllen Sie jeweils die neue Angabe aus (bei Wechseln auch die bisherige).
+4. Ergänzen Sie den aktuellen Einsatz, die Führungsperson und die zuständige Abteilung (die ICT-Verantwortung ist optional) und klicken Sie auf **Mutation planen**.
+5. Die Aufgaben entstehen aus der Vorlage pro Mutationsart (z. B. Konto umbenennen, Mail-Alias, Signatur) und aus den Abteilungsaufgaben der Art «Mutation»; sie sind relativ zum Stichtag terminiert.
+
+Mehr dazu unter «Eintritte und Austritte».
+
+### Wie hake ich Aufgaben eines Eintritts ab?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Eintritte**.
+2. Klicken Sie auf die Karte (oder den Pfeil rechts), um den Eintritt aufzuklappen; alle Eintritte sind zuerst eingeklappt. Die Aufgaben stehen nach Fälligkeit gruppiert: **Überfällig**, **Nächste 7 Tage** und **Später**.
+3. Klicken Sie auf das Kästchen vor einer Aufgabe, um sie als erledigt zu markieren. Ein zweiter Klick öffnet sie wieder.
+4. «In Arbeit» oder «Blockiert» wählen Sie im Feld rechts. Erledigte Aufgaben klappen Sie unter **Erledigt** auf.
+
+Mehr dazu unter «Eintritte und Austritte».
+
+### Wie weise ich einen Eintritt einer anderen Person zu?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Eintritte** (in der App über die Kachel **Eintritte**).
+2. Klappen Sie den Eintritt bzw. Austritt auf.
+3. Wählen Sie unten unter **ICT-Verantwortung** einen Agenten (in der App: **Zuweisen an …**). Zur Auswahl stehen nur die Agenten aus den Teams der Abteilung, über die der Eintritt gemeldet wurde (bei einer Eintrittsmeldung per Mail die Abteilung des Mail-Tickets). Mit **Nicht zugewiesen** heben Sie die Zuweisung auf.
+4. Die ICT-Aufgaben gehen mit, Aufgaben der Führung und der Abteilungen bleiben. Die neue Person erhält eine Mitteilung. Ist sie gerade abwesend, geht der Eintritt an ihre Stellvertretung.
+
+Neue Eintritte, Austritte und Mutationen sind zuerst nicht zugewiesen; die Zahl beim Menüpunkt **Eintritte** zeigt, wie viele es sind. Zuweisen kann, wer Eintritte verwaltet, wer den Eintritt erfasst hat, die bisherige ICT-Verantwortung mit ihrer Stellvertretung und jedes Mitglied der Teams der Abteilung.
+
+Mehr dazu unter «Eintritte und Austritte».
+
+### Wie lösche ich einen Eintritt oder Austritt?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Eintritte**.
+2. Klappen Sie den Eintritt bzw. Austritt mit einem Klick auf die Karte auf.
+3. Klicken Sie unten in der Karte auf **Eintritt löschen** bzw. **Austritt löschen** (nur mit dem Recht, Eintritte zu verwalten).
+4. Bestätigen Sie die Rückfrage. Alle Aufgaben, Ausnahmetickets und die gespeicherte Meldung werden ebenfalls entfernt.
+
+Mehr dazu unter «Eintritte und Austritte».
+
+### Wie filtere ich Eintritte nach Datum?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Eintritte**.
+2. Klicken Sie rechts im Suchfeld auf das Filter-Symbol.
+3. Wählen Sie unter **Eintrittsdatum** und/oder **Eintrittsmeldung eingegangen** ein Datum **Von** und/oder **Bis**. Die Liste und die Zahlen bei **Offen**, **Erledigt** und **Alle** passen sich sofort an; die Zahl am Filter-Symbol zeigt, wie viele Filter aktiv sind.
+4. Mit **Filter zurücksetzen** sehen Sie wieder alle Eintritte.
+
+Mehr dazu unter «Eintritte und Austritte».
+
+### Wie finde ich erledigte Eintritte wieder?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Eintritte** (in der App über die Kachel **Eintritte** auf der Startseite).
+2. Wählen Sie über der Liste **Erledigt** (oder **Alle**). Standard ist **Offen**; die Zahl in Klammern zeigt, wie viele es sind.
+3. Im Suchfeld daneben suchen Sie nach Name, Abteilung, Ort, Führung oder Ticketnummer der Eintrittsmeldung.
+
+Mehr dazu unter «Eintritte und Austritte».
+
+### Wie kommen Bestellungen der Anlässe-App zu den Anlässen?
+
+1. Die Anlässe-App schickt pro Bestellung zwei Mails: «Bestellung Anlässe Essen und Einrichten für Anlass …» mit dem PDF **Anlassdetails** und «Neue Bestellung Einrichten Anlässe <Nummer>» an das ICT-Team.
+2. nextDesk liest daraus Anlass, Datum, Zeit, Ort, Personenzahl, Technik und die Bemerkung und legt unter **Planung und Betrieb → Anlässe** einen Eintrag an. Es entsteht kein Ticket.
+3. Die zweite Mail derselben Bestellung ergänzt den Eintrag (Bemerkung, Technik), statt einen zweiten anzulegen. Gastro, Bestuhlung und Kostenstelle sind nicht für die ICT und stehen nur im PDF.
+4. Fehlen Angaben oder ist der Raum besetzt, steht der Anlass mit dem Grund unter **Klärung und Übernahme erforderlich**. Kommt eine Mail ohne lesbares PDF und ist die Bestellung noch unbekannt, bleibt ein normales Ticket stehen.
+
+Mehr dazu unter «Anlässe».
+
+### Wie öffne ich die Bestellung (PDF) eines Anlasses?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Anlässe**.
+2. Klicken Sie rechts in der Zeile des Anlasses auf **PDF**. Die Bestellung öffnet sich in einem neuen Tab.
+3. Fehlt der Knopf, wurde zu diesem Anlass kein PDF gesendet (z. B. bei einem von Hand erfassten Anlass).
+
+Mehr dazu unter «Anlässe».
+
+### Wie ändere ich den Status eines Anlasses?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Anlässe**.
+2. Klicken Sie rechts in der Zeile auf den Status (z. B. **Bereit**).
+3. Wählen Sie den neuen Status. Er wird sofort gespeichert.
+
+Mehr dazu unter «Anlässe».
+
+### Wie lösche ich einen Anlass?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Anlässe**.
+2. Klicken Sie rechts in der Zeile des Anlasses auf **Löschen** (auch in der geöffneten Detailansicht vorhanden).
+3. Bestätigen Sie die Rückfrage. Zugehörige Aufgaben und Technikreservationen werden ebenfalls entfernt.
+
+Mehr dazu unter «Anlässe».
 
 ### Wie verknüpfe ich eine Lizenz mit einem Vertrag?
 
@@ -1841,6 +2075,8 @@ Mehr dazu unter «Benachrichtigungen und Erreichbarkeit».
 2. Tippen Sie auf einen Eintrag, um ihn zu öffnen und als gelesen zu markieren.
 3. **Alle gelesen** leert die Liste.
 
+Ein Eintrag **Wiederkehrende Ausfälle** nennt das Gerät und die Zahl der Ausfälle in 30 Tagen und öffnet das Gerät in der Überwachung; den dazu eröffneten Fall finden Sie in der Web-App unter «Fälle».
+
 Mehr dazu unter «Benachrichtigungen und Erreichbarkeit».
 
 ### Wie lege ich meine Benachrichtigungszeit fest?
@@ -1887,6 +2123,229 @@ Mehr dazu unter «Persönliche Einstellungen».
 
 Mehr dazu unter «Persönliche Einstellungen».
 
+### Wie lege ich ein Projekt an?
+
+1. Öffnen Sie in der Navigation **Projekte**.
+2. Klicken Sie auf **Neues Projekt**.
+3. Tragen Sie den Titel ein und wählen Sie bei Bedarf Projektleitung, Abteilung, Start, Ende und Budget. Als Projektleitung stehen nur Agenten zur Wahl.
+4. Klicken Sie auf **Projekt anlegen**. Das Projekt öffnet sich und erhält eine Nummer wie «P-2026-0001».
+
+Mehr dazu unter «Projekte».
+
+### Wie lege ich ein Projekt aus einer Vorlage an?
+
+1. Öffnen Sie **Projekte** und das Register **Vorlagen**.
+2. Klicken Sie bei der Vorlage auf **Projekt daraus anlegen**.
+3. Tragen Sie Titel und **Start** ein. Phasen, Aufgaben, Checklisten, Abhängigkeiten und Termine werden ab diesem Startdatum übernommen.
+4. Klicken Sie auf **Projekt anlegen**.
+
+Mehr dazu unter «Projekte».
+
+### Wie speichere ich ein Projekt als Vorlage?
+
+1. Öffnen Sie das Projekt.
+2. Klicken Sie oben rechts auf **Mehr** und wählen Sie **Als Vorlage speichern**.
+3. Geben Sie der Vorlage einen Namen und bestätigen Sie mit **Vorlage speichern**.
+
+Der Punkt erscheint nur mit dem Recht «Alle Projekte und Projektvorlagen verwalten». Mehr dazu unter «Projekte».
+
+### Wie füge ich Phasen, Meilensteine und Aufgaben hinzu?
+
+1. Öffnen Sie das Projekt und das Register **Zeitplan** oder **Liste**.
+2. Klicken Sie auf **Element hinzufügen**.
+3. Wählen Sie die Art (Aufgabe, Meilenstein oder Phase), tragen Sie den Titel ein und wählen Sie unter «Einordnen unter», wo das Element stehen soll.
+4. Klicken Sie auf **Hinzufügen**. Für Start, Termin, Schätzung und Zuständigkeit öffnen Sie das Element mit einem Klick auf seinen Titel.
+
+Eine Aufgabe unter einer Aufgabe ist eine Unteraufgabe. Mehr dazu unter «Projekte».
+
+### Wie dupliziere ich eine Aufgabe, einen Meilenstein oder eine Phase?
+
+1. Öffnen Sie das Projekt und klicken Sie im Zeitplan, im Board oder in der Liste auf den Titel des Elements.
+2. Klicken Sie unten in der Seitenleiste auf **Duplizieren**.
+3. Die Kopie steht mit dem Zusatz «(Kopie)» direkt unter dem Original und öffnet sich zum Bearbeiten.
+
+Unterelemente, Checklisten, Termine und Zuständigkeiten werden mitkopiert; alle Kopien beginnen mit dem Status «Offen». Mehr dazu unter «Projekte».
+
+### Wie verschiebe ich Termine im Zeitplan?
+
+1. Öffnen Sie das Projekt und das Register **Zeitplan**.
+2. Ziehen Sie den Balken einer Aufgabe nach links oder rechts, um sie zu verschieben.
+3. Ziehen Sie den rechten Rand des Balkens, um nur das Ende zu ändern.
+4. Hängen andere Elemente davon ab, rücken sie nach; ein Hinweis nennt die Zahl der nachgeführten Termine.
+
+Mehr dazu unter «Projekte».
+
+### Wie ändere ich die Reihenfolge im Zeitplan?
+
+1. Öffnen Sie das Projekt und das Register **Zeitplan**.
+2. Ziehen Sie eine Zeile links am Namen nach oben oder unten; eine Linie zeigt, wo sie landet.
+3. Lassen Sie sie auf dem oberen oder unteren Rand einer Zeile los, um sie davor oder danach einzuordnen, oder auf der Mitte einer Phase, um sie in die Phase zu legen.
+
+Phasen bleiben auf der obersten Ebene, Meilensteine stehen oben oder in einer Phase. Mehr dazu unter «Projekte».
+
+### Wie ändere ich Titel, Beschreibung und Eckdaten eines Projekts?
+
+1. Öffnen Sie das Projekt. Klicken Sie neben dem Titel auf den Stift, ändern Sie den Titel und drücken Sie die Eingabetaste.
+2. Öffnen Sie das Register **Überblick**.
+3. Klicken Sie bei **Beschreibung** auf den Stift, schreiben Sie den Text und klicken Sie auf **Speichern**.
+4. Klicken Sie bei **Eckdaten** auf den Stift, um Projektleitung, Zeitraum, Budget und Terminplanung im Formular zu ändern.
+
+Die Stifte erscheinen nur für die Projektleitung. Mehr dazu unter «Projekte».
+
+### Wie verknüpfe ich Aufgaben mit einer Abhängigkeit?
+
+1. Öffnen Sie die Aufgabe, die warten soll, mit einem Klick auf ihren Titel.
+2. Wählen Sie im Abschnitt **Abhängigkeiten** unter «Wartet auf …» den Vorgänger.
+3. Wählen Sie die Art (in der Regel «Ende → Anfang») und bei Bedarf einen Abstand in Arbeitstagen.
+4. Klicken Sie auf **Hinzufügen**. Im Zeitplan verbindet ein Pfeil die beiden Elemente.
+
+Mehr dazu unter «Projekte».
+
+### Wie arbeite ich mit dem Board eines Projekts?
+
+1. Öffnen Sie das Projekt und das Register **Board**.
+2. Ziehen Sie eine Karte in die Spalte **Offen**, **In Arbeit**, **Blockiert** oder **Erledigt**.
+3. Ein Klick auf den Titel öffnet die Aufgabe mit Checkliste, Zeit und Kommentaren.
+
+Mehr dazu unter «Projekte».
+
+### Wie ändere ich mehrere Projektaufgaben gleichzeitig?
+
+1. Öffnen Sie das Projekt und das Register **Liste**.
+2. Setzen Sie das Häkchen bei den gewünschten Elementen; mit den Filtern oben grenzen Sie die Liste vorher ein.
+3. Wählen Sie in der Leiste über der Liste Status, Zuweisung oder Priorität oder tragen Sie bei «± Tage» ein, um wie viele Tage die Termine wandern sollen.
+4. Klicken Sie auf **Anwenden**.
+
+Mehr dazu unter «Projekte».
+
+### Wie führe ich die Checkliste einer Projektaufgabe?
+
+1. Öffnen Sie die Aufgabe mit einem Klick auf ihren Titel.
+2. Tippen Sie unter **Checkliste** einen Punkt ein und drücken Sie die Eingabetaste oder klicken Sie auf **Hinzufügen**; das Feld ist sofort frei für den nächsten Punkt.
+3. Haken Sie erledigte Punkte ab.
+4. Mit dem Stift benennen Sie einen Punkt um (Eingabetaste speichert, Esc bricht ab), mit dem Kreuz entfernen Sie ihn.
+
+Mehr dazu unter «Projekte».
+
+### Wie buche ich Zeit auf eine Projektaufgabe?
+
+1. Öffnen Sie die Aufgabe mit einem Klick auf ihren Titel.
+2. Tragen Sie im Abschnitt **Zeit** die Stunden ein (z. B. «1.5»), dazu eine kurze Notiz und die Verrechnung.
+3. Klicken Sie auf **Zeit buchen**.
+
+Mehr dazu unter «Projekte».
+
+### Wie vergleiche ich Soll und Ist eines Projekts?
+
+1. Öffnen Sie das Projekt und das Register **Zeiten & Budget**.
+2. Oben sehen Sie gebuchte Stunden, geplante Stunden, Budget und Fortschritt.
+3. Die Tabelle zeigt je Phase und Aufgabe Soll, Ist, Abweichung und Verbrauch; verknüpfte Tickets zählen mit ihrer gebuchten Zeit mit.
+
+Mehr dazu unter «Projekte».
+
+### Wie sehe ich alle Projekte auf einer Zeitleiste?
+
+1. Öffnen Sie **Projekte** und das Register **Zeitplan**.
+2. Jede Zeile zeigt ein Projekt als Balken vom Start bis zum Ende, in der Farbe seiner Ampel; die Rauten sind seine Meilensteine.
+3. Wählen Sie oben rechts **Wochen**, **Monate** oder **Quartale** und links, ob laufende, abgeschlossene oder alle Projekte erscheinen.
+4. Ein Klick auf einen Balken oder Titel öffnet das Projekt.
+
+Mehr dazu unter «Projekte».
+
+### Wie setze ich Status und Ampel eines Projekts?
+
+1. Öffnen Sie das Projekt.
+2. Wählen Sie oben rechts den **Status** (Planung, Aktiv, Pausiert, Abgeschlossen).
+3. Wählen Sie die **Ampel** (Grün, Gelb, Rot). Sprechen die Zahlen für eine andere Farbe, erscheint ein Vorschlag mit Begründung, den Sie mit einem Klick übernehmen.
+
+Mehr dazu unter «Projekte».
+
+### Wie sehe ich die Auslastung der Mitarbeitenden?
+
+1. Öffnen Sie **Projekte** und das Register **Auslastung**.
+2. Wählen Sie bei Bedarf ein Team und blättern Sie mit den Pfeilen um vier Wochen.
+3. Jede Zeile zeigt eine Person mit den geplanten Stunden je Arbeitstag aus Projektaufgaben, Serviceaufgaben und offenen Tickets.
+4. Ein Klick auf den Namen zeigt, was der Person zugewiesen ist.
+
+Mehr dazu unter «Projekte».
+
+### Wie wandle ich ein Ticket in ein Projekt um?
+
+1. Öffnen Sie das Ticket.
+2. Klappen Sie rechts den Abschnitt **Projekt** auf.
+3. Klicken Sie auf **In Projekt umwandeln** und bestätigen Sie.
+4. Das neue Projekt öffnet sich. Das Ticket bleibt bestehen und ist verknüpft; seine Checklistenpunkte sind Aufgaben geworden.
+
+Mehr dazu unter «Projekte».
+
+### Wie verknüpfe ich ein Ticket mit einem Projekt?
+
+1. Öffnen Sie das Ticket und klappen Sie rechts den Abschnitt **Projekt** auf.
+2. Klicken Sie auf **Mit Projekt verknüpfen**.
+3. Wählen Sie das Projekt und klicken Sie auf **Verknüpfen**.
+
+Ein Ticket gehört höchstens zu einem Projekt. Mehr dazu unter «Projekte».
+
+### Wie wandle ich eine Shop-Bestellung in ein Projekt um?
+
+1. Öffnen Sie im **Shop** die Bestellung.
+2. Klicken Sie auf **In Projekt umwandeln** und bestätigen Sie.
+3. Das neue Projekt öffnet sich; jede Position der Bestellung ist eine Aufgabe.
+
+Mehr dazu unter «Projekte».
+
+### Wie verknüpfe ich ein IP-Netz, ein VLAN, eine IP-Adresse, einen Sensor oder ein Gerät mit einem Projekt?
+
+1. Öffnen Sie das Projekt und das Register **Verknüpfungen**.
+2. Wählen Sie rechts die Art und suchen Sie nach Nummer, Name oder Adresse.
+3. Klicken Sie beim Treffer auf **Verknüpfen**.
+4. Soll die Verknüpfung an einer einzelnen Aufgabe hängen, öffnen Sie die Aufgabe und nutzen Sie dort den Abschnitt **Verknüpfungen**.
+
+Mehr dazu unter «Projekte».
+
+### Wie dokumentiere ich ein Projekt?
+
+1. Öffnen Sie das Projekt und das Register **Dokumentation**.
+2. Klicken Sie auf **Neues Dokument**, geben Sie einen Titel ein und schreiben Sie den Inhalt in Markdown; rechts sehen Sie die Vorschau.
+3. Setzen Sie das Häkchen **Für Gäste sichtbar**, wenn eingeladene Gäste das Dokument lesen sollen.
+4. Klicken Sie auf **Speichern**. Dateien hängen Sie links unter «Dateien zum Projekt» an.
+
+Mehr dazu unter «Projekte».
+
+### Wie füge ich eine Person aus dem Mandanten zu einem Projekt hinzu?
+
+1. Öffnen Sie das Projekt und das Register **Team & Gäste**.
+2. Tippen Sie unter **Person aus dem Mandanten hinzufügen** mindestens zwei Buchstaben des Namens, der Funktion oder der E-Mail-Adresse.
+3. Wählen Sie daneben die Rolle (in der Regel «Mitarbeit»).
+4. Klicken Sie bei der Person auf **Hinzufügen**.
+
+Die Person erhält eine Benachrichtigung und öffnet das Projekt mit einem Klick darauf. Die Suche findet alle Personen des Mandanten, auch solche aus dem Entra-Verzeichnis, die sich noch nie angemeldet haben. Mehr dazu unter «Projekte».
+
+### Wie lade ich einen externen Gast in ein Projekt ein?
+
+1. Öffnen Sie das Projekt und das Register **Team & Gäste**.
+2. Tragen Sie unter **Externen Gast einladen** die E-Mail-Adresse ein.
+3. Wählen Sie **Lesend** oder **Kommentierend** und klicken Sie auf **Einladen**.
+4. Die Person erhält einen Anmeldelink und sieht danach nur dieses Projekt.
+
+Mehr dazu unter «Projekte».
+
+### Wie nutze ich Projekte in der App?
+
+1. Halten Sie in der App den Home-Knopf lange gedrückt (Mitglieder des Teams **System Engineer**) und wählen Sie unter **Öffnen** **Projekte**. Eine Mitteilung zu einem Projekt öffnet das Projekt oder die Aufgabe direkt.
+2. Tippen Sie auf ein Projekt. Sie sehen Status, Ampel, Fortschritt, Ihre Aufgaben, den ganzen Plan, das Team und die Kommentare.
+3. Tippen Sie auf eine Aufgabe, um den Status zu setzen, Punkte der Checkliste abzuhaken oder einen Kommentar zu schreiben.
+
+Planung, Zeiten und Dokumente bearbeiten Sie in der Web-App. Mehr dazu unter «Projekte».
+
+### Wie archiviere oder lösche ich ein Projekt?
+
+1. Öffnen Sie das Projekt und klicken Sie oben rechts auf **Mehr**.
+2. Wählen Sie **Archivieren**, um das Projekt aus der Übersicht zu nehmen; mit **Archiv anzeigen** finden Sie es wieder.
+3. Wählen Sie **Projekt löschen**, um es mit Plan, Zeiten, Dokumenten und Anhängen endgültig zu entfernen.
+
+Mehr dazu unter «Projekte».
+
 ## Einführungstour
 
 Beim ersten Login startet eine kurze **Einführung** (Startseite, Tickets,
@@ -1901,11 +2360,12 @@ Die linke Navigation ist gegliedert in:
 - **Übersicht** – Ihre Startseite mit Kennzahlen
 - **Arbeitsplatz** – Team-Queues, Erwähnungen, Stellvertretung, Erinnerungen
 - **Teamführung** – nur für Leitungen von Abteilungen
-- **Arbeitsbereich**: Tickets, Shop, Teams (nur mit Recht zur Shop-Verwaltung),
+- **Arbeitsbereich**: Tickets, Projekte (falls eingeschaltet), Shop, Teams
+  (nur mit Recht zur Shop-Verwaltung),
   Fälle
 - **Sicherheit und Störungen**: Phishing-/Junk-Fälle, Störungen
   (nur für das zuständige Team, siehe unten)
-- **Planung und Betrieb**: Raumplanung, Eintritte, Serviceaufgaben
+- **Planung und Betrieb**: Anlässe, Eintritte, Serviceaufgaben
 - **Ressourcen**: Assets, Lager, Verträge, Lizenzen
 - **Dienste und Überwachung**: Dienste, Infrastruktur, IP-Adressen,
   Überwachung, Systemstatus
@@ -1921,12 +2381,12 @@ Team gesetzt ist) – dieselbe Zahl wie in der Kachel «Nicht zugewiesene
 Tickets» –, bei
 **Phishing / Junk** die offenen Fälle, die noch niemandem zugewiesen
 sind, bei **Störungen** die aktiven Störungen, die noch niemand bestätigt
-hat, bei **Raumplanung**, **Shop** und
+hat, bei **Anlässe**, **Shop** und
 **Eintritte** die offenen Anfragen. Die Zahlen aktualisieren sich jede Minute.
 
 In der **iOS- und Android-App** zeigt die untere Leiste dieselben Zahlen als
 kleines Abzeichen am Symbol: bei **Tickets**, **Störungen** und **Phishing / Junk** sowie beim **Shop** die neuen Bestellungen, falls Sie
-Bestellungen bearbeiten. Raumplanung und Eintritte gibt es in der App nicht.
+Bestellungen bearbeiten. Anlässe und Eintritte gibt es in der App nicht.
 Die Zahlen aktualisieren sich jede Minute, beim Zurückkehren in die App und
 beim Wechsel des Tabs.
 
@@ -2043,7 +2503,7 @@ Der **Arbeitsplatz** bündelt Ihre persönliche Arbeit in Registern:
 Unter **Arbeitsplatz → Stellvertretung → Stellvertretung anlegen** wählen Sie
 die stellvertretende Person, Beginn, Ende und eine Notiz und speichern mit
 **Stellvertretung speichern**. Ihre Tickets erscheinen in dieser Zeit bei der
-Stellvertretung.
+Stellvertretung. Auch Ihre Eintritte und Austritte sieht sie unter **Eintritte** (markiert mit «Stellvertretung für …») und kann Aufgaben abhaken, den Status setzen und Ausnahmetickets verknüpfen; die Zuständigkeit bleibt bei Ihnen. Wird Ihnen während der Abwesenheit ein Ticket, ein Eintritt oder ein Austritt neu zugewiesen, geht er direkt an die Stellvertretung.
 
 ### Phishing melden
 
@@ -2076,13 +2536,30 @@ haben. **Filter aufheben** führt zurück zu den Fällen, die zu beurteilen sind
 
 ![Liste der Phishing-/Junk-Fälle](images/ag-sicherheitsfaelle.jpg)
 
-Ein Klick öffnet den Fall. Die gemeldete E-Mail steht in einer **sicheren
-Ansicht**: Links sind entschärft (`hxxps`, `[.]`) und nicht anklickbar, Bilder
-werden nicht geladen und Anhänge erscheinen nur mit Name und Grösse. Daneben
+Ein Klick öffnet den Fall. Die gemeldete E-Mail steht so, wie sie beim
+Empfänger ankam, in einer **sicheren Ansicht** (Betreff, An, Cc):
+**Darstellung** zeigt die Mail mit Layout in einem abgeschotteten Rahmen,
+**Text** die Textfassung und **Kopfzeilen** alle Header (Received, Return-Path,
+Authentication-Results usw.) für die technische Beurteilung. Skripte laufen
+nicht, externe Bilder und Inhalte werden nicht geladen, Links sind ohne Ziel
+(beim Darüberfahren erscheint die entschärfte Adresse, z. B. `hxxps`, `[.]`),
+und Anhänge erscheinen nur mit Name und Grösse. Bei älteren Meldungen ist nur
+der Text gespeichert. Daneben
 stehen die Befunde der automatischen Analyse (SPF, DKIM, DMARC, Absender,
-Links, Anhänge) und die Risikoeinschätzung. Bei hohem Risiko soll das Urteil
+Links, Anhänge) und die Risikoeinschätzung. Die Analyse erkennt unter anderem
+Absender, die sich als interne Stelle ausgeben (z. B. «HR-Abteilung»), aber von
+einer fremden Domain kommen, und Links, die eine «.ch»-Adresse nur vortäuschen
+(z. B. `hr-abteilung.ch-secure.com`). Bei hohem Risiko soll das Urteil
 innerhalb von 30 Minuten fallen, bei mittlerem innerhalb von 4 Stunden,
 sonst innerhalb eines Tages.
+
+**Phishing-Simulationen** (vereinbartes Awareness-Training, z. B. von
+Hornetsecurity) erkennt nextDesk an den Kopfzeilen des Anbieters zusammen mit
+dessen Mailserver. Solche Fälle tragen das Kennzeichen **Phishing-Simulation ·
+Anbieter**, werden automatisch als **Phishing** beurteilt und abgeschlossen,
+ohne das Team zu alarmieren; die meldende Person erhält trotzdem den Dank.
+Sperren Sie bei Simulationen keine Absender oder Adressen, sonst stört das das
+Training.
 
 ![Phishing-/Junk-Fall mit sicherer Ansicht und Urteil](images/ag-sicherheitsfall.jpg)
 
@@ -2158,7 +2635,14 @@ Melder bekommen für Phishing-Meldungen keine Eingangsbestätigung, nur eine
 Dankesnachricht und später das Ergebnis.
 
 In der **iOS- und Android-App** heisst der Bereich ebenfalls **Phishing / Junk** (untere
-Leiste, links vom Home-Knopf). Dort fällen Sie das Urteil, weisen den Fall zu,
+Leiste, links vom Home-Knopf). Ein Fall beginnt mit der **Einschätzung**: In
+Klartext steht, was für oder gegen Phishing spricht, zum Beispiel «Gibt sich
+als interne Stelle aus, kommt aber von einer fremden Domain», «Link täuscht
+eine .ch-Adresse vor», «Indikator aus früheren Fällen» oder «SPF, DKIM und
+DMARC bestanden». Die eigene Organisation erkennt die App an den Adressen der
+Melder. Darunter folgen die **gemeldete Mail** als Text (Links entschärft und
+nicht antippbar, Kopfzeilen auf Wunsch) und die **Analyse**; erst dann das
+Urteil, bei dem der Vorschlag markiert ist. Dort fällen Sie das Urteil, weisen den Fall zu,
 haken Massnahmen ab, fragen die Melder nach einem Klick und schliessen den
 Fall ab. Ein Tipp auf eine Phishing-Mitteilung öffnet den Fall direkt. Die
 App zeigt auch Kampagne, bekannte Indikatoren und ausgeführte Massnahmen; die
@@ -2176,7 +2660,7 @@ bearbeiten die Störung vollständig dort.
 **Externe Störungen**: Zusätzlich erscheinen Störungen, die Anbieter auf ihren
 offiziellen Statusseiten melden (z. B. Microsoft 365 mit Teams, Outlook,
 OneDrive und SharePoint, GitHub, Claude, Gemini, App Store, Google Play,
-Init7), gekennzeichnet mit **Extern · Anbieter**. Sie zeigen, dass die Ursache
+Init7, Swisscom, Salt), gekennzeichnet mit **Extern · Anbieter**. Sie zeigen, dass die Ursache
 beim Anbieter liegt und nicht in Ihrem Netz, z. B. wenn mehrere Personen
 melden, dass Teams nicht geht. Das Team wird beim Auftreten benachrichtigt (ohne Wiederholungsalarm); meldet der Anbieter die Störung als
 behoben, schliesst sie sich automatisch. **Statusseite des Anbieters öffnen**
@@ -2366,6 +2850,23 @@ sonst grau.
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
   Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
   Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
+- **Kategorien**: Die Geräteliste ist nach Kategorien gegliedert, sobald es
+  welche gibt – zum Beispiel pro Standort, mit Unterkategorien über bis zu
+  vier Ebenen («Standort Baar → Netzwerk → Switch»). Geräte einer
+  Unterkategorie stehen eingerückt unter ihrer Überschrift; die Zahl neben
+  einer Kategorie zählt alles darunter mit. Jede Überschrift zeigt die Anzahl
+  Geräte und lässt sich ein- und ausklappen. Beim Öffnen der Seite sind alle
+  Kategorien eingeklappt; sobald gesucht oder nach Zustand gefiltert wird,
+  klappen sie auf, damit kein Treffer verborgen bleibt. Geräte ohne Zuordnung stehen
+  unter **Ohne Kategorie**. Mit dem Recht «Assets verwalten» legen Sie über
+  **Kategorien** neue an, benennen sie um oder löschen sie. Beim Löschen
+  bleiben die Geräte überwacht und stehen wieder unter «Ohne Kategorie»;
+  Unterkategorien werden mitgelöscht. Um Geräte zuzuordnen, wählen Sie sie
+  über die Kästchen aus und klicken auf **Kategorie zuweisen**; dort lässt
+  sich auch gleich eine neue Kategorie erstellen oder eine neue
+  Unterkategorie erstellen. Die **Art** eines Geräts
+  (Server, Switch …) bleibt davon unberührt. In der App erscheint die
+  Geräteliste ohne Kategorien.
 - **Aufklappen und pausieren**: Der Pfeil vor einem Gerät klappt seine
   Sensoren mit Zustand, Messwert und letzter Prüfung auf. Mit dem Recht
   «Assets verwalten» pausieren Sie rechts ein ganzes Gerät oder in der
@@ -2453,6 +2954,7 @@ informieren.
 Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
 1. **Geräte hinzufügen** – die Suche findet:
+
    - **Geräte der Infrastruktur.** Geräte mit Adresse stehen zuoberst,
      bereits überwachte Geräte zuunterst in der Liste.
    - **Einträge der IP-Adressverwaltung**, die noch kein Gerät sind (ab zwei
@@ -2478,6 +2980,7 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    Ping-Sensor.
 
 2. **Sensor hinzufügen** (im Gerätedetail) – Art wählen:
+
    - **Ping**: Ist das Gerät erreichbar?
    - **TCP-Port**: Antwortet ein Dienst, z. B. 3389 (RDP) oder 1433 (SQL)?
    - **HTTP**: Antwortet eine Webseite ohne Fehler? Fehlercodes ab 400 und
@@ -2523,7 +3026,9 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    **Betroffene Dienste** (im Sensor-Dialog): Ohne Auswahl gelten bei einem
    Ausfall die Dienste, die am Gerät in der Infrastruktur hinterlegt sind.
    Soll ein Sensor nur bestimmte Dienste betreffen (z. B. «Port 443» nur
-   den Dienst «Abacus»), wählen Sie sie hier; dann wirkt dieser Sensor nur
+   den Dienst «Abacus»), suchen Sie sie im Suchfeld und kreuzen sie an; die Liste ist nach
+   Kategorie gegliedert, und die Suche findet auch Kategorien; die gewählten
+   Dienste stehen oben und lassen sich mit × wieder entfernen; dann wirkt dieser Sensor nur
    auf diese Dienste. Die Störung nennt sie, der Systemstatus der Dienste
    wechselt, und – wenn in den Einstellungen eingeschaltet – erscheint der
    Ausfall als Banner und auf der Statusseite, sobald jemand die Störung
@@ -2531,6 +3036,7 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
 3. Sensoren **bearbeiten** oder **löschen** (Symbole in der Sensorzeile).
    Im Kopf des Gerätedetails:
+
    - **Pausieren** hält die Überwachung des ganzen Geräts an.
    - **Bearbeiten** ändert Name, Art, IP-Adresse und Hostname des Geräts. Die
      Änderung gilt auch in der Infrastruktur; Sensoren ohne eigenes Ziel
@@ -2589,6 +3095,7 @@ der Übersicht, im Kanban und in der App.
   Listen-Detail-Ansicht (Liste links, Ticket rechts).
 - **Mehrfachauswahl**: mehrere Tickets markieren → **Neuer Status** →
   **Status für Auswahl setzen**.
+- **Zusammenführen**: zwei bis zwanzig Tickets markieren → **Zusammenführen** → vorgeschlagenes Haupt-Ticket übernehmen oder ein anderes wählen, Vorschau prüfen und bestätigen (auch in der App). Haupt-Tickets mit Duplikaten zeigen «N Personen betroffen».
 - **SLA-Anzeige**: Jede Karte zeigt die verbleibende Zeit bis zur
   Lösungsfrist; Tickets in einem wartenden Status zeigen stattdessen **«SLA
   pausiert seit …»** (siehe «SLA-Pause in wartenden Status»).
@@ -2654,8 +3161,8 @@ Sie Betreff und Beschreibung direkt dort (**Beschreibung speichern** oder
 Strg/⌘ + Enter).
 
 Oben rechts im Ticketkopf sehen Sie als runde Profilbilder (ohne Foto: Kürzel)
-alle Kolleginnen und Kollegen, die das Ticket gerade geöffnet haben. Bewegen Sie die Maus über ein
-Bild, sehen Sie den Namen. Ein grüner Rand bedeutet, dass die Person gerade
+alle, die das Ticket gerade geöffnet haben, auch die anfragende Person. Bewegen Sie die Maus über ein
+Bild, sehen Sie den Namen; in der App tippen Sie auf die Bilder neben der Ticketnummer. Ein grüner Rand bedeutet, dass die Person gerade
 etwas ändert; so vermeiden Sie doppelte Arbeit.
 
 **Status ändern heisst Ticket übernehmen:** Wer den Status eines Tickets ändert
@@ -2667,7 +3174,11 @@ Schritt eine andere Person aus, gilt diese Auswahl. Bei der Mehrfachauswahl
 (Sammelaktion) wird nicht automatisch zugewiesen.
 
 Über der Beschreibung zeigt die kompakte **Ticket-Zeitachse** alle
-Ereignisse, die Reaktions- und Lösungsfrist sowie längere Lücken. Darunter
+Ereignisse, die Reaktions- und Lösungsfrist sowie längere Lücken (orange
+als Hinweis, rot nur bei einer SLA-Verletzung in der Lücke). Darunter
+Die **Beschreibung** ist aufgeklappt, solange die Unterhaltung leer ist; sobald
+eine Nachricht oder Notiz dazukommt, ist sie eingeklappt und zeigt eine
+Vorschau. Mit dem Pfeil klappen Sie sie auf oder zu (im Web und in der App).
 folgt die **Unterhaltung** mit allen Nachrichten und Notizen. Dateien
 erscheinen direkt bei der Nachricht, zu der sie gehören – auch die Anhänge der
 E-Mail, aus der das Ticket entstanden ist (unter der Beschreibung). Bilder
@@ -2676,7 +3187,7 @@ werden als Vorschau gezeigt, andere Dateien öffnen Sie mit **Öffnen**.
 Rechts unter der **Übersicht** liegt die Karte **Koordination**. Sie zeigt die
 **Supportstufe** mit dem zuständigen Team (**An nächste Stufe übergeben**,
 **Verlauf der Stufen**) sowie Teil-Tickets und Drittanbieter (**Aufteilen**,
-**An Drittanbieter übergeben**).
+**An Drittanbieter übergeben**). Nach dem **Aufteilen** wird das ursprüngliche Ticket gelöscht (Papierkorb); jedes Teil-Ticket zeigt über der Beschreibung, aus welchem Ticket es stammt und welche Teile es noch gibt.
 
 ### Spam-/Phishing-Verdacht der anfragenden Person
 
@@ -2771,20 +3282,61 @@ direkt auf die Zeile ziehen (max. 25 MiB pro Datei).
 
 ### Weitere Aktionen im Ticket
 
-| Aktion                                      | Wofür                                                   |
-| ------------------------------------------- | ------------------------------------------------------- |
-| Anhang hinzufügen                           | Dateien zum Ticket ablegen                              |
-| Beobachtende hinzufügen / Personen in Kopie | Weitere Personen informieren                            |
-| Tickets zusammenführen                      | Doppelte Meldungen bündeln                              |
-| Aufteilen                                   | Ein Ticket in mehrere Aufgaben trennen                  |
-| An nächste Stufe übergeben                  | Eskalation an 2nd/3rd Level mit Übergabenotiz (Pflicht) |
-| An Drittanbieter übergeben                  | Lieferanten einbeziehen, mit Erinnerung                 |
-| Vorgesetzte Person fragen                   | Interne Rückfrage an die Abteilungsleitung              |
-| Freigabe anfordern                          | Genehmigung einholen (z. B. Kosten, Berechtigungen)     |
-| Erinnerung setzen                           | Ticket zu einem Datum wieder vorlegen                   |
-| Arbeitszeit erfassen, Checkliste            | Aufwand und Arbeitsschritte dokumentieren               |
-| Zusammenfassen (KI)                         | Kurzfassung langer Verläufe                             |
-| Ticketakte als PDF                          | Ticket drucken oder ablegen                             |
+| Aktion                                      | Wofür                                                       |
+| ------------------------------------------- | ----------------------------------------------------------- |
+| Anhang hinzufügen                           | Dateien zum Ticket ablegen                                  |
+| Beobachtende hinzufügen / Personen in Kopie | Weitere Personen informieren                                |
+| Tickets zusammenführen                      | Doppelte Meldungen bündeln                                  |
+| Weiterleiten                                | Mail an Lieferanten oder Dritte, ohne die anfragende Person |
+| Aufteilen                                   | Ein Ticket in mehrere Aufgaben trennen                      |
+| An nächste Stufe übergeben                  | Eskalation an 2nd/3rd Level mit Übergabenotiz (Pflicht)     |
+| An Drittanbieter übergeben                  | Lieferanten einbeziehen, mit Erinnerung                     |
+| Vorgesetzte Person fragen                   | Interne Rückfrage an die Abteilungsleitung                  |
+| Freigabe anfordern                          | Genehmigung einholen (z. B. Kosten, Berechtigungen)         |
+| Erinnerung setzen                           | Ticket zu einem Datum wieder vorlegen                       |
+| Arbeitszeit erfassen, Checkliste            | Aufwand und Arbeitsschritte dokumentieren                   |
+| Zusammenfassen (KI)                         | Kurzfassung langer Verläufe                                 |
+| Ticketakte als PDF                          | Ticket drucken oder ablegen                                 |
+
+### Tickets zusammenführen
+
+Beim Zusammenführen läuft ein Duplikat im **Haupt-Ticket** weiter:
+
+- **Status**: Das Duplikat wird gelöst und verweist auf das Haupt-Ticket. Kam
+  es per Mail, erhält die anfragende Person eine Mail mit der neuen Nummer.
+- **Übernahme ins Haupt-Ticket**: die höhere Priorität und die frühere
+  Antwort- und Lösungsfrist; Team, zuständige Person, Kategorie, Assets und
+  Zusatzfelder, falls sie im Haupt-Ticket noch leer sind. Erfasste
+  Arbeitszeiten und offene Checklistenpunkte werden verschoben.
+- **Verlauf**: Im Haupt-Ticket steht eine interne Notiz «Zusammengeführt aus
+  …». Der Bereich **Zusammengeführte Tickets** zeigt die Beiträge und Anhänge
+  jedes Duplikats (aufklappbar).
+- **Antworten**: Externe Antworten im Haupt-Ticket gehen in Kopie auch an die
+  anfragenden Personen der Duplikate. Antwortet jemand per Mail auf ein
+  zusammengeführtes Ticket, landet die Antwort im Haupt-Ticket.
+- **Betroffene Personen**: Kopf des Tickets und Ticketliste zeigen «N
+  Personen betroffen». Ab drei Personen erscheint der Hinweis **Möglicher
+  Störfall** mit **Störungsmeldung veröffentlichen** und **Fall erstellen**.
+- **Aufheben**: Über **Zusammenführung aufheben** im zusammengeführten Ticket
+  wird alles zurückgestellt.
+
+Wie oft zusammengeführt wird, zeigt das Service-Reporting im Bereich
+**Zusammengeführte Tickets** (nach Eingangskanal, Art und Personen mit den
+meisten Mehrfachmeldungen).
+
+### Mail weiterleiten
+
+Mit **Weiterleiten** schicken Sie die ursprüngliche Mail (bei der
+Beschreibung) oder eine einzelne Nachricht (in der Unterhaltung) an beliebige
+Mailadressen, z. B. an einen Lieferanten. Die Mail trägt den Betreff
+«WG: [Ticketnummer] …», enthält Ihre Nachricht, darunter die weitergeleitete
+Nachricht mit Absender, Datum und Betreff sowie deren Anhänge, und geht über
+das Support-Postfach. Die anfragende Person erhält nichts. In der
+Unterhaltung erscheint eine interne Notiz «Weitergeleitet an …», im Verlauf
+«Per Mail weitergeleitet». Dafür brauchen Sie das Recht für interne Notizen;
+ohne aktives Support-Postfach mit Versand ist Weiterleiten nicht möglich.
+
+![Mail weiterleiten](images/ag-ticket-weiterleiten.jpg)
 
 ### An Drittanbieter übergeben
 
@@ -2875,7 +3427,278 @@ Adressen, eine Adresse ihre Details.
 
 ![Neues Ticket als Agent erfassen](images/ag-neues-ticket.jpg)
 
+## Projekte
+
+Unter **Projekte** planen und steuern Sie Vorhaben, die über ein einzelnes Ticket
+hinausgehen: einen Standort neu vernetzen, eine Software einführen, einen
+Serverraum umziehen. Der Menüpunkt erscheint, wenn das Modul eingeschaltet ist
+und Sie Projekte sehen dürfen oder in einem Projekt mitarbeiten.
+
+Projektaufgaben nutzen dieselbe Basis wie Tickets: Zuweisung an Personen und
+Teams, Zeiterfassung, Kommentare und Anhänge. Echte Tickets, Bestellungen,
+Netze und Geräte hängen Sie an ein Projekt, statt sie zu kopieren.
+
+### Übersicht aller Projekte
+
+Die **Übersicht** zeigt alle Projekte, die Sie sehen dürfen, mit Ampel,
+Status, Leitung, Fortschritt, gebuchter Zeit, nächstem Meilenstein und Ende.
+Projekte mit roter Ampel stehen zuoberst. Die Kacheln darüber zählen laufende
+Projekte, überfällige Meilensteine, Projekte mit gelber oder roter Ampel und
+die gebuchten Stunden gegenüber den geplanten. Mit **Laufend**, **Abgeschlossen**
+und **Alle** sowie dem Suchfeld grenzen Sie die Liste ein; **Archiv anzeigen**
+blendet archivierte Projekte ein. Ein Klick auf eine Spaltenüberschrift
+sortiert die Tabelle nach dieser Spalte, ein zweiter Klick kehrt die
+Reihenfolge um, ein dritter stellt die Ausgangsreihenfolge wieder her.
+
+![Übersicht aller Projekte mit Ampel, Fortschritt und Budget](images/ag-projekte.jpg)
+
+### Zeitleiste aller Projekte
+
+Das Register **Zeitplan** neben der Übersicht zeigt alle Projekte auf einer
+gemeinsamen Zeitleiste. Jedes Projekt ist ein Balken vom Start bis zum Ende in
+der Farbe seiner Ampel; die dunklere Füllung zeigt den Fortschritt, die Rauten
+sind die Meilensteine (grün erreicht, rot überfällig). Fehlt einem Projekt das
+Ende, reicht der Balken bis zum spätesten Termin im Plan. Die senkrechte Linie
+markiert heute, ein roter Rahmen ein Projekt, dessen Ende überschritten ist.
+Mit **Wochen**, **Monate** und **Quartale** wählen Sie den Massstab; ein Klick
+öffnet das Projekt.
+
+![Zeitleiste aller Projekte mit Meilensteinen](images/ag-projekte-zeitplan.jpg)
+
+### Ein Projekt anlegen
+
+**Neues Projekt** öffnet das Formular mit Titel, Beschreibung, Projektleitung,
+Abteilung, Start, Ende und Budget in CHF. Als Projektleitung stehen nur
+Agenten zur Wahl. Mit einer **Vorlage** entsteht das Projekt samt Phasen, Aufgaben,
+Checklisten, Abhängigkeiten und Terminen ab dem Startdatum.
+
+Die **Terminplanung** legt fest, was bei Verzögerungen geschieht:
+
+- **Automatisch**: verzögert sich ein Vorgänger, rücken die Nachfolger sofort
+  nach.
+- **Manuell**: die Verschiebung wird nur vorgeschlagen. Unter **Mehr →
+  Termine prüfen** sehen Sie die Änderungen und wenden sie an.
+
+![Formular für ein neues Projekt](images/ad-projekt-neu.jpg)
+
+### Überblick eines Projekts
+
+Der Kopf zeigt Nummer, Titel, Ampel und Fortschritt. Mit dem Stift neben dem Titel
+benennt die Projektleitung das Projekt um. Rechts setzen Sie
+**Status** (Planung, Aktiv, Pausiert, Abgeschlossen) und **Ampel**. Sprechen
+überfällige Meilensteine, überfällige Aufgaben oder die gebuchte Zeit für
+eine andere Farbe, schlägt nextDesk sie mit Begründung vor. Unter **Mehr**
+finden Sie «Projekt bearbeiten», «Termine prüfen», «Als Vorlage speichern»,
+«Archivieren» und «Projekt löschen».
+
+Das Register **Überblick** zeigt Beschreibung, Meilensteine, überfällige
+Aufgaben, Kommentare zum Projekt, Eckdaten und den Verlauf. Mit dem Stift bei
+«Beschreibung» und «Eckdaten» ändert die Projektleitung den Text und die
+Projektdaten. Der Verlauf zeigt die sechs neuesten Einträge; gleiche Änderungen
+am selben Element sind zusammengefasst, **Ältere anzeigen** klappt den Rest
+auf.
+
+![Überblick eines Projekts mit Meilensteinen und Verlauf](images/ag-projekt-ueberblick.jpg)
+
+### Zeitplan
+
+Der **Zeitplan** ist eine Zeitleiste mit allen Phasen, Meilensteinen, Aufgaben
+und Unteraufgaben. Die senkrechte Linie markiert heute, Wochenenden sind
+hinterlegt, und mit **Tage**, **Wochen** und **Monate** wählen Sie den
+Massstab.
+
+- Die Farbe eines Balkens zeigt den Status, die dunklere Füllung den
+  Fortschritt. Ein roter Rahmen bedeutet überfällig.
+- Phasen und Aufgaben mit Unteraufgaben erscheinen als schmaler Balken über
+  den Zeitraum ihrer Unterelemente.
+- Meilensteine sind Rauten.
+- Pfeile zeigen Abhängigkeiten.
+
+Balken ziehen Sie mit der Maus: der ganze Balken verschiebt die Aufgabe, der
+rechte Rand ändert ihr Ende. Hängen andere Elemente davon ab, werden sie
+nachgeführt. Dabei gilt: Nachfolger rücken nur nach hinten, die Dauer in
+Arbeitstagen bleibt erhalten, und Erledigtes bleibt stehen.
+
+Die Reihenfolge der Zeilen ändern Sie ebenfalls mit der Maus: Eine Zeile links am
+Namen ziehen und auf dem oberen oder unteren Rand einer anderen Zeile
+loslassen. Auf der Mitte einer Phase losgelassen, wandert das Element in
+diese Phase.
+
+![Zeitplan eines Projekts mit Abhängigkeiten](images/ag-projekt-zeitplan.jpg)
+
+### Board
+
+Das **Board** zeigt die Aufgaben in den Spalten Offen, In Arbeit, Blockiert und
+Erledigt. Eine Karte in eine andere Spalte zu ziehen, ändert ihren Status. Auf
+der Karte stehen Phase, Termin, Stand der Checkliste, hohe Priorität und die
+zuständige Person.
+
+![Board eines Projekts](images/ag-projekt-board.jpg)
+
+### Liste und Massenbearbeitung
+
+Die **Liste** zeigt alle Elemente als Tabelle mit Status, Zuständigkeit, Start,
+Termin, Priorität, Fortschritt, Soll und Ist. Sie filtern nach Titel, Status
+(auch «Nicht erledigt» und «Überfällig»), Person und Art und sortieren mit einem
+Klick auf die Spaltenüberschrift.
+
+Mit den Häkchen wählen Sie mehrere Elemente aus. Die Leiste darüber setzt
+Status, Zuweisung und Priorität, verschiebt die Termine um eine Anzahl Tage
+oder löscht die Auswahl.
+
+![Liste eines Projekts mit ausgewählten Elementen](images/ag-projekt-liste.jpg)
+
+### Ein Element bearbeiten
+
+Ein Klick auf den Titel öffnet die Seitenleiste des Elements. Dort ändern Sie
+Titel, Status, Priorität, Zuständigkeit, Team, Start, Termin, Schätzung,
+Fortschritt und die Einordnung im Plan. Darunter stehen Beschreibung,
+Checkliste, Abhängigkeiten, Zeit, Verknüpfungen, Anhänge (PDF und Bilder) und
+Kommentare. Punkte der Checkliste erscheinen sofort und lassen sich mit dem
+Stift umbenennen.
+
+Bei Elementen mit Unterelementen ergeben sich Zeitraum, Schätzung und
+Fortschritt aus den Unterelementen. Wer ein Element löscht, löscht auch seine
+Unterelemente und die darauf gebuchten Zeiten.
+
+Mit **Duplizieren** unten in der Seitenleiste legen Sie eine Kopie direkt
+unter dem Original an: eine Phase samt allem, was darin liegt, eine Aufgabe
+samt Unteraufgaben. Checklisten kommen ohne Haken mit, Abhängigkeiten
+innerhalb der Kopie bleiben erhalten, gebuchte Zeiten, Kommentare und Anhänge
+nicht. Alle Kopien beginnen mit dem Status «Offen»; wer in der Kopie zuständig
+ist, erhält eine Benachrichtigung.
+
+![Seitenleiste einer Projektaufgabe](images/ag-projekt-aufgabe.jpg)
+
+### Zeiten und Budget
+
+**Zeiten & Budget** stellt Soll und Ist gegenüber: je Aufgabe, je Phase und für
+das ganze Projekt. Soll ist die Summe der Schätzungen. Ist ist die gebuchte
+Zeit des Elements, seiner Unterelemente und der daran verknüpften Tickets. Der
+Verbrauch zeigt die gebuchte Zeit im Verhältnis zur geplanten; das Budget in
+CHF steht als Richtwert daneben.
+
+![Soll-Ist-Vergleich eines Projekts](images/ag-projekt-budget.jpg)
+
+### Dokumentation
+
+Unter **Dokumentation** führen Sie Konzepte, Netzwerkpläne und Protokolle als
+Dokumente in Markdown mit Überschriften, Listen, Tabellen und Codeblöcken.
+Dateien zum Projekt (PDF und Bilder bis 25 MB) hängen Sie links an. Ein
+Dokument ist nur dann für Gäste sichtbar, wenn **Für Gäste sichtbar** gesetzt
+ist.
+
+![Dokumentation eines Projekts](images/ag-projekt-doku.jpg)
+
+### Verknüpfungen
+
+Unter **Verknüpfungen** hängen Sie an das Projekt oder an einzelne Elemente:
+
+- **Tickets** – sie erscheinen mit Status und gebuchter Zeit; ein Ticket
+  gehört höchstens zu einem Projekt
+- **Shop-Bestellungen**
+- **IP-Netze**, **VLANs** und **IP-Adressen** aus der IP-Adressverwaltung
+- **Monitoring-Sensoren** und **Geräte**
+- **Störungen** und fällige **Serviceaufgaben**
+
+Umgekehrt zeigen Ticket, Bestellung, IP-Netz, IP-Adresse und Sensor ihr
+Projekt an und führen mit einem Klick dorthin. Im Ticket und in der Bestellung
+steht zusätzlich **In Projekt umwandeln**.
+
+Welche Arten Sie verknüpfen dürfen, richtet sich nach Ihren Rechten im
+jeweiligen Modul.
+
+![Verknüpfungen eines Projekts](images/ag-projekt-verknuepfungen.jpg)
+
+### Team und Gäste
+
+Unter **Team & Gäste** legt die Projektleitung fest, wer mitarbeitet:
+
+| Rolle                | Darf                                                             |
+| -------------------- | ---------------------------------------------------------------- |
+| Projektleitung       | alles im Projekt, auch Mitglieder, Status, Ampel und Archiv      |
+| Mitarbeit            | Plan, Zeiten, Dokumente, Verknüpfungen und Kommentare bearbeiten |
+| Gast (kommentierend) | Plan und Freigegebenes lesen, für Gäste sichtbar kommentieren    |
+| Gast (lesend)        | Plan und Freigegebenes lesen                                     |
+
+Mit der Suche unter **Person aus dem Mandanten hinzufügen** finden Sie alle
+Personen des Mandanten nach Name, Funktion oder E-Mail-Adresse, auch solche
+aus dem Entra-Verzeichnis, die sich noch nie angemeldet haben. Für sie wird
+beim Hinzufügen ein Konto vorbereitet; mit der ersten Microsoft-Anmeldung
+sehen sie das Projekt.
+
+Wer einem Projekt hinzugefügt wird oder eine Projektaufgabe zugewiesen
+bekommt, erhält eine Benachrichtigung: in der Glocke und – je nach
+persönlicher Einstellung «Zuweisungen» (in der App «Mir zugewiesene
+Tickets») – auch per E-Mail und als Push-Mitteilung. Ein Klick auf den
+Eintrag öffnet das Projekt bzw. direkt die Aufgabe. Wer die Änderung selbst vornimmt, wird nicht benachrichtigt; bei
+einer Zuweisung mehrerer Aufgaben auf einmal kommt eine einzige Mitteilung.
+
+**Externe Gäste** (Dienstleister, Kunden) laden Sie mit ihrer E-Mail-Adresse
+ein. Gäste sehen ausschliesslich dieses Projekt: Überblick, Zeitplan, Board,
+Liste sowie Dokumente und Kommentare, die als «für Gäste sichtbar» markiert
+sind. Zeiten, Budget, Schätzungen, Verknüpfungen, Anhänge, der Verlauf und
+alle anderen Module bleiben verborgen. Eine offene Einladung gilt 14 Tage und
+lässt sich zurückziehen.
+
+![Mitglieder und Gäste eines Projekts](images/ag-projekt-team.jpg)
+
+### Auslastung
+
+Das Register **Auslastung** zeigt je Person die geplanten Stunden pro
+Arbeitstag für vier Wochen. Eingerechnet sind:
+
+- **Projektaufgaben** mit ihrem Restaufwand (Schätzung abzüglich Fortschritt)
+- **Serviceaufgaben** mit ihrer Schätzung
+- **offene Tickets** mit einer Pauschale je Ticket
+
+Der Aufwand verteilt sich gleichmässig auf die Arbeitstage bis zum Termin;
+Überfälliges fällt auf heute. Die Farbe einer Zelle zeigt, wie voll der Tag
+ist; rot bedeutet mehr Arbeit als Arbeitszeit. Aufgaben ohne Schätzung zählen
+nicht in die Stunden und werden bei der Person ausgewiesen.
+
+![Auslastung der Mitarbeitenden über vier Wochen](images/ag-projekt-auslastung.jpg)
+
+### Vorlagen
+
+Das Register **Vorlagen** listet die gespeicherten Projektvorlagen. Eine
+Vorlage entsteht aus einem bestehenden Projekt über **Mehr → Als Vorlage
+speichern** und enthält Phasen, Aufgaben, Checklisten, Abhängigkeiten,
+Dokumente und die Termine als Abstand zum Projektstart.
+
+### Projekte in der App
+
+In der App öffnen Sie **Projekte** über einen langen Druck auf den
+Home-Knopf unter **Öffnen** (Mitglieder des Teams **System Engineer**) oder
+über eine Mitteilung zu einem Projekt. Die Liste zeigt laufende und
+abgeschlossene Projekte mit Status, Ampel und Fortschritt und lässt sich nach
+Titel, Nummer oder Projektleitung durchsuchen.
+
+Ein Projekt zeigt Eckdaten, Beschreibung, unter **Meine** die Ihnen
+zugewiesenen offenen Aufgaben, unter **Ganzer Plan** alle Phasen, Meilensteine
+und Aufgaben, das Team und die Kommentare zum Projekt. In einer Aufgabe
+setzen Sie den Status, haken Punkte der Checkliste ab und
+schreiben Kommentare – sofern Ihre Projektrolle das erlaubt.
+Projekte anlegen, planen, Zeiten buchen und dokumentieren können Sie in
+der Web-App.
+
 ## Dienste und Systemstatus
+
+Die Liste unter **Dienste** ist nach Kategorie gegliedert (Ort · Kategorie,
+Dienste ohne Zuordnung unter «Ohne Kategorie»). Ein Klick auf eine
+Kategorienzeile klappt deren Dienste ein und wieder aus; die Zahl daneben
+nennt die Anzahl der Dienste.
+
+**Intern oder extern**: Im Formular eines Dienstes legt der Schalter
+**Interner Dienst** fest, wen eine Störung betrifft. Neue und bestehende
+Dienste sind extern. Betrifft eine Störungsmeldung nur interne Dienste, sehen
+Mitarbeitende keinen Banner und erhalten keine Push-Mitteilung; Agenten sehen
+jede Meldung. Nennt eine Meldung interne und externe Dienste, sehen
+Mitarbeitende sie mit den externen Diensten. Für externe Dienste können sich
+alle unter **Benachrichtigungen → Störungen** eine Push-Mitteilung auf iPhone
+und Android bestellen, für alle oder einzelne Dienste; sie kommt innert rund
+einer Minute, sobald die Meldung erscheint. Meldungen ohne zugeordneten Dienst
+gehen an alle, die «Störungen» eingeschaltet haben.
 
 Unter **Dienste** öffnet **Details** bei einem Dienst die Dienstansicht:
 
@@ -2943,7 +3766,7 @@ Einleitung, Abschnitte, Schritte, Hinweise). KI-Entwürfe aus Tickets erscheinen
 
 Die Bereiche des Lagers sind wie in den Einstellungen in Gruppen geordnet:
 **Bestand** (Übersicht, Artikel, Lagerorte), **Buchungen** (Bewegungen,
-Reservationen, Inventur) und **Planung** (Beschaffung, Automatik; nur für die
+Inventur) und **Planung** (Beschaffung, Automatik; nur für die
 Lagerverwaltung). Eine Meldung oben gilt für den Bereich, in dem sie entstanden
 ist, und verschwindet beim Wechsel in einen anderen Bereich.
 
@@ -3018,7 +3841,11 @@ Mit **Löschen** im Formular entfernen Sie einen Artikel endgültig (auch aus de
 Shop). Hat er schon Bewegungen oder Reservationen, lässt er sich nicht löschen;
 nextDesk bietet dann an, ihn zu **archivieren**.
 
-Unter **Lagerorte** ändern Sie Ortscode und Bezeichnung mit dem Stift
+Unter **Lagerorte** steht jedes Lager als eigene Karte mit Standort und Anzahl Lagerplätze; darin sind die Lagerplätze als Liste aufgeführt, sortiert nach Code. **Lager erfassen** (oben rechts) legt ein neues Lager an, **Lagerplatz** in der Karte einen neuen Platz in diesem Lager. **Bestand** zeigt die Artikel an einem Lagerplatz.
+
+![Lager als Karten mit ihren Lagerplätzen](images/ag-lagerorte.jpg)
+
+Unter **Lagerorte** ändern Sie Lagerort, Lager und Bemerkung mit dem Stift
 (**Bearbeiten**). Mit dem Papierkorb (**Löschen**) steht ein Lagerort nicht
 mehr zur Auswahl; bisherige Buchungen bleiben erhalten. Buchen Sie einen
 vorhandenen Bestand vorher an einen anderen Ort um. Gelöschte Lagerorte
@@ -3031,6 +3858,45 @@ laufende Inventur, die nicht mehr gebraucht wird, entfernen Sie in der Liste mit
 Bestand bleibt unverändert, und im Audit-Protokoll steht «Inventur gelöscht».
 Abgeschlossene Inventuren lassen sich nicht löschen. Löschen dürfen alle, die
 Inventuren starten dürfen (Recht «Lagerorte und Artikelstammdaten verwalten»).
+
+## Anlässe
+
+Unter **Planung und Betrieb → Anlässe** (früher «Raumplanung») stehen alle
+geplanten Anlässe mit Raum, Zeit, Aufgaben und Technik. Bestellungen der
+Anlässe-App werden automatisch übernommen: aus dem PDF **Anlassdetails** und
+aus der Mail «Neue Bestellung Einrichten Anlässe <Nummer>». Beide Mails einer
+Bestellung ergeben einen einzigen Anlass. Übernommen werden nur die Angaben
+für die ICT: Anlass, Datum, Zeit, Ort, Personenzahl, Technik und die
+Bemerkung der Bestellung (unter **Bemerkungen**). Gastro, Bestuhlung und
+Kostenstelle stehen im PDF.
+Geplant wird der Anlass von Beginn bis Ende laut Bestellung (ohne Endzeit
+30 Minuten ab Beginn); fehlt etwas oder ist der Raum belegt,
+steht der Anlass mit dem Grund unter **Klärung und Übernahme erforderlich**.
+
+Rechts in der Zeile eines Anlasses öffnet **PDF** die gesendete Bestellung
+(«Anlassdetails»), sofern eine gespeichert ist. Daneben steht der
+**Auftragsstatus** (z. B. **Bereit**); ein Klick darauf ändert ihn direkt,
+ohne den Anlass aufzuklappen.
+
+## Eintritte und Austritte
+
+Unter **Planung und Betrieb → Eintritte** steht für jeden Eintritt bzw.
+Austritt eine Karte. Über der Liste wählen Sie **Offen** (Standard), **Erledigt** oder **Alle** und suchen nach Name, Abteilung, Ort, Führung oder Ticketnummer; erledigt ist ein Eintritt, wenn alle Aufgaben erledigt sind. Oben sehen Sie Name, Datum mit Countdown (z. B. «in
+12 Tagen»), Abteilung, Ort, Führung und ICT-Verantwortung sowie rechts den
+Fortschritt («1 / 6 Aufgaben erledigt»). Die Karten sind eingeklappt; ein Klick auf die Karte oder den Pfeil rechts klappt sie auf. Darunter stehen die Aufgaben nach
+Fälligkeit gruppiert: **Überfällig** (rot), **Nächste 7 Tage** und
+**Später**; erledigte Aufgaben sind unter **Erledigt** eingeklappt. Jede
+Zeile zeigt Fälligkeit («in 3 Tagen», «1 Tag überfällig»), die zuständige
+Abteilung bzw. Person (wenn nicht die ICT-Verantwortung) und den Status.
+Mit dem **Kästchen** haken Sie eine Aufgabe ab, im Feld rechts wählen Sie «In
+Arbeit» oder «Blockiert». Verzögert sich eine Aufgabe, verknüpfen Sie über den
+**Schraubenschlüssel** ein Ausnahmeticket; es erscheint dann unter der
+Aufgabe. Bei Eintritten aus einer Mail klappen Sie unten **Angaben aus der
+Eintrittsmeldung** auf. Die Eintrittsmeldung selbst (PDF) öffnen Sie mit **Eintrittsmeldung (PDF) öffnen**. Mit dem Recht, Eintritte zu verwalten, löschen Sie dort mit **Eintritt löschen** bzw. **Austritt löschen** den ganzen Eintritt samt Aufgaben; sie bleibt beim Eintritt gespeichert, auch wenn das Mail-Ticket entfällt. In der App steht auf der Startseite immer die Kachel **Eintritte**, auch ohne offene Eintritte («Keine offenen Eintritte»).
+
+**Mutationen.** Mit der Art **Mutation** erfassen Sie Änderungen bei bestehenden Mitarbeitenden, etwa eine Namensänderung nach einer Heirat oder einen Wechsel von Abteilung/Angebot, Funktion, Standort oder Pensum. In der Liste ist die Karte mit **Mutation** markiert und zeigt bisherige und neue Werte (z. B. «Namensänderung Anna Muster → Anna Meier»). Aufgaben, Zuweisung, Stellvertretung und Löschen funktionieren wie bei Eintritten. Unter **Abteilungsaufgaben** legen Sie mit der Art **Mutation** zusätzliche Aufgaben für Abteilungen fest.
+
+![Eintritt mit Aufgaben nach Fälligkeit](images/ag-eintritte.jpg)
 
 ## Lager-Automatik, Rücknahmen und Austritt
 
@@ -3056,10 +3922,10 @@ wieder an Lager.
   diesem Register: **Bestellt**, **Erledigt** oder **Verwerfen**.
 - **Reservationen:** Offene Reservationen werden nach der eingestellten Zahl
   Tage automatisch freigegeben (stündliche Prüfung). Reservationen aus
-  Shop-Bestellungen, Eintritten und Raumbuchungen bleiben bestehen.
-- **Inventur:** Pro Lagerort ein Intervall in Tagen. Ist es seit der letzten
-  abgeschlossenen Inventur abgelaufen, erhält die Lagerverwaltung die
-  Mitteilung «Inventur fällig».
+  Shop-Bestellungen, Eintritten und Anlässen bleiben bestehen.
+- **Inventur:** Pro Lager ein Intervall in Tagen. Ist es seit der letzten
+  abgeschlossenen Inventur des am längsten nicht gezählten Lagerplatzes
+  abgelaufen, erhält die Lagerverwaltung die Mitteilung «Inventur fällig».
 
 **Austritt:** Im Austritt öffnen Sie **Rückgaben und Lizenzen**. Neben den
 zugewiesenen Geräten listet nextDesk die offenen **Shop-Ausleihen** und die

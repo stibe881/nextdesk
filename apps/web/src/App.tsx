@@ -64,6 +64,7 @@ import {
   Laptop,
   ShoppingBag,
   List,
+  FolderKanban,
   ListChecks,
   Package,
   MailX,
@@ -108,6 +109,7 @@ import { createPersonalWorkspace, deleteAccount } from "./lib/account";
 import {
   assetIdFromSearch,
   inventoryIdFromSearch,
+  inventoryLocationIdFromSearch,
   rackFromSearch,
 } from "./lib/asset-labels";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
@@ -134,29 +136,20 @@ import { TicketComposer } from "./ticket-composer";
 import { clearTicketComposerDraft } from "./lib/ticket-composer-draft";
 import { TicketListIncidentHint } from "./ticket-learning";
 import { TicketDetail } from "./ticket-detail";
-import { TenantAdminSettings } from "./tenant-admin-settings";
-import { KnowledgeBase } from "./knowledge-base";
+import {
+  loadMergePreview,
+  MergePreviewSummary,
+  type MergePreview,
+} from "./ticket-merge-insights";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
-import { PersonOverview } from "./person-overview";
 import type { PersonRef } from "./lib/person-overview";
-import { ServiceReporting } from "./service-reporting";
-import { TeamSupervision } from "./team-supervision";
 import { MyPrioritiesCard } from "./my-priorities";
-import { ProblemCandidates } from "./problem-insights";
 import { TicketKanban } from "./ticket-kanban";
 import { SupportLevelQueueFilter } from "./support-level-queue-filter";
 import {
   supportLevelOfFilter,
   type SupportLevelFilter,
 } from "./lib/support-levels";
-import { Infrastructure } from "./infrastructure";
-import { Ipam } from "./ipam";
-import { IpamImportWizard } from "./ipam-import";
-import { IpamApiSettings } from "./ipam-api-settings";
-import { IpamDiscoveryPanel } from "./ipam-discovery";
-import { Incidents } from "./incidents";
-import { Monitoring } from "./monitoring";
-import { SecurityCases } from "./security-cases";
 import {
   HomeLayoutEditor,
   loadHomeLayout,
@@ -164,7 +157,6 @@ import {
   type HomeLayout,
 } from "./home-layout";
 import { absenceLabel, loadActiveAbsences } from "./lib/active-absences";
-import { ServiceAssets } from "./service-assets";
 import {
   isPublicServiceStatusBadgeRequested,
   isPublicServiceStatusRequested,
@@ -174,15 +166,7 @@ import {
   ServiceStatus,
 } from "./service-status";
 import { IMPRINT_URL, PRIVACY_URL, SUPPORT_URL } from "./lib/site-links";
-import { Contracts } from "./contracts";
-import { Licenses } from "./licenses";
-import { EventSpaces } from "./event-spaces";
-import { Onboarding } from "./onboarding";
-import { Inventory } from "./inventory";
-import { Shop } from "./shop";
-import { TeamsAdmin } from "./teams-admin";
 import { teamsAdminApi } from "./lib/teams-admin";
-import { PersonalSettings } from "./personal-settings";
 import { ApprovalInboxCard } from "./approval-inbox";
 import {
   OAuthConsentScreen,
@@ -253,11 +237,85 @@ import { nextExpandedAccordionId } from "./lib/navigation-accordion";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 import { setFormality, tn } from "./lib/formality";
 import { loadServiceTaskAccess, ServiceTasks } from "./service-tasks";
+import {
+  loadProjectModuleAccess,
+  type ProjectModuleAccess,
+} from "./lib/projects-api";
+import {
+  onOpenProjectRequest,
+  setProjectsAvailable,
+} from "./lib/project-navigation";
 
 import { confirmDialog } from "./app-dialog";
+import { lazySection } from "./lazy-section";
+
+const TenantAdminSettings = lazySection(
+  () => import("./tenant-admin-settings"),
+  "TenantAdminSettings",
+);
+const ServiceAssets = lazySection(
+  () => import("./service-assets"),
+  "ServiceAssets",
+);
+const Monitoring = lazySection(() => import("./monitoring"), "Monitoring");
+const Inventory = lazySection(() => import("./inventory"), "Inventory");
+const Shop = lazySection(() => import("./shop"), "Shop");
+const KnowledgeBase = lazySection(
+  () => import("./knowledge-base"),
+  "KnowledgeBase",
+);
+const EventSpaces = lazySection(() => import("./event-spaces"), "EventSpaces");
+const Infrastructure = lazySection(
+  () => import("./infrastructure"),
+  "Infrastructure",
+);
+const Onboarding = lazySection(() => import("./onboarding"), "Onboarding");
+const Incidents = lazySection(() => import("./incidents"), "Incidents");
+const ServiceReporting = lazySection(
+  () => import("./service-reporting"),
+  "ServiceReporting",
+);
+const Contracts = lazySection(() => import("./contracts"), "Contracts");
+const IpamDiscoveryPanel = lazySection(
+  () => import("./ipam-discovery"),
+  "IpamDiscoveryPanel",
+);
+const TeamSupervision = lazySection(
+  () => import("./team-supervision"),
+  "TeamSupervision",
+);
+const Licenses = lazySection(() => import("./licenses"), "Licenses");
+const PersonalSettings = lazySection(
+  () => import("./personal-settings"),
+  "PersonalSettings",
+);
+const IpamImportWizard = lazySection(
+  () => import("./ipam-import"),
+  "IpamImportWizard",
+);
+const PersonOverview = lazySection(
+  () => import("./person-overview"),
+  "PersonOverview",
+);
+const SecurityCases = lazySection(
+  () => import("./security-cases"),
+  "SecurityCases",
+);
+const TeamsAdmin = lazySection(() => import("./teams-admin"), "TeamsAdmin");
+const Ipam = lazySection(() => import("./ipam"), "Ipam");
+const IpamApiSettings = lazySection(
+  () => import("./ipam-api-settings"),
+  "IpamApiSettings",
+);
+const Projects = lazySection(() => import("./projects"), "Projects");
+const ProblemCandidates = lazySection(
+  () => import("./problem-insights"),
+  "ProblemCandidates",
+);
 type Section =
   | "Übersicht"
   | "Tickets"
+  | "Projekte"
   | "Shop"
   | "Teams"
   | "Arbeitsplatz"
@@ -276,7 +334,7 @@ type Section =
   | "Störungen"
   | "Verträge"
   | "Lizenzen"
-  | "Raumplanung"
+  | "Anlässe"
   | "Eintritte"
   | "Wissen"
   | "Berichte"
@@ -410,6 +468,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
   workplaceFirstNavigation([
     { label: "Übersicht", Icon: LayoutDashboard },
     { label: "Tickets", Icon: Ticket },
+    { label: "Projekte", Icon: FolderKanban },
     { label: "Shop", Icon: ShoppingBag },
     { label: "Teams", Icon: UsersRound },
     { label: "Fälle", Icon: FileWarning },
@@ -424,7 +483,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Überwachung", Icon: Radar },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
-    { label: "Raumplanung", Icon: CalendarDays },
+    { label: "Anlässe", Icon: CalendarDays },
     { label: "Eintritte", Icon: ClipboardList },
     { label: "Verträge", Icon: FileText },
     { label: "Lizenzen", Icon: KeyRound },
@@ -438,7 +497,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Tickets", "Shop", "Teams", "Fälle"],
+    sectionLabels: ["Tickets", "Projekte", "Shop", "Teams", "Fälle"],
   },
   {
     heading: "SICHERHEIT & STÖRUNGEN",
@@ -450,7 +509,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "PLANUNG & BETRIEB",
     id: "navigation-category-operations",
     navigationLabel: "Planung und Betrieb",
-    sectionLabels: ["Raumplanung", "Eintritte", "Serviceaufgaben"],
+    sectionLabels: ["Anlässe", "Eintritte", "Serviceaufgaben"],
   },
   {
     heading: "RESSOURCEN",
@@ -1292,15 +1351,22 @@ function baseNotificationPresentation(
           "Erinnerung: Ihre Rückmeldung fehlt",
         ),
       };
-    case "ticket.mention":
+    case "ticket.mention": {
+      const author = notificationPayloadText(notification, "authorName", 120);
       return {
-        description: tn(
-          `Du wurdest in ${ticketLabel} erwähnt.`,
-          `Sie wurden in ${ticketLabel} erwähnt.`,
-        ),
+        description: author
+          ? tn(
+              `${author} hat dich in ${ticketLabel} erwähnt. Bitte wirf einen Blick darauf.`,
+              `${author} hat Sie in ${ticketLabel} erwähnt. Bitte werfen Sie einen Blick darauf.`,
+            )
+          : tn(
+              `Du wurdest in ${ticketLabel} erwähnt. Bitte wirf einen Blick darauf.`,
+              `Sie wurden in ${ticketLabel} erwähnt. Bitte werfen Sie einen Blick darauf.`,
+            ),
         Icon: AtSign,
         title: tn("Du wurdest erwähnt", "Sie wurden erwähnt"),
       };
+    }
     case "ticket.resolved":
       return {
         description: `${ticketLabel} wurde gelöst.`,
@@ -1748,6 +1814,63 @@ function baseNotificationPresentation(
           }. Siehe Lizenzen › Rückgewinnung.`,
           Icon: Bell,
           title: "Lizenzen zurückgewinnen",
+        };
+      }
+      if (notification.kind === "onboarding.assigned") {
+        const person = notificationPayloadText(
+          notification,
+          "employeeName",
+          120,
+        );
+        const entryKind = isRecord(notification.payload)
+          ? notification.payload.entryKind
+          : null;
+        const by = notificationPayloadText(notification, "actorName", 80);
+        const standIn = notificationPayloadText(
+          notification,
+          "delegatedFor",
+          80,
+        );
+        return {
+          description: [
+            person,
+            standIn ? `Stellvertretung für ${standIn}` : null,
+            by ? `von ${by}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          Icon: ClipboardList,
+          title:
+            entryKind === "offboarding"
+              ? "Austritt zugewiesen"
+              : entryKind === "change"
+                ? "Mutation zugewiesen"
+                : "Eintritt zugewiesen",
+        };
+      }
+      if (notification.kind.startsWith("project.")) {
+        const project =
+          notificationPayloadText(notification, "projectTitle", 120) ??
+          "Projekt";
+        if (notification.kind === "project.member_added") {
+          const by = notificationPayloadText(notification, "actorName", 80);
+          return {
+            description: by ? `${project} · hinzugefügt von ${by}` : project,
+            Icon: FolderKanban,
+            title: "Zu einem Projekt hinzugefügt",
+          };
+        }
+        const task = notificationPayloadText(notification, "taskTitle", 120);
+        const count = isRecord(notification.payload)
+          ? Number(notification.payload.taskCount)
+          : NaN;
+        return {
+          description: task ? `${task} · ${project}` : project,
+          Icon: FolderKanban,
+          title:
+            Number.isInteger(count) && count > 1
+              ? `${count} Projektaufgaben zugewiesen`
+              : "Projektaufgabe zugewiesen",
         };
       }
       if (notification.kind.startsWith("service_task.")) {
@@ -2809,17 +2932,24 @@ const LABEL_LINK_STORAGE_KEY = "nextdesk.pendingLabelLink";
 const initialAssetLabelDeepLink: {
   assetId: string | null;
   inventoryId: string | null;
+  inventoryLocationId: string | null;
   rack: string | null;
 } = (() => {
   if (typeof window === "undefined")
-    return { assetId: null, inventoryId: null, rack: null };
+    return {
+      assetId: null,
+      inventoryId: null,
+      inventoryLocationId: null,
+      rack: null,
+    };
   try {
     const url = new URL(window.location.href);
     let search = url.search;
     const hasLabelParam =
       url.searchParams.has("asset") ||
       url.searchParams.has("rack") ||
-      url.searchParams.has("inventory");
+      url.searchParams.has("inventory") ||
+      url.searchParams.has("inventoryLocation");
     if (hasLabelParam) {
       // Scanned while signed out: the sign-in redirect drops the address
       // parameters, so remember the link for this tab until it is used.
@@ -2831,6 +2961,7 @@ const initialAssetLabelDeepLink: {
       url.searchParams.delete("asset");
       url.searchParams.delete("rack");
       url.searchParams.delete("inventory");
+      url.searchParams.delete("inventoryLocation");
       window.history.replaceState(window.history.state, "", url.toString());
     } else {
       try {
@@ -2841,10 +2972,20 @@ const initialAssetLabelDeepLink: {
     }
     const assetId = assetIdFromSearch(search);
     const inventoryId = assetId ? null : inventoryIdFromSearch(search);
-    const rack = assetId || inventoryId ? null : rackFromSearch(search);
-    return { assetId, inventoryId, rack };
+    const inventoryLocationId =
+      assetId || inventoryId ? null : inventoryLocationIdFromSearch(search);
+    const rack =
+      assetId || inventoryId || inventoryLocationId
+        ? null
+        : rackFromSearch(search);
+    return { assetId, inventoryId, inventoryLocationId, rack };
   } catch {
-    return { assetId: null, inventoryId: null, rack: null };
+    return {
+      assetId: null,
+      inventoryId: null,
+      inventoryLocationId: null,
+      rack: null,
+    };
   }
 })();
 
@@ -3059,6 +3200,15 @@ function TicketList({
                     {ticket.requesterName}
                   </span>
                 ) : null}
+                {ticket.affectedPeople && ticket.affectedPeople > 1 ? (
+                  <span
+                    className="ticket-meta__affected"
+                    title="Personen über zusammengeführte Tickets"
+                  >
+                    <UsersRound aria-hidden="true" size={12} strokeWidth={2} />
+                    {ticket.affectedPeople} Personen betroffen
+                  </span>
+                ) : null}
                 {ticket.priority ? <span>{ticket.priority}</span> : null}
                 <span>vor {ticket.age}</span>
               </p>
@@ -3183,6 +3333,12 @@ function TicketListDetailPreview({
             <dd>{ticket.requesterName}</dd>
           </div>
         ) : null}
+        {ticket.affectedPeople && ticket.affectedPeople > 1 ? (
+          <div>
+            <dt>Betroffen</dt>
+            <dd>{ticket.affectedPeople} Personen (zusammengeführt)</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Queue</dt>
           <dd>{ticket.queueLabel}</dd>
@@ -3229,6 +3385,10 @@ function AuthenticatedApp() {
   const [tourOpen, setTourOpen] = useState(false);
   const [globalSearchTarget, setGlobalSearchTarget] =
     useState<GlobalSearchResult | null>(null);
+  // Aus einer Mitteilung geöffneter Ein- oder Austritt.
+  const [onboardingFocusId, setOnboardingFocusId] = useState<string | null>(
+    null,
+  );
   const [workplaceRequestedView, setWorkplaceRequestedView] =
     useState<WorkplaceRequestedView | null>(null);
   const [period, setPeriod] = useState<Period>("Heute");
@@ -3327,6 +3487,9 @@ function AuthenticatedApp() {
   // Device opened from a ticket: the asset list starts filtered to it.
   // Article from a printed stock label (QR link): shown once in the Lager.
   const [inventoryFocusId, setInventoryFocusId] = useState<string | null>(null);
+  const [inventoryFocusLocationId, setInventoryFocusLocationId] = useState<
+    string | null
+  >(null);
   const [assetFocusQuery, setAssetFocusQuery] = useState<{
     query: string;
     id: number;
@@ -3427,6 +3590,12 @@ function AuthenticatedApp() {
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
   const [canReadReports, setCanReadReports] = useState(false);
   const [canReadServiceTasks, setCanReadServiceTasks] = useState(false);
+  const [projectAccess, setProjectAccess] =
+    useState<ProjectModuleAccess | null>(null);
+  const [projectFocusId, setProjectFocusId] = useState<string | null>(null);
+  const [projectFocusTaskId, setProjectFocusTaskId] = useState<string | null>(
+    null,
+  );
   const [serviceTaskFocusId, setServiceTaskFocusId] = useState<string | null>(
     null,
   );
@@ -3938,6 +4107,13 @@ function AuthenticatedApp() {
         setSection("Lager");
         return;
       }
+      if (initialAssetLabelDeepLink.inventoryLocationId) {
+        setInventoryFocusLocationId(
+          initialAssetLabelDeepLink.inventoryLocationId,
+        );
+        setSection("Lager");
+        return;
+      }
       if (initialAssetLabelDeepLink.rack) {
         setSection("Infrastruktur");
         return;
@@ -4220,6 +4396,44 @@ function AuthenticatedApp() {
     );
     return () => window.cancelAnimationFrame(frame);
   }, [keyboardHelpOpen]);
+
+  useEffect(() => {
+    // Projekte: the function checks module, rights and memberships itself, so
+    // guests without any role get their answer here too.
+    if (!session || !activeTenant) {
+      setProjectAccess(null);
+      return;
+    }
+    let mounted = true;
+    void loadProjectModuleAccess(activeTenant.id).then((access) => {
+      if (mounted) setProjectAccess(access);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, session, tenantFeatures]);
+
+  const projectsVisible =
+    projectAccess?.enabled === true && projectAccess.visible;
+  // An external guest has no role in the tenant: only «Projekte» is shown.
+  const projectGuestOnly = projectsVisible && projectAccess?.guestOnly === true;
+  useEffect(() => {
+    if (projectGuestOnly && section !== "Projekte") setSection("Projekte");
+  }, [projectGuestOnly, section]);
+  useEffect(() => {
+    setProjectsAvailable(projectsVisible && !projectGuestOnly);
+    return () => setProjectsAvailable(false);
+  }, [projectGuestOnly, projectsVisible]);
+  useEffect(
+    () =>
+      // Any detail view can ask for a project; close what lies on top of it.
+      onOpenProjectRequest((projectId) => {
+        setSelectedTicketId(null);
+        setProjectFocusId(projectId);
+        setSection("Projekte");
+      }),
+    [],
+  );
 
   useEffect(() => {
     // Serviceaufgaben: visible with the module switched on and at least the
@@ -4635,6 +4849,7 @@ function AuthenticatedApp() {
       restrictedWorkspaceSections.push("Verträge", "Lizenzen");
     }
     if (reportsAvailable) restrictedWorkspaceSections.push("Berichte");
+    if (projectsVisible) restrictedWorkspaceSections.push("Projekte");
     // Employees open the read-only status from the badge in the navigation.
     if (serviceStatusReadable) restrictedWorkspaceSections.push("Systemstatus");
     if (restrictedWorkspaceSections.includes(section)) return;
@@ -4653,6 +4868,7 @@ function AuthenticatedApp() {
     tenantFeatures,
     tenantFeaturesLoading,
     ticketAccessLoading,
+    projectsVisible,
   ]);
 
   useEffect(() => {
@@ -4863,6 +5079,7 @@ function AuthenticatedApp() {
       ((nextSection === "Verträge" || nextSection === "Lizenzen") &&
         contractsAvailable) ||
       (nextSection === "Berichte" && reportsAvailable) ||
+      (nextSection === "Projekte" && projectsVisible) ||
       (nextSection === "Systemstatus" && serviceStatusReadable);
     if (
       !canWorkTickets &&
@@ -4926,7 +5143,13 @@ function AuthenticatedApp() {
     if (focus?.kind === "security") setSecurityFocusId(focus.id);
     else if (focus?.kind === "incident") setIncidentFocusId(focus.id);
     else if (focus?.kind === "serviceTask") setServiceTaskFocusId(focus.id);
-    else if (focus?.kind === "inventoryItem") setInventoryFocusId(focus.id);
+    else if (focus?.kind === "project") {
+      setProjectFocusId(focus.id);
+      setProjectFocusTaskId(focus.taskId);
+    } else if (focus?.kind === "onboardingEntry") {
+      setGlobalSearchTarget(null);
+      setOnboardingFocusId(focus.id);
+    } else if (focus?.kind === "inventoryItem") setInventoryFocusId(focus.id);
     else if (focus?.kind === "shopOrder") setShopFocusOrderId(focus.id);
     else if (focus?.kind === "infrastructureDevice") {
       setInfrastructureFocusId(focus.id);
@@ -5512,7 +5735,8 @@ function AuthenticatedApp() {
     if (item.label === "Serviceaufgaben") {
       return isFeatureEnabled("service.tasks") && canReadServiceTasks;
     }
-    if (item.label === "Raumplanung") return isFeatureEnabled("event.spaces");
+    if (item.label === "Projekte") return projectsVisible;
+    if (item.label === "Anlässe") return isFeatureEnabled("event.spaces");
     if (item.label === "Eintritte") {
       return isFeatureEnabled("onboarding.entries");
     }
@@ -5526,6 +5750,7 @@ function AuthenticatedApp() {
       item.label === "Berichte" ||
       item.label === "Systemstatus" ||
       item.label === "Serviceaufgaben" ||
+      item.label === "Projekte" ||
       item.label === "Lager",
   );
   // The shop is open to everybody, also next to restricted work sections.
@@ -5533,7 +5758,7 @@ function AuthenticatedApp() {
   // Employees without ticket work get a flat menu without room planning,
   // inventory or workplace; the status is a badge on top of the menu.
   const employeeHiddenSections: readonly Section[] = [
-    "Raumplanung",
+    "Anlässe",
     "Infrastruktur",
     "IP-Adressen",
     "Überwachung",
@@ -5541,13 +5766,19 @@ function AuthenticatedApp() {
     "Arbeitsplatz",
     "Systemstatus",
   ];
-  const workSections = canWorkTickets
-    ? featureSections
-    : [...requesterSections, ...restrictedWorkSections, ...shopSections].filter(
-        (item, index, list) =>
-          !employeeHiddenSections.includes(item.label) &&
-          list.findIndex((other) => other.label === item.label) === index,
-      );
+  const workSections = projectGuestOnly
+    ? featureSections.filter((item) => item.label === "Projekte")
+    : canWorkTickets
+      ? featureSections
+      : [
+          ...requesterSections,
+          ...restrictedWorkSections,
+          ...shopSections,
+        ].filter(
+          (item, index, list) =>
+            !employeeHiddenSections.includes(item.label) &&
+            list.findIndex((other) => other.label === item.label) === index,
+        );
   const workSectionAvailable = (label: Section) =>
     workSections.some((item) => item.label === label);
   const quickCreateActions = quickCreateActionsForContext({
@@ -6068,7 +6299,7 @@ function AuthenticatedApp() {
   );
   const navigationAttentionFor = (label: Section): number | null =>
     navigationItemAttentionCount(
-      label === "Raumplanung"
+      label === "Anlässe"
         ? eventSpaceNavigationAccess
           ? eventSpaceAttentionCount
           : null
@@ -6106,25 +6337,27 @@ function AuthenticatedApp() {
     tone: "urgent" | "muted" | null,
   ) => (tone ? `${base} ${base.split(" ")[0]}--${tone}` : base);
   const navigationAttentionDescription = (label: Section): string =>
-    label === "Raumplanung"
-      ? "Raumaufträge benötigen Zuweisung oder Klärung"
+    label === "Anlässe"
+      ? "Anlässe benötigen Zuweisung oder Klärung"
       : label === "Shop"
         ? "neue Bestellungen warten auf Bearbeitung"
         : label === "Tickets"
           ? "Tickets sind noch keinem Agenten zugewiesen"
-          : label === "Phishing / Junk"
-            ? teamModuleUrgent.securityCases
-              ? "offene Phishing-/Junk-Fälle, davon nicht alle zugewiesen"
-              : "offene Phishing-/Junk-Fälle"
-            : label === "Störungen"
-              ? teamModuleUrgent.incidents
-                ? "aktive Störungen, davon nicht alle bestätigt"
-                : "aktive Störungen"
-              : label === "Überwachung"
-                ? monitoringAttention?.urgent
-                  ? "Geräte mit Ausfall oder Warnung, davon mindestens eines mit Ausfall"
-                  : "Geräte mit Warnung"
-                : "Eintritte sind noch nicht in Bearbeitung";
+          : label === "Eintritte"
+            ? "Eintritte, Austritte oder Mutationen sind noch niemandem zugewiesen"
+            : label === "Phishing / Junk"
+              ? teamModuleUrgent.securityCases
+                ? "offene Phishing-/Junk-Fälle, davon nicht alle zugewiesen"
+                : "offene Phishing-/Junk-Fälle"
+              : label === "Störungen"
+                ? teamModuleUrgent.incidents
+                  ? "aktive Störungen, davon nicht alle bestätigt"
+                  : "aktive Störungen"
+                : label === "Überwachung"
+                  ? monitoringAttention?.urgent
+                    ? "Geräte mit Ausfall oder Warnung, davon mindestens eines mit Ausfall"
+                    : "Geräte mit Warnung"
+                  : "Eintritte sind noch nicht in Bearbeitung";
   // Berichte und darunter die Wissensdatenbank stehen für sich unter den
   // Kategorien.
   const standaloneNavigationItems = (["Berichte", "Wissen"] as const).flatMap(
@@ -6285,7 +6518,7 @@ function AuthenticatedApp() {
         </div>
         {employeeNavigation ? (
           <>
-            {serviceStatusReadable && activeTenant ? (
+            {serviceStatusReadable && activeTenant && !projectGuestOnly ? (
               <div className="workplace-primary-navigation employee-status-navigation">
                 <NavigationStatusBadge
                   active={navSection === "Systemstatus"}
@@ -6662,7 +6895,7 @@ function AuthenticatedApp() {
                   </select>
                 </label>
               )}
-            {quickCreateActions.length > 0 && (
+            {quickCreateActions.length > 0 && !projectGuestOnly && (
               <div className="quick-create-anchor">
                 <button
                   aria-controls="quick-create-menu"
@@ -6731,14 +6964,14 @@ function AuthenticatedApp() {
                 <span>Ansicht</span>
               </button>
             )}
-            {activeTenant && (
+            {activeTenant && !projectGuestOnly && (
               <GlobalSearch
                 disabled={!isSupabaseConfigured}
                 onSelect={(result) => {
                   if (
                     !canWorkTickets &&
                     !(
-                      sectionFromGlobalSearchResult(result) === "Raumplanung" &&
+                      sectionFromGlobalSearchResult(result) === "Anlässe" &&
                       eventSpaceNavigationAccess
                     ) &&
                     !canRequesterOpenSection(
@@ -7127,7 +7360,11 @@ function AuthenticatedApp() {
           isFeatureEnabled("inventory.management") ? (
           <Inventory
             focusItemId={inventoryFocusId ?? undefined}
-            onFocusConsumed={() => setInventoryFocusId(null)}
+            focusLocationId={inventoryFocusLocationId ?? undefined}
+            onFocusConsumed={() => {
+              setInventoryFocusId(null);
+              setInventoryFocusLocationId(null);
+            }}
             labelBranding={{
               name: workspaceBrandName,
               logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
@@ -7155,6 +7392,23 @@ function AuthenticatedApp() {
             tenantId={activeTenant.id}
             today={teamsManage.today}
           />
+        ) : section === "Projekte" && activeTenant && projectAccess ? (
+          <Projects
+            access={projectAccess}
+            focusProjectId={projectFocusId}
+            focusTaskId={projectFocusTaskId}
+            key={activeTenant.id}
+            onFocusHandled={() => {
+              setProjectFocusId(null);
+              setProjectFocusTaskId(null);
+            }}
+            onOpenTicket={
+              projectAccess.guestOnly
+                ? undefined
+                : (ticketId) => setSelectedTicketId(ticketId)
+            }
+            tenantId={activeTenant.id}
+          />
         ) : section === "Serviceaufgaben" && activeTenant ? (
           <ServiceTasks
             createRequestId={
@@ -7168,7 +7422,7 @@ function AuthenticatedApp() {
             onFocusHandled={() => setServiceTaskFocusId(null)}
             tenantId={activeTenant.id}
           />
-        ) : section === "Raumplanung" && activeTenant ? (
+        ) : section === "Anlässe" && activeTenant ? (
           <EventSpaces
             focusRequestId={
               globalSearchTarget?.resultType === "event_space"
@@ -7185,7 +7439,7 @@ function AuthenticatedApp() {
             focusEntryId={
               globalSearchTarget?.resultType === "onboarding"
                 ? globalSearchTarget.entityId
-                : undefined
+                : (onboardingFocusId ?? undefined)
             }
             tenantId={activeTenant.id}
           />
@@ -7464,8 +7718,19 @@ function AuthenticatedApp() {
                       }. Die Tickets sind über den Filter «Spam» auffindbar.`,
                     );
                   }}
+                  onMerged={(merged, failed, primaryLabel) => {
+                    clearTicketSelection();
+                    setTicketPage(0);
+                    setDashboardRevision((current) => current + 1);
+                    setTicketActionStatus(
+                      `${merged} Tickets wurden in ${primaryLabel} zusammengeführt${
+                        failed > 0 ? `, ${failed} nicht` : ""
+                      }.`,
+                    );
+                  }}
                   onClearSelection={clearTicketSelection}
                   selectedTicketIds={selectedTicketIds}
+                  selectedTickets={filteredTickets}
                   tenantId={activeTenant.id}
                 />
               )}
@@ -8466,16 +8731,21 @@ export function App() {
 function BulkTicketStatusActions({
   onApplied,
   onDeleted,
+  onMerged,
   onSpammed,
   onClearSelection,
   selectedTicketIds,
+  selectedTickets,
   tenantId,
 }: {
   onApplied: (updated: number, statusLabel: string) => void;
   onDeleted: (deleted: number, cleanupPending: number) => void;
+  onMerged: (merged: number, failed: number, primaryLabel: string) => void;
   onSpammed: (marked: number, blockedSenders: number) => void;
   onClearSelection: () => void;
   selectedTicketIds: ReadonlySet<string>;
+  /** Die ausgewählten Tickets der aktuellen Seite (für das Zusammenführen). */
+  selectedTickets: readonly DashboardTicket[];
   tenantId: string;
 }) {
   const [statuses, setStatuses] = useState<BulkStatusOption[]>([]);
@@ -8489,6 +8759,10 @@ function BulkTicketStatusActions({
     useState(false);
   const [deleteTicketIds, setDeleteTicketIds] = useState<string[] | null>(null);
   const [spamTicketIds, setSpamTicketIds] = useState<string[] | null>(null);
+  // Zusammenführen: Haupt-Ticket, in das die übrigen Tickets einfliessen.
+  const [mergePrimaryId, setMergePrimaryId] = useState<string | null>(null);
+  const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
+  const [mergeSuggestedId, setMergeSuggestedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -8531,9 +8805,120 @@ function BulkTicketStatusActions({
   useEffect(() => {
     setDeleteConfirmationPending(false);
     setDeleteTicketIds(null);
+    setMergePrimaryId(null);
   }, [selectedTicketIds]);
 
+  useEffect(() => {
+    setMergePreview(null);
+    if (!mergePrimaryId) return;
+    let active = true;
+    const ids = selectedTickets
+      .map((ticket) => ticket.recordId ?? ticket.id)
+      .filter((id) => selectedTicketIds.has(id));
+    void loadMergePreview(tenantId, mergePrimaryId, ids, mergePrimaryId)
+      .then((preview) => {
+        if (active) setMergePreview(preview);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+    // mergeCandidates ändert sich mit der Auswahl; die Vorschau folgt dem Haupt-Ticket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergePrimaryId, tenantId]);
+
   if (selectedTicketIds.size === 0) return null;
+
+  const ticketKey = (ticket: DashboardTicket) => ticket.recordId ?? ticket.id;
+  const mergeCandidates = selectedTickets.filter((ticket) =>
+    selectedTicketIds.has(ticketKey(ticket)),
+  );
+  // Zusammenführen geht nur mit Tickets, die auf dieser Seite stehen.
+  const canPrepareMerge =
+    mergeCandidates.length >= 2 &&
+    mergeCandidates.length === selectedTicketIds.size &&
+    mergeCandidates.length <= 20;
+
+  function prepareMerge() {
+    if (!canPrepareMerge) {
+      setErrorMessage(
+        mergeCandidates.length !== selectedTicketIds.size
+          ? "Zum Zusammenführen müssen alle ausgewählten Tickets auf dieser Seite stehen."
+          : "Zum Zusammenführen 2 bis 20 Tickets auswählen.",
+      );
+      return;
+    }
+    setCloseConfirmationPending(false);
+    setDeleteConfirmationPending(false);
+    setDeleteTicketIds(null);
+    setSpamTicketIds(null);
+    setErrorMessage("");
+    // Vorschlag: das älteste offene Ticket.
+    const open = mergeCandidates.filter((ticket) => !ticket.isClosed);
+    const oldest = [...(open.length ? open : mergeCandidates)].sort((a, b) =>
+      (a.createdAt ?? "").localeCompare(b.createdAt ?? ""),
+    )[0];
+    setMergePrimaryId(oldest ? ticketKey(oldest) : null);
+    setMergeSuggestedId(null);
+    // Vorschlag vom Server: meiste Aktivität, dann zugewiesen, dann ältestes.
+    const ids = mergeCandidates.map(ticketKey);
+    void loadMergePreview(tenantId, ids[0] ?? "", ids, null)
+      .then((preview) => {
+        const suggested = preview?.suggestedPrimaryId ?? null;
+        if (suggested && ids.includes(suggested)) {
+          setMergeSuggestedId(suggested);
+          setMergePrimaryId((current) => (current ? suggested : current));
+        }
+      })
+      .catch(() => {
+        // Ohne Vorschlag bleibt das älteste offene Ticket vorgewählt.
+      });
+  }
+
+  async function mergeTickets() {
+    if (!supabase || !mergePrimaryId) return;
+    const primary = mergeCandidates.find(
+      (ticket) => ticketKey(ticket) === mergePrimaryId,
+    );
+    if (!primary) return;
+    setPending(true);
+    setErrorMessage("");
+    let merged = 0;
+    let failed = 0;
+    let lastError: unknown = null;
+    for (const ticket of mergeCandidates) {
+      const id = ticketKey(ticket);
+      if (id === mergePrimaryId) continue;
+      const { error } = await supabase.functions.invoke("ticket-operations", {
+        body: {
+          type: "markMerged",
+          tenantId,
+          ticketId: id,
+          primaryTicketId: mergePrimaryId,
+          source: "bulk",
+        },
+      });
+      if (error) {
+        failed += 1;
+        lastError = error;
+      } else {
+        merged += 1;
+      }
+    }
+    setPending(false);
+    if (merged > 0) {
+      setMergePrimaryId(null);
+      onMerged(merged, failed, `${primary.id} ${primary.subject}`.trim());
+    }
+    if (failed > 0) {
+      setErrorMessage(
+        await functionErrorMessage(
+          lastError,
+          `${failed} Tickets konnten nicht zusammengeführt werden.`,
+        ),
+      );
+    }
+  }
 
   const selectedStatus = statuses.find((status) => status.key === statusKey);
   async function updateStatus(confirmClose = false) {
@@ -8755,6 +9140,15 @@ function BulkTicketStatusActions({
               : "Status für Auswahl setzen"}
         </button>
         <button
+          className="secondary-button"
+          disabled={pending || selectedTicketIds.size < 2}
+          onClick={prepareMerge}
+          title="Ausgewählte Tickets in ein Haupt-Ticket zusammenführen"
+          type="button"
+        >
+          Zusammenführen
+        </button>
+        <button
           className="ticket-bulk-actions__delete-button"
           disabled={pending}
           onClick={prepareTicketDeletion}
@@ -8771,6 +9165,67 @@ function BulkTicketStatusActions({
           Als Spam markieren
         </button>
       </div>
+      {mergePrimaryId && (
+        <div
+          aria-labelledby="bulk-merge-confirmation-title"
+          className="ticket-bulk-actions__confirmation"
+          role="group"
+        >
+          <div>
+            <strong id="bulk-merge-confirmation-title">
+              {mergeCandidates.length} Tickets zusammenführen
+            </strong>
+            <p>
+              {tn(
+                "Wähle das Haupt-Ticket. Die anderen Tickets werden darin zusammengeführt, also gelöst, verweisen auf das Haupt-Ticket und erscheinen in dessen Verlauf. Das Haupt-Ticket muss offen sein.",
+                "Wählen Sie das Haupt-Ticket. Die anderen Tickets werden darin zusammengeführt, also gelöst, verweisen auf das Haupt-Ticket und erscheinen in dessen Verlauf. Das Haupt-Ticket muss offen sein.",
+              )}
+            </p>
+            <fieldset className="ticket-bulk-actions__merge-list">
+              <legend className="sr-only">Haupt-Ticket</legend>
+              {mergeCandidates.map((ticket) => (
+                <label key={ticketKey(ticket)}>
+                  <input
+                    checked={mergePrimaryId === ticketKey(ticket)}
+                    disabled={pending || ticket.isClosed}
+                    name="bulk-merge-primary"
+                    onChange={() => setMergePrimaryId(ticketKey(ticket))}
+                    type="radio"
+                  />
+                  <span>
+                    <strong>{ticket.id}</strong> {ticket.subject}
+                    {ticket.isClosed ? " · geschlossen" : ""}
+                    {mergeSuggestedId === ticketKey(ticket)
+                      ? " · Vorschlag"
+                      : ""}
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            {mergePreview && mergePreview.primaryId === mergePrimaryId ? (
+              <MergePreviewSummary preview={mergePreview} />
+            ) : null}
+          </div>
+          <div className="ticket-bulk-actions__confirmation-buttons">
+            <button
+              className="primary-button"
+              disabled={pending}
+              onClick={() => void mergeTickets()}
+              type="button"
+            >
+              {pending ? "Wird zusammengeführt …" : "Zusammenführen"}
+            </button>
+            <button
+              className="secondary-button"
+              disabled={pending}
+              onClick={() => setMergePrimaryId(null)}
+              type="button"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
       {spamTicketIds && (
         <div
           aria-labelledby="bulk-spam-confirmation-title"

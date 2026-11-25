@@ -117,6 +117,9 @@ type Message = {
   attempt_count: number;
   inline_media_status?: string | null;
   inline_media_attempt_count?: number | null;
+  /** Weiterleitung (0393): weitergeleitete Nachricht, leer = ursprüngliche Mail. */
+  forward_source_comment_id?: string | null;
+  forward_note?: string | null;
 };
 
 type InboundAttachment = {
@@ -229,6 +232,7 @@ export function customerTicketEmailKindForOutbound(
 ): CustomerTicketEmailKind | null {
   // Kopien einer Antwort an weitere Personen sehen aus wie die Antwort selbst.
   if (messageKind === "ticket_copy") return "agent_reply";
+  if (messageKind === "ticket_forward") return "forward";
   // Thanks, verdict and «did you click?» for phishing reporters.
   if (messageKind === "security_notice") return "security_notice";
   if (
@@ -236,6 +240,8 @@ export function customerTicketEmailKindForOutbound(
     messageKind === "acknowledgement" ||
     messageKind === "resolution" ||
     messageKind === "rating_reminder" ||
+    messageKind === "merge_notice" ||
+    messageKind === "split_notice" ||
     messageKind === "test"
   )
     return messageKind;
@@ -963,6 +969,38 @@ async function findInboundTicket(
   return null;
 }
 
+/** Folgt «zusammengeführt in» bis zum Haupt-Ticket (höchstens 5 Schritte). */
+async function followMergedTicket(
+  admin: Admin,
+  tenantId: string,
+  found: { id: string; ticket_number: string } | null,
+): Promise<{ id: string; ticket_number: string } | null> {
+  let current = found;
+  for (let step = 0; current && step < 5; step += 1) {
+    const row = await admin
+      .from("tickets")
+      .select("merged_into_ticket_id")
+      .eq("id", current.id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const next = asString(row.data?.merged_into_ticket_id);
+    if (row.error || !next) return current;
+    const primary = await admin
+      .from("tickets")
+      .select("id, ticket_number")
+      .eq("id", next)
+      .eq("tenant_id", tenantId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (primary.error || !asString(primary.data?.id)) return current;
+    current = {
+      id: String(primary.data.id),
+      ticket_number: String(primary.data.ticket_number),
+    };
+  }
+  return current;
+}
+
 async function senderMayReply(
   admin: Admin,
   tenantId: string,
@@ -986,6 +1024,22 @@ async function senderMayReply(
       .maybeSingle();
     if (emailAddress(contact.data?.email) === sender) return true;
   }
+  // Anfragende von Tickets, die in dieses zusammengeführt wurden.
+  const mergedRequesters = await admin
+    .from("tickets")
+    .select("ticket_requesters(email)")
+    .eq("tenant_id", tenantId)
+    .eq("merged_into_ticket_id", ticketId)
+    .limit(20);
+  if (
+    ((mergedRequesters.data ?? []) as Row[]).some((row) => {
+      const requester = Array.isArray(row.ticket_requesters)
+        ? row.ticket_requesters[0]
+        : row.ticket_requesters;
+      return emailAddress(record(requester) ? requester.email : null) === sender;
+    })
+  )
+    return true;
   const participating = await admin
     .from("mail_messages")
     .select("id")
@@ -1280,6 +1334,20 @@ async function updateInlineMediaStatus(
   }
 }
 
+/**
+ * Mailtext für die Verarbeitung. Antworten auf ein Ticket nutzen nur den neuen
+ * Teil (`uniqueBody`), damit der zitierte Verlauf nicht doppelt erscheint.
+ * Neue Tickets nutzen die ganze Mail: Bei weitergeleiteten Mails (zum Beispiel
+ * eine gemeldete Phishing-Mail) steckt das Eigentliche im weitergeleiteten
+ * Teil, den `uniqueBody` weglässt.
+ */
+export function inboundBodyContent(graph: Row, isReply: boolean): unknown {
+  const unique = record(graph.uniqueBody) ? graph.uniqueBody.content : null;
+  const full = record(graph.body) ? graph.body.content : null;
+  if (isReply) return unique ?? full;
+  return typeof full === "string" && full.trim() ? full : unique;
+}
+
 async function createNewTicket(
   admin: Admin,
   channel: Channel,
@@ -1344,7 +1412,7 @@ async function createNewTicket(
       ticket_number: number.data,
       subject: subject(graph.subject),
       description: `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${normalizeInboundEmailText(
-        record(graph.uniqueBody) ? graph.uniqueBody.content : null,
+        inboundBodyContent(graph, false),
         undefined,
         { formatCorporateSignature: true },
       )}`,
@@ -1629,7 +1697,12 @@ export async function processInboundMessage(
       });
       return;
     }
-    const linkedTicket = await findInboundTicket(admin, channel, graph);
+    // Antworten auf ein zusammengeführtes Ticket landen im Haupt-Ticket.
+    const linkedTicket = await followMergedTicket(
+      admin,
+      channel.tenant_id,
+      await findInboundTicket(admin, channel, graph),
+    );
     const replyAuthorized =
       Boolean(linkedTicket) &&
       (await senderMayReply(
@@ -1653,11 +1726,7 @@ export async function processInboundMessage(
     if (hasInlineMedia)
       await updateInlineMediaStatus(admin, message, "pending");
     const body = normalizeInboundEmailText(
-      record(graph.uniqueBody)
-        ? graph.uniqueBody.content
-        : record(graph.body)
-          ? graph.body.content
-          : null,
+      inboundBodyContent(graph, replyAuthorized),
       undefined,
       { formatCorporateSignature: !replyAuthorized },
     );
@@ -1668,6 +1737,12 @@ export async function processInboundMessage(
         .filter((contentId): contentId is string => contentId !== null),
     );
     const persistedBody = resolveInboundInlineMarkers(preparedBody, new Map());
+    // What the commit stores: without a recognised reply, the ticket text starts
+    // with «Eingegangene E-Mail von …». The inline-media update below must
+    // compare against exactly this text.
+    const committedBody = replyAuthorized
+      ? persistedBody
+      : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${persistedBody}`;
     // Forwarded to the phishing report address: becomes a security ticket
     // instead of an ordinary one. Decided before the commit, so the generic
     // acknowledgement can be left out (the thank-you reply replaces it).
@@ -1695,9 +1770,7 @@ export async function processInboundMessage(
       p_requester_contact_id: contact.id,
       p_sender: sender,
       p_subject: subject(graph.subject),
-      p_body: replyAuthorized
-        ? persistedBody
-        : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${persistedBody}`,
+      p_body: committedBody,
       p_internet_message_id: asString(graph.internetMessageId),
       p_conversation_id: asString(graph.conversationId),
       p_to_addresses: array(graph.toRecipients)
@@ -1725,7 +1798,7 @@ export async function processInboundMessage(
     )
       throw new Error("inbound_commit_invalid");
     // Gesperrter Absender (Spam): Das Ticket wurde schon als Spam angelegt.
-    // Keine Zuteilung, Anhänge, Kontakte oder Raumplanung.
+    // Keine Zuteilung, Anhänge, Kontakte oder Anlässe.
     if (kind === "new_ticket") {
       const spam = await admin
         .from("tickets")
@@ -1736,7 +1809,7 @@ export async function processInboundMessage(
       if (asString(spam.data?.spam_at)) return;
     }
     // Team des Postfachs sofort setzen: Die folgenden Schritte (Anhänge,
-    // Kontakte, Raumplanung) können länger dauern. Bricht die Verarbeitung
+    // Kontakte, Anlässe) können länger dauern. Bricht die Verarbeitung
     // dort ab, bleibt das Ticket sonst ohne Team, denn die Nachricht gilt
     // nach dem Commit als verarbeitet und wird nicht wiederholt. Bei einer
     // Phishing-Meldung erst am Ende, weil sie die Abteilung ändern kann.
@@ -1749,6 +1822,8 @@ export async function processInboundMessage(
         ticketId,
         subject: subject(graph.subject),
         description: body,
+        attachments: inboundAttachments,
+        senderName: displayNameFromAddress(sender),
       });
     }
     if (kind === "new_ticket" && !phishingSettings) {
@@ -1791,7 +1866,7 @@ export async function processInboundMessage(
       const resolvedStoredBody = replyAuthorized
         ? resolvedBody
         : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${resolvedBody}`;
-      if (resolvedStoredBody !== persistedBody) {
+      if (resolvedStoredBody !== committedBody) {
         let updated: { data?: Array<{ id: string }> | null; error?: unknown };
         if (kind === "reply" && commentId) {
           updated = await admin
@@ -1799,7 +1874,7 @@ export async function processInboundMessage(
             .update({ body: resolvedStoredBody })
             .eq("id", commentId)
             .eq("ticket_id", ticketId)
-            .eq("body", persistedBody)
+            .eq("body", committedBody)
             .select("id");
         } else if (kind === "new_ticket") {
           updated = await admin
@@ -1807,13 +1882,16 @@ export async function processInboundMessage(
             .update({ description: resolvedStoredBody })
             .eq("id", ticketId)
             .eq("tenant_id", channel.tenant_id)
-            .eq("description", persistedBody)
+            .eq("description", committedBody)
             .select("id");
         } else {
           updated = { data: [] };
         }
         if (updated.error) throw new Error("inline_body_update_failed");
         if (!updated.data?.length) {
+          // The text was changed meanwhile: keep it. Only the inline media
+          // stay unresolved; the intakes below (Eintritt, Phishing, team)
+          // must still run, so no early return here.
           if (hasInlineMedia)
             await updateInlineMediaStatus(
               admin,
@@ -1821,11 +1899,12 @@ export async function processInboundMessage(
               "conflict",
               "inline_body_changed",
             );
-          return;
+        } else if (hasInlineMedia) {
+          await updateInlineMediaStatus(admin, message, "completed");
         }
-      }
-      if (hasInlineMedia)
+      } else if (hasInlineMedia) {
         await updateInlineMediaStatus(admin, message, "completed");
+      }
     }
     if (kind === "new_ticket" && phishingSettings) {
       // Wirft nie; bei Fehlern bleibt das gewöhnliche Mail-Ticket bestehen.
@@ -1862,11 +1941,25 @@ export async function processInboundMessage(
         ticketId,
         ticketNumber,
         attachments: inboundAttachments,
+        senderEmail: sender,
+        actorId: serviceIdentityId,
       });
     }
     if (kind === "new_ticket") {
       // Nach den Intakes erneut (no-op, wenn schon gesetzt): deckt Phishing ab.
       await assignChannelTeam(admin, channel, ticketId);
+    }
+    if (kind === "new_ticket" && !phishingSettings) {
+      // Eindeutiges Duplikat (gleiche Person, gleicher Betreff, wenige
+      // Minuten): wird automatisch ins erste Ticket zusammengeführt, wenn die
+      // Einstellung aktiv ist. Ein Fehler hier ändert nichts am Ticket.
+      try {
+        await admin.rpc("ticket_auto_merge_exact_duplicate", {
+          p_ticket_id: ticketId,
+        });
+      } catch {
+        // ignore
+      }
     }
     await audit(
       admin,
@@ -1938,11 +2031,7 @@ async function recoverProcessedInlineMedia(
     ).filter((attachment) => attachment.contentId !== null);
     if (!attachments.length) throw new Error("inline_media_source_unavailable");
     const body = normalizeInboundEmailText(
-      record(graph.uniqueBody)
-        ? graph.uniqueBody.content
-        : record(graph.body)
-          ? graph.body.content
-          : null,
+      inboundBodyContent(graph, message.kind === "reply"),
       undefined,
       { formatCorporateSignature: message.kind !== "reply" },
     );
@@ -1995,20 +2084,112 @@ async function recoverProcessedInlineMedia(
   }
 }
 
+const FORWARD_DATE = new Intl.DateTimeFormat("de-CH", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Europe/Zurich",
+});
+
+/**
+ * Text einer Weiterleitung: die begleitende Nachricht, darunter die
+ * weitergeleitete Nachricht mit Von, Datum und Betreff (wie im Mailprogramm).
+ * Ohne Quelle wird die ursprüngliche Mail (Ticketbeschreibung) weitergeleitet.
+ */
+async function forwardBodyText(
+  admin: Admin,
+  message: Message,
+  ticketId: string,
+): Promise<string> {
+  const ticket = await admin
+    .from("tickets")
+    .select("subject, description, created_at, requester_contact_id, requester_id")
+    .eq("id", ticketId)
+    .eq("tenant_id", message.tenant_id)
+    .maybeSingle();
+  if (ticket.error || !ticket.data) throw new Error("ticket_unavailable");
+  const sourceId = asString(message.forward_source_comment_id);
+  let from = "";
+  let sentAt = asString(ticket.data.created_at) ?? "";
+  let content = cleanText(ticket.data.description);
+  let contactId = asString(ticket.data.requester_contact_id);
+  if (sourceId) {
+    const comment = await admin
+      .from("ticket_comments")
+      .select("body, created_at, author_id, requester_contact_id")
+      .eq("id", sourceId)
+      .eq("ticket_id", ticketId)
+      .maybeSingle();
+    if (comment.error || !comment.data) throw new Error("forward_source_unavailable");
+    content = cleanText(comment.data.body);
+    sentAt = asString(comment.data.created_at) ?? sentAt;
+    contactId = asString(comment.data.requester_contact_id);
+    if (!contactId && asString(comment.data.author_id)) {
+      const author = await admin
+        .from("user_profiles")
+        .select("display_name")
+        .eq("id", comment.data.author_id)
+        .maybeSingle();
+      from = asString(author.data?.display_name) ?? "";
+    }
+  } else {
+    // «Eingegangene E-Mail von …» steht nur im Ticket, nicht in der Mail.
+    const prefix = /^Eingegangene E-Mail von ([^\r\n]{1,160})\r?\n\r?\n/u.exec(content);
+    if (prefix) {
+      content = content.slice(prefix[0].length);
+      from = prefix[1]!.trim();
+    }
+  }
+  if (contactId) {
+    const contact = await admin
+      .from("ticket_requesters")
+      .select("display_name, email")
+      .eq("id", contactId)
+      .maybeSingle();
+    const name = asString(contact.data?.display_name);
+    const email = asString(contact.data?.email);
+    if (name || email) {
+      from = name && email ? `${name} <${email}>` : (name ?? email ?? from);
+    }
+  }
+  const date = sentAt && Number.isFinite(Date.parse(sentAt))
+    ? FORWARD_DATE.format(new Date(sentAt))
+    : "";
+  const note = asString(message.forward_note)?.trim() ?? "";
+  return [
+    note,
+    "---------- Weitergeleitete Nachricht ----------",
+    [
+      from ? `Von: ${from}` : "",
+      date ? `Datum: ${date}` : "",
+      `Betreff: ${asString(ticket.data.subject) ?? ""}`,
+    ].filter(Boolean).join("\n"),
+    content,
+  ].filter(Boolean).join("\n\n");
+}
+
 async function outboundAttachments(
   admin: Admin,
   ticketId: string,
   commentId: string | null,
+  forward?: { sourceCommentId: string | null },
 ): Promise<{ attachments: Row[]; omitted: boolean }> {
-  if (!commentId) return { attachments: [], omitted: false };
-  const rows = await admin
+  if (!commentId && !forward) return { attachments: [], omitted: false };
+  let query = admin
     .from("ticket_attachments")
     .select(
       "storage_bucket, storage_object_path, original_filename, content_type, byte_size",
     )
-    .eq("ticket_id", ticketId)
-    .eq("comment_id", commentId)
-    .eq("visibility", "external")
+    .eq("ticket_id", ticketId);
+  if (forward) {
+    // Weiterleitung: Anhänge der weitergeleiteten Nachricht bzw. der
+    // ursprünglichen Mail (ohne eingebettete Bilder wie Signatur-Logos).
+    query = forward.sourceCommentId
+      ? query.eq("comment_id", forward.sourceCommentId)
+      : query.is("comment_id", null).is("inline_content_id", null);
+  } else {
+    query = query.eq("comment_id", commentId).eq("visibility", "external");
+  }
+  const rows = await query
     // No malware scanner marks uploads as clean yet; files attached to a
     // reply in nextDesk are sent while their scan is pending.
     .in("malware_status", ["clean", "pending"])
@@ -2828,12 +3009,16 @@ export async function dispatchOutboundMessage(
       }
     }
     if (message.ticket_id) {
-      const ticketResult = await admin
+      // Das aufgeteilte Ticket liegt nach dem Aufteilen im Papierkorb; nur
+      // die Aufteilungs-Mail darf es noch lesen.
+      const ticketQuery = admin
         .from("tickets")
         .select(
           "id, ticket_number, subject, requester_contact_id, is_security_case",
-        )
-        .is("deleted_at", null)
+        );
+      const ticketResult = await (message.kind === "split_notice"
+        ? ticketQuery
+        : ticketQuery.is("deleted_at", null))
         .eq("id", message.ticket_id)
         .eq("tenant_id", message.tenant_id)
         .maybeSingle();
@@ -2904,6 +3089,74 @@ export async function dispatchOutboundMessage(
           "Ihr Ticket wurde als gelöst markiert.",
         ),
       );
+    // Zusammengeführt: wo die Anfrage weiterläuft und weshalb es diese Mail gibt.
+    let mergePrimaryNumber: string | null = null;
+    if (message.kind === "merge_notice") {
+      const merged = await admin
+        .from("tickets")
+        .select("merged_into_ticket_id")
+        .eq("id", ticket?.id ?? message.ticket_id)
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle();
+      const primaryId = asString(merged.data?.merged_into_ticket_id);
+      const primary = primaryId
+        ? await admin
+            .from("tickets")
+            .select("ticket_number, subject")
+            .eq("id", primaryId)
+            .eq("tenant_id", message.tenant_id)
+            .maybeSingle()
+        : null;
+      mergePrimaryNumber = asString(primary?.data?.ticket_number);
+      if (!mergePrimaryNumber) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "merge_target_unavailable",
+        });
+        return;
+      }
+      const primarySubject = asString(primary?.data?.subject);
+      bodyText = tone(
+        formality,
+        `Zu deinem Anliegen wurden bei uns mehrere Tickets erstellt, zum Beispiel weil mehrere E-Mails zum selben Thema eingegangen sind. Damit nichts doppelt bearbeitet wird, haben wir sie zusammengeführt.\n\nDeine Anfrage wird unter Ticket ${mergePrimaryNumber}${primarySubject ? ` «${primarySubject}»` : ""} weiterbearbeitet. Du musst nichts tun; weitere Nachrichten erhältst du zu diesem Ticket.`,
+        `Zu Ihrem Anliegen wurden bei uns mehrere Tickets erstellt, zum Beispiel weil mehrere E-Mails zum selben Thema eingegangen sind. Damit nichts doppelt bearbeitet wird, haben wir sie zusammengeführt.\n\nIhre Anfrage wird unter Ticket ${mergePrimaryNumber}${primarySubject ? ` «${primarySubject}»` : ""} weiterbearbeitet. Sie müssen nichts tun; weitere Nachrichten erhalten Sie zu diesem Ticket.`,
+      );
+    }
+    // Aufgeteilt: in welche Tickets und die Bitte um ein Ticket pro Anliegen.
+    let splitCount = 0;
+    if (message.kind === "split_notice") {
+      const parts = await admin
+        .from("tickets")
+        .select("ticket_number, subject")
+        .eq("tenant_id", message.tenant_id)
+        .eq("parent_ticket_id", ticket?.id ?? message.ticket_id)
+        .is("deleted_at", null)
+        .order("ticket_number");
+      const rows = (parts.data ?? []) as Row[];
+      splitCount = rows.length;
+      if (parts.error || splitCount === 0) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "split_parts_unavailable",
+        });
+        return;
+      }
+      const contact = await admin
+        .from("ticket_requesters")
+        .select("display_name")
+        .eq("id", ticket?.requester_contact_id)
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle();
+      bodyText = splitNoticeText({
+        formality,
+        firstName: firstNameOf(asString(contact.data?.display_name)),
+        originalNumber: asString(ticket?.ticket_number) ?? "",
+        parts: rows.map((row) => ({
+          number: asString(row.ticket_number) ?? "",
+          subject: asString(row.subject) ?? "",
+        })),
+      });
+    }
     if (message.kind === "rating_reminder") {
       // Erinnerung nur, solange das Ticket gelöst und noch nicht bewertet ist.
       const rated = await admin
@@ -2937,9 +3190,21 @@ export async function dispatchOutboundMessage(
       bodyText = "Dies ist eine Testmail des nextDesk E-Mail-Kanals.";
     const ticketNumber = asString(ticket?.ticket_number) ?? "nextDesk-Test";
     const ticketSubject = asString(ticket?.subject) ?? "E-Mail-Kanal Test";
+    if (message.kind === "ticket_forward" && ticket) {
+      bodyText = await forwardBodyText(admin, message, ticket.id as string);
+    }
     const attachments =
       ticket && !internalDepartmentNotice
-        ? await outboundAttachments(admin, ticket.id, message.comment_id)
+        ? await outboundAttachments(
+            admin,
+            ticket.id,
+            message.comment_id,
+            message.kind === "ticket_forward"
+              ? {
+                  sourceCommentId: asString(message.forward_source_comment_id),
+                }
+              : undefined,
+          )
         : { attachments: [], omitted: false };
     const customerEmailKind = customerTicketEmailKindForOutbound(message.kind);
     if (!internalDepartmentNotice && !customerEmailKind)
@@ -2972,8 +3237,12 @@ export async function dispatchOutboundMessage(
     const portalActionLabel =
       message.kind === "agent_reply"
         ? "Im Portal antworten"
-        : message.kind === "acknowledgement" || message.kind === "resolution"
+        : message.kind === "acknowledgement" ||
+            message.kind === "resolution" ||
+            message.kind === "merge_notice"
           ? "Ticket im Portal ansehen"
+          : message.kind === "split_notice"
+            ? "Tickets im Portal ansehen"
           : null;
     const html = internalDepartmentNotice
       ? internalNoticeHtmlTemplate({
@@ -3031,8 +3300,14 @@ export async function dispatchOutboundMessage(
           ? `[${ticketNumber}] ${asString(message.subject)}`
           : message.kind === "agent_reply"
             ? `AW: [${ticketNumber}] ${ticketSubject}`
+            : message.kind === "ticket_forward"
+              ? `WG: [${ticketNumber}] ${ticketSubject}`
             : message.kind === "rating_reminder"
               ? `${tone(formality, "Wie zufrieden warst du?", "Wie zufrieden waren Sie?")} [${ticketNumber}] ${ticketSubject}`
+              : message.kind === "merge_notice" && mergePrimaryNumber
+                ? `[${ticketNumber}] Weiter unter ${mergePrimaryNumber}: ${ticketSubject}`
+              : message.kind === "split_notice" && splitCount > 0
+                ? `[${ticketNumber}] In ${splitCount} ${splitCount === 1 ? "Ticket" : "Tickets"} aufgeteilt: ${ticketSubject}`
               : `[${ticketNumber}] ${ticketSubject}`,
       body: { contentType: "HTML", content: html },
       toRecipients: [{ emailAddress: { address: recipient } }],
@@ -3253,4 +3528,62 @@ export async function removeSubscriptionsForChannel(
     .eq("tenant_id", channel.tenant_id)
     .in("status", ["active", "removal_pending"]);
   if (removed.error) throw new Error("subscription_cleanup_failed");
+}
+
+/** Vorname für die Anrede aus dem Anzeigenamen des Kontakts. */
+export function firstNameOf(displayName: string | null): string | null {
+  const first = (displayName ?? "").trim().split(/\s+/u)[0] ?? "";
+  if (!first || first.includes("@") || /anfragende/iu.test(displayName ?? "")) {
+    return null;
+  }
+  return first.charAt(0).toLocaleUpperCase("de-CH") + first.slice(1);
+}
+
+/** Text der Mail, wenn ein Ticket in mehrere Tickets aufgeteilt wurde. */
+export function splitNoticeText(input: {
+  formality: Formality;
+  firstName: string | null;
+  originalNumber: string;
+  parts: { number: string; subject: string }[];
+}): string {
+  const { formality, firstName, originalNumber, parts } = input;
+  const greeting = firstName
+    ? tone(formality, `Hallo ${firstName}`, `Guten Tag ${firstName}`)
+    : tone(formality, "Hallo", "Guten Tag");
+  const list = parts
+    .map((part) => `• ${part.number}${part.subject ? ` – ${part.subject}` : ""}`)
+    .join("\n");
+  if (parts.length === 1) {
+    return [
+      greeting,
+      tone(
+        formality,
+        `Deine Anfrage wird neu unter diesem Ticket weiterbearbeitet:\n${list}`,
+        `Ihre Anfrage wird neu unter diesem Ticket weiterbearbeitet:\n${list}`,
+      ),
+      tone(
+        formality,
+        `Das ursprüngliche Ticket ${originalNumber} wird nicht weitergeführt. Du musst nichts tun; weitere Nachrichten erhältst du zum neuen Ticket.`,
+        `Das ursprüngliche Ticket ${originalNumber} wird nicht weitergeführt. Sie müssen nichts tun; weitere Nachrichten erhalten Sie zum neuen Ticket.`,
+      ),
+    ].join("\n\n");
+  }
+  return [
+    greeting,
+    tone(
+      formality,
+      `Deine Anfrage enthielt mehrere Anliegen. Damit wir jedes davon sauber und von der richtigen Stelle bearbeiten lassen können, haben wir sie in ${parts.length} Tickets aufgeteilt:\n${list}`,
+      `Ihre Anfrage enthielt mehrere Anliegen. Damit wir jedes davon sauber und von der richtigen Stelle bearbeiten lassen können, haben wir sie in ${parts.length} Tickets aufgeteilt:\n${list}`,
+    ),
+    tone(
+      formality,
+      `Das ursprüngliche Ticket ${originalNumber} wird nicht weitergeführt. Du musst nichts tun. Zu jedem Ticket erhältst du die weiteren Nachrichten separat. Bitte antworte jeweils auf die Mail des passenden Tickets.`,
+      `Das ursprüngliche Ticket ${originalNumber} wird nicht weitergeführt. Sie müssen nichts tun. Zu jedem Ticket erhalten Sie die weiteren Nachrichten separat. Bitte antworten Sie jeweils auf die Mail des passenden Tickets.`,
+    ),
+    tone(
+      formality,
+      "Unsere Bitte: Erstelle künftig pro Anliegen ein eigenes Ticket bzw. schreibe pro Anliegen eine eigene E-Mail. So landet jede Anfrage direkt bei der richtigen Stelle und wird schneller erledigt.",
+      "Unsere Bitte: Erstellen Sie künftig pro Anliegen ein eigenes Ticket bzw. schreiben Sie pro Anliegen eine eigene E-Mail. So landet jede Anfrage direkt bei der richtigen Stelle und wird schneller erledigt.",
+    ),
+  ].join("\n\n");
 }

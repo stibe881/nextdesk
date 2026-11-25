@@ -2,6 +2,14 @@
 // session is injected (null = signed out) and drives the UI the way a person
 // would: clicking navigation entries, buttons and tabs.
 
+const openDemoProject = async (h, tab) => {
+  await h.open();
+  await h.nav("Projekte");
+  await h.clickText("Netzwerk-Erneuerung Standort Bern");
+  await h.waitText("Alle Projekte");
+  if (tab) await h.click(tab, { role: "tab" });
+};
+
 export const SHOTS = [
   {
     name: "login",
@@ -150,12 +158,152 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-projekte",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Projekte");
+      await h.waitText("Netzwerk-Erneuerung Standort Bern");
+    },
+  },
+  {
+    name: "ag-projekte-zeitplan",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Projekte");
+      await h.click("Zeitplan", { role: "tab" });
+      await h.waitText("Meilenstein");
+    },
+  },
+  {
+    name: "ag-projekt-ueberblick",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, null);
+      await h.waitText("Meilensteine");
+    },
+  },
+  {
+    name: "ag-projekt-zeitplan",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Zeitplan");
+      await h.waitText("Switches vorkonfigurieren");
+    },
+  },
+  {
+    name: "ag-projekt-board",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Board");
+      await h.waitText("WLAN Access Points montieren");
+    },
+  },
+  {
+    name: "ag-projekt-liste",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Liste");
+      await h.page.getByLabel("Switches vorkonfigurieren auswählen").check();
+      await h.page.getByLabel("Etage 1 und 2 auswählen").check();
+      await h.scrollToText("2 ausgewählt", 150);
+    },
+  },
+  {
+    name: "ag-projekt-aufgabe",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Liste");
+      await h.clickText("Switches vorkonfigurieren", { exact: true });
+      await h.waitText("Checkliste (2/4)");
+    },
+  },
+  {
+    name: "ag-projekt-budget",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Zeiten & Budget");
+      await h.waitText("Projekt gesamt");
+    },
+  },
+  {
+    name: "ag-projekt-doku",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Dokumentation");
+      await h.waitText("VLAN-Plan");
+    },
+  },
+  {
+    name: "ag-projekt-verknuepfungen",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, /Verknüpfungen/);
+      await h.waitText("Mit dem Projekt verknüpfen");
+    },
+  },
+  {
+    name: "ag-projekt-team",
+    persona: "admin",
+    async run(h) {
+      await openDemoProject(h, "Team & Gäste");
+      await h.waitText("Externen Gast einladen");
+      await h.page.getByLabel("Person suchen").fill("ke");
+      await h.waitText("Sabine Keller");
+    },
+  },
+  {
+    name: "ag-projekt-auslastung",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Projekte");
+      await h.click("Auslastung", { role: "tab" });
+      await h.waitText("überlastet");
+    },
+  },
+  {
+    name: "ma-projekt-gast",
+    persona: "guest",
+    async run(h) {
+      await h.open();
+      await h.waitText("Netzwerk-Erneuerung Standort Bern");
+      await h.clickText("Netzwerk-Erneuerung Standort Bern");
+      await h.waitText("Alle Projekte");
+      await h.click("Zeitplan", { role: "tab" });
+      await h.waitText("Switches vorkonfigurieren");
+    },
+  },
+  {
+    name: "ad-projekt-neu",
+    persona: "admin",
+    async run(h) {
+      await h.open();
+      await h.nav("Projekte");
+      await h.click("Neues Projekt");
+      await h.waitText("Zeitraum und Budget");
+    },
+  },
+  {
     name: "ag-ticket-detail",
     persona: "agent",
     async run(h) {
       await h.open();
       await h.nav("Tickets");
       await h.clickText("Laptop startet nach Windows-Update nicht mehr");
+    },
+  },
+  {
+    name: "ag-ticket-weiterleiten",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Tickets");
+      await h.clickText("Laptop startet nach Windows-Update nicht mehr");
+      await h.click("Ursprüngliche Mail weiterleiten");
+      await h.waitText("An (Mailadressen, durch Komma getrennt)");
+      await h.settle(300);
     },
   },
   {
@@ -478,6 +626,19 @@ SHOTS.push(
     run: (h) => openSettingsTab(h, "SLA"),
   },
   {
+    name: "ag-eintritte",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Eintritte");
+      await h.settle(1200);
+      // Karten sind eingeklappt; die erste aufklappen, damit Aufgaben sichtbar sind.
+      await h.page.locator(".onboarding__entry-toggle").first().click();
+      await h.settle(400);
+      await h.scrollToText("Meine sichtbaren Eintritte", 90);
+    },
+  },
+  {
     name: "ag-vertrag-lizenzen",
     // Contracts need the «Verträge» role; the demo admin has it.
     persona: "admin",
@@ -557,10 +718,23 @@ SHOTS.push(
     run: (h) => openFeatureConfiguration(h, "Assets & Dienste"),
   },
   {
+    name: "ag-lagerorte",
+    persona: "admin",
+    async run(h) {
+      await h.open();
+      await h.nav("Lager");
+      await h.page.getByRole("tab", { name: "Lagerorte", exact: true }).click();
+      await h.waitText("Wandschrank ICT");
+      await h.scrollToText("Lager und Lagerplätze", 90);
+    },
+  },
+  {
     name: "in-verzeichnis",
     persona: "admin",
     async run(h) {
-      await openSettingsTab(h, "Personen");
+      await openSettingsTab(h, "Funktionen");
+      await h.waitText("Abgleichshistorie");
+      await h.scrollToText("Microsoft Entra-Verzeichnis", 12);
     },
   },
   {

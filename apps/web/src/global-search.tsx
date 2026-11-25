@@ -40,7 +40,7 @@ export type GlobalSearchResult = {
     | "Tickets"
     | "Erinnerungen"
     | "Wissen"
-    | "Raumplanung"
+    | "Anlässe"
     | "Eintritte"
     | "Störungen"
     | "Phishing / Junk";
@@ -75,7 +75,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** Former section names the search may still return. */
 const LEGACY_SEARCH_SECTIONS: Record<string, string> = {
-  Veranstaltungsräume: "Raumplanung",
+  Veranstaltungsräume: "Anlässe",
   Wiedervorlagen: "Erinnerungen",
   Sicherheitsfälle: "Phishing / Junk",
 };
@@ -101,7 +101,7 @@ export function parseResults(value: unknown): GlobalSearchResult[] | null {
     "Tickets",
     "Erinnerungen",
     "Wissen",
-    "Raumplanung",
+    "Anlässe",
     "Eintritte",
     "Störungen",
     "Phishing / Junk",
@@ -150,7 +150,7 @@ const typeLabel: Record<GlobalSearchResult["resultType"], string> = {
   ticket: "Ticket",
   follow_up: "Erinnerung",
   knowledge: "Wissensartikel",
-  event_space: "Raumauftrag",
+  event_space: "Anlass",
   onboarding: "Eintritt",
   incident: "Störung",
   security_case: "Phishing-/Junk-Fall",

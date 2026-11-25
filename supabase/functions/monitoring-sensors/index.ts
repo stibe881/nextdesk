@@ -291,13 +291,100 @@ async function probePackage(admin: Client) {
   };
 }
 
+type SnmpSummary = {
+  version: "v2c" | "v3";
+  user: string | null;
+  authProtocol: string | null;
+  privProtocol: string | null;
+  updatedAt: string | null;
+};
+
+/** Stored SNMP credentials without secrets, by device and by probe. */
+async function snmpSummaries(admin: Client, tenantId: string, assetId?: string) {
+  let query = admin.from("monitoring_snmp_credentials")
+    .select("asset_id, agent_id, version, snmp_user, auth_protocol, priv_protocol, updated_at")
+    .eq("tenant_id", tenantId);
+  if (assetId) query = query.or(`asset_id.eq.${assetId},agent_id.not.is.null`);
+  const { data, error } = await query.limit(2000);
+  const assets = new Map<string, SnmpSummary>();
+  const agents = new Map<string, SnmpSummary>();
+  // Before the migration is applied the table is missing: no credentials.
+  if (error) return { assets, agents };
+  for (const row of (data ?? []) as Row[]) {
+    const summary: SnmpSummary = {
+      version: row.version === "v2c" ? "v2c" : "v3",
+      user: text(row.snmp_user),
+      authProtocol: text(row.auth_protocol),
+      privProtocol: text(row.priv_protocol),
+      updatedAt: text(row.updated_at),
+    };
+    if (typeof row.asset_id === "string") assets.set(row.asset_id, summary);
+    else if (typeof row.agent_id === "string") agents.set(row.agent_id, summary);
+  }
+  return { assets, agents };
+}
+
+/** SNMP credentials are secrets: only tenant administrators set them. */
+async function isTenantAdministrator(admin: Client, actorId: string, tenantId: string): Promise<boolean> {
+  const { data: role } = await admin.from("roles").select("id")
+    .eq("tenant_id", tenantId).eq("name", "Tenant administrator").eq("scope", "tenant").eq("active", true)
+    .maybeSingle();
+  if (!role?.id) return false;
+  const now = new Date().toISOString();
+  const { data: assignment } = await admin.from("user_role_assignments").select("id")
+    .eq("tenant_id", tenantId).eq("user_id", actorId).eq("role_id", role.id)
+    .lte("starts_at", now).or(`expires_at.is.null,expires_at.gt.${now}`).limit(1).maybeSingle();
+  return Boolean(assignment);
+}
+
+async function saveSnmp(
+  admin: Client,
+  actorId: string,
+  action: Extract<Action, { type: "saveSnmp" }>,
+) {
+  const credential = action.credential;
+  const secret = credential.version === "v2c"
+    ? { community: credential.community }
+    : { authKey: credential.authKey, privKey: credential.privKey };
+  const { error } = await admin.rpc("monitoring_snmp_credential_save", {
+    p_tenant_id: action.tenantId,
+    p_asset_id: action.assetId,
+    p_agent_id: action.agentId,
+    p_version: credential.version,
+    p_user: credential.version === "v3" ? credential.user : null,
+    p_auth_protocol: credential.version === "v3" ? credential.authProtocol : null,
+    p_priv_protocol: credential.version === "v3" ? credential.privProtocol : null,
+    p_secret: secret,
+    p_actor: actorId,
+  });
+  if (error) {
+    if (error.code === "22023") {
+      throw new HttpError(
+        422,
+        "snmp_secret_missing",
+        credential.version === "v2c"
+          ? "Bitte die Community angeben."
+          : "Bitte die Schlüssel angeben (je 8 bis 128 Zeichen).",
+      );
+    }
+    if (error.code === "23503") throw new HttpError(404, "not_found", "Das Gerät oder die Sonde wurde nicht gefunden.");
+    if (error.code === "0A000") {
+      throw new HttpError(503, "vault_unavailable", "Die verschlüsselte Ablage steht nicht zur Verfügung.");
+    }
+    throw unavailable();
+  }
+  return { saved: true };
+}
+
 async function loadAgents(admin: Client, tenantId: string) {
   const { data, error } = await admin.from("ipam_agents")
     .select("id, name, status, hostname, platform, version, last_seen_at")
     .eq("tenant_id", tenantId).neq("status", "revoked").order("name").limit(100);
   if (error) throw unavailable();
   const now = Date.now();
+  const snmp = (await snmpSummaries(admin, tenantId)).agents;
   return ((data ?? []) as Row[]).map((row) => ({
+    snmp: snmp.get(String(row.id)) ?? null,
     id: String(row.id),
     name: String(row.name),
     active: row.status === "active",
@@ -341,7 +428,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
   const assetIds = [...new Set(sensors.map((sensor) => sensor.assetId))];
   const [assets, infrastructure, incidents] = await Promise.all([
     selectIn(admin, "assets", "id, name", tenantId, "id", assetIds),
-    selectIn(admin, "asset_infrastructure", "asset_id, category, category_label, hostname, ip_address", tenantId, "asset_id", assetIds),
+    selectIn(admin, "asset_infrastructure", "asset_id, category, category_label, hostname, ip_address, monitoring_group_id", tenantId, "asset_id", assetIds),
     activeIncidents(admin, tenantId, assetIds),
   ]);
   const infraByAsset = new Map(infrastructure.map((row) => [String(row.asset_id), row]));
@@ -366,6 +453,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
       name: String(asset.name),
       category: text(infra?.category),
       categoryLabel: kindLabel(infra),
+      groupId: text(infra?.monitoring_group_id),
       hostname: text(infra?.hostname),
       ipAddress: text(infra?.ip_address),
       state: deviceState(own.map((sensor) => sensor.state)),
@@ -425,6 +513,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
     deviceCount: devices.length,
     sensorCount: sensors.length,
     devices,
+    groups: await deviceGroups(admin, tenantId),
     agents: agents.map((agent) => ({
       ...agent,
       sensorCount: sensorCounts.get(agent.id) ?? 0,
@@ -593,9 +682,16 @@ async function requireAsset(admin: Client, tenantId: string, assetId: string): P
   return data as Row;
 }
 
-async function device(admin: Client, tenantId: string, assetId: string, canManage: boolean) {
+async function device(
+  admin: Client,
+  tenantId: string,
+  assetId: string,
+  canManage: boolean,
+  canManageSnmp: boolean,
+) {
   const asset = await requireAsset(admin, tenantId, assetId);
-  const [sensors, agents, infra, incidents, resolved] = await Promise.all([
+  const [snmp, sensors, agents, infra, incidents, resolved] = await Promise.all([
+    snmpSummaries(admin, tenantId, assetId),
     loadSensors(admin, tenantId, assetId),
     loadAgents(admin, tenantId),
     admin.from("asset_infrastructure").select("category, category_label, hostname, ip_address, uplink_asset_id").eq("tenant_id", tenantId).eq("asset_id", assetId).maybeSingle(),
@@ -630,6 +726,8 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
     kinds: canManage ? await customKinds(admin, tenantId) : [],
     serviceOptions: await serviceOptions(admin, tenantId),
     checkedAt: new Date().toISOString(),
+    snmp: snmp.assets.get(assetId) ?? null,
+    canManageSnmp,
   };
 }
 
@@ -639,11 +737,32 @@ function kindLabel(row: Row | null | undefined): string | null {
 }
 
 /** Services of the status page a sensor can be linked to. */
-async function serviceOptions(admin: Client, tenantId: string): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await admin.from("services").select("id, name")
-    .eq("tenant_id", tenantId).eq("active", true).order("name").limit(500);
-  if (error) throw unavailable();
-  return ((data ?? []) as Row[]).map((row) => ({ id: String(row.id), name: String(row.name) }));
+async function serviceOptions(
+  admin: Client,
+  tenantId: string,
+): Promise<{ id: string; name: string; category: string | null }[]> {
+  const [services, categories] = await Promise.all([
+    admin.from("services").select("id, name, service_category_id")
+      .eq("tenant_id", tenantId).eq("active", true).order("name").limit(500),
+    admin.from("service_categories").select("id, name, parent_id").eq("tenant_id", tenantId).limit(1000),
+  ]);
+  if (services.error) throw unavailable();
+  // Category as its path («Ort · Kategorie»); without categories the list is flat.
+  const byId = new Map(((categories.data ?? []) as Row[]).map((row) => [String(row.id), row]));
+  const label = (id: unknown): string | null => {
+    const names: string[] = [];
+    let current = typeof id === "string" ? byId.get(id) : undefined;
+    for (let depth = 0; current && depth < 3; depth += 1) {
+      names.unshift(String(current.name));
+      current = typeof current.parent_id === "string" ? byId.get(current.parent_id) : undefined;
+    }
+    return names.length ? names.join(" · ") : null;
+  };
+  return ((services.data ?? []) as Row[]).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    category: label(row.service_category_id),
+  }));
 }
 
 /** Own device kinds of the tenant, as they are used on its devices. */
@@ -998,6 +1117,71 @@ async function interfaces(admin: Client, tenantId: string, jobId: string) {
     error: done ? null : text(data.error),
     interfaces: done ? parseInterfaces(data.result) : [],
   };
+}
+
+/** Categories of the monitored devices (with one level of subcategories). */
+async function deviceGroups(admin: Client, tenantId: string) {
+  const { data, error } = await admin.from("monitoring_device_groups").select("id, name, parent_id")
+    .eq("tenant_id", tenantId).order("name").limit(1000);
+  if (error) throw unavailable();
+  return ((data ?? []) as Row[]).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    parentId: text(row.parent_id),
+  }));
+}
+
+async function saveGroup(
+  admin: Client,
+  tenantId: string,
+  actorId: string,
+  action: Extract<Action, { type: "saveGroup" }>,
+) {
+  const failed = (error: { code?: string } | null) => {
+    if (!error) return;
+    if (error.code === "23505") {
+      throw new HttpError(409, "group_exists", "Eine Kategorie mit diesem Namen gibt es hier bereits.");
+    }
+    if (error.code === "23514") {
+      throw new HttpError(422, "group_depth", "Kategorien können höchstens vier Ebenen tief sein und nicht unter sich selbst hängen.");
+    }
+    if (error.code === "23503") {
+      throw new HttpError(422, "group_not_found", "Die übergeordnete Kategorie wurde nicht gefunden.");
+    }
+    throw unavailable();
+  };
+  if (action.groupId) {
+    const updated = await admin.from("monitoring_device_groups")
+      .update({ name: action.name, parent_id: action.parentId, updated_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId).eq("id", action.groupId).select("id").maybeSingle();
+    failed(updated.error);
+    if (!updated.data) throw new HttpError(404, "group_not_found", "Die Kategorie wurde nicht gefunden.");
+    return { groupId: action.groupId };
+  }
+  const inserted = await admin.from("monitoring_device_groups")
+    .insert({ tenant_id: tenantId, name: action.name, parent_id: action.parentId, created_by: actorId })
+    .select("id").single();
+  failed(inserted.error);
+  return { groupId: String(inserted.data!.id) };
+}
+
+/** Puts devices into a category or subcategory (null: without category). */
+async function assignGroup(admin: Client, tenantId: string, assetIds: string[], groupId: string | null) {
+  if (groupId) {
+    const group = await admin.from("monitoring_device_groups").select("id")
+      .eq("tenant_id", tenantId).eq("id", groupId).maybeSingle();
+    if (group.error) throw unavailable();
+    if (!group.data) throw new HttpError(404, "group_not_found", "Die Kategorie wurde nicht gefunden.");
+  }
+  let count = 0;
+  for (const part of chunks(assetIds, 100)) {
+    const updated = await admin.from("asset_infrastructure")
+      .update({ monitoring_group_id: groupId, updated_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId).in("asset_id", part).select("asset_id");
+    if (updated.error) throw unavailable();
+    count += (updated.data ?? []).length;
+  }
+  return { ok: true, devices: count };
 }
 
 /**
@@ -1435,13 +1619,37 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
   };
   switch (action.type) {
     case "overview":
-      return await overview(admin, action.tenantId, canManage);
+      return {
+        ...(await overview(admin, action.tenantId, canManage)),
+        canManageSnmp: canManage && await isTenantAdministrator(admin, actorId, action.tenantId),
+      };
     case "summary":
       return await summary(admin, action.tenantId);
     case "deviceTicket":
       return await deviceTicket(admin, client, action.tenantId, actorId, action.assetId);
     case "device":
-      return await device(admin, action.tenantId, action.assetId, canManage);
+      return await device(
+        admin,
+        action.tenantId,
+        action.assetId,
+        canManage,
+        canManage && await isTenantAdministrator(admin, actorId, action.tenantId),
+      );
+    case "saveSnmp":
+    case "deleteSnmp": {
+      manage();
+      if (!(await isTenantAdministrator(admin, actorId, action.tenantId))) {
+        throw new HttpError(403, "forbidden", "SNMP-Zugangsdaten dürfen nur Mandantenadministratoren ändern.");
+      }
+      if (action.type === "saveSnmp") return await saveSnmp(admin, actorId, action);
+      const { error } = await admin.rpc("monitoring_snmp_credential_delete", {
+        p_tenant_id: action.tenantId,
+        p_asset_id: action.assetId,
+        p_agent_id: action.agentId,
+      });
+      if (error) throw unavailable();
+      return { deleted: true };
+    }
     case "series":
       return await series(admin, action.tenantId, action.sensorId, action.range);
     case "assets":
@@ -1470,6 +1678,20 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
       return await availabilityOverview(admin, action.tenantId, action.range);
     case "events":
       return await eventsOverview(admin, action.tenantId, action.range);
+    case "saveGroup":
+      manage();
+      return await saveGroup(admin, action.tenantId, actorId, action);
+    case "deleteGroup": {
+      manage();
+      // Subcategories go with it; the devices stay monitored, without category.
+      const removed = await admin.from("monitoring_device_groups").delete()
+        .eq("tenant_id", action.tenantId).eq("id", action.groupId);
+      if (removed.error) throw unavailable();
+      return { ok: true };
+    }
+    case "assignGroup":
+      manage();
+      return await assignGroup(admin, action.tenantId, action.assetIds, action.groupId);
     case "simulate":
       manage();
       return await simulate(admin, action.tenantId, action.assetId, action.sensorId, action.minutes);

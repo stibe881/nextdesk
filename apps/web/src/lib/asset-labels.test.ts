@@ -6,6 +6,10 @@ import {
   assetLabelItem,
   assetWebLink,
   buildLabelDocument,
+  inventoryLocationDeepLink,
+  inventoryLocationIdFromSearch,
+  inventoryLocationLabelItem,
+  inventoryLocationWebLink,
   labelContentPlan,
   labelFormat,
   layoutLabels,
@@ -208,5 +212,52 @@ describe("repeatLabelItems", () => {
     expect(repeatLabelItems(["a"], 0)).toEqual(["a"]);
     expect(repeatLabelItems(["a"], Number.NaN)).toEqual(["a"]);
     expect(repeatLabelItems(["a"], 10_000)).toHaveLength(200);
+  });
+});
+
+describe("storage location labels", () => {
+  it("show only the location (and its warehouse) and carry an app or web link", () => {
+    const location = {
+      id: ID.toUpperCase(),
+      name: " WSICT.01.02 ",
+      warehouseName: "Lager Bern",
+    };
+    const web = inventoryLocationLabelItem(
+      location,
+      "web",
+      "https://app.example.ch/app/?x=1#y",
+    );
+    expect(web.title).toBe("WSICT.01.02");
+    expect(web.meta).toEqual(["Lager: Lager Bern"]);
+    expect(web.key).toBe(`inventory-location:${ID.toUpperCase()}`);
+    expect(web.qrText).toBe(
+      `https://app.example.ch/app/?inventoryLocation=${ID}`,
+    );
+    const app = inventoryLocationLabelItem(location, "app", "https://x.ch/");
+    expect(app.qrText).toBe(`ch.grossict.nextdesk://inventory?location=${ID}`);
+    expect(inventoryLocationDeepLink(ID)).toBe(app.qrText);
+  });
+
+  it("prints nothing but the location without a warehouse, and never a remark", () => {
+    const item = inventoryLocationLabelItem(
+      // A remark is not part of the label input at all.
+      { id: ID, name: "G10.2.1", note: "Wandschrank im Flur" } as {
+        id: string;
+        name: string;
+      },
+      "web",
+      "https://x.ch/",
+    );
+    expect(item.title).toBe("G10.2.1");
+    expect(item.meta).toEqual([]);
+    expect(JSON.stringify(item)).not.toContain("Wandschrank");
+  });
+
+  it("reads the web link back and rejects anything but a uuid", () => {
+    const link = new URL(inventoryLocationWebLink("https://x.ch/", ID));
+    expect(inventoryLocationIdFromSearch(link.search)).toBe(ID);
+    expect(inventoryLocationIdFromSearch("?inventoryLocation=nope")).toBeNull();
+    expect(inventoryLocationIdFromSearch("?inventory=" + ID)).toBeNull();
+    expect(inventoryLocationIdFromSearch("")).toBeNull();
   });
 });

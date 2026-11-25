@@ -12,6 +12,7 @@ import {
   resolveRecordDepartment,
   scopeDepartmentOptions,
 } from "../_shared/department-scope.ts";
+import { resolveLocationRange } from "./location-range.ts";
 import {
   type BackorderAction,
   type BackorderEntry,
@@ -104,6 +105,7 @@ export const INVENTORY_RPC_NAMES = {
   upsertLocation: "upsert_inventory_location",
   upsertItem: "upsert_inventory_item_scoped",
   postMovement: "post_inventory_movement",
+  postRangeReceipt: "post_inventory_range_receipt",
   createReservation: "create_inventory_reservation",
   releaseReservation: "release_inventory_reservation",
   startCount: "start_inventory_count",
@@ -156,12 +158,27 @@ export type WorkspaceLocation = {
   name: string;
   code: string | null;
   active: boolean;
+  /** Warehouse (Lager) of this place; null for places without a warehouse. */
+  warehouseId: string | null;
+  /** Optional remark («Bemerkung»); not shown on labels or in pick lists. */
+  note: string | null;
+};
+
+/** A warehouse with its site; its places are inventory locations. */
+export type WorkspaceWarehouse = {
+  id: string;
+  name: string;
+  /** Site of the warehouse (place, address, building), if recorded. */
+  site: string | null;
+  active: boolean;
 };
 
 export type RecentEvent = {
   id: string;
   type: string;
   occurredAt: string;
+  /** Article of the movement, so the list can open it. */
+  itemId: string;
   itemName: string;
   physicalDelta: number;
   reservedDelta: number;
@@ -182,6 +199,7 @@ export type InventoryWorkspace = {
   lowStockItems: WorkspaceItem[];
   /** Departments the caller may assign to new items (picker options). */
   departments: WorkspaceDepartment[];
+  warehouses: WorkspaceWarehouse[];
 };
 
 export type OpenReservation = {
@@ -232,9 +250,27 @@ type ItemValues = {
   departmentId?: string | null;
 };
 
+/**
+ * Values of a location command. The location is its code («WSICT.01.02»); the
+ * display name is derived from it (`label`, the code as typed). The former
+ * «Bezeichnung» is now the optional remark `note`; it never appears on labels.
+ */
 type LocationValues = {
+  /** Lower-case code, unique per workspace. */
   code?: string;
+  /** The code as typed; becomes the display name of the location. */
+  label?: string;
+  /** Optional remark; null or empty clears it. */
+  note?: string | null;
+  active?: boolean;
+  /** Warehouse of the place; null removes it from its warehouse. */
+  warehouseId?: string | null;
+};
+
+type WarehouseValues = {
   name?: string;
+  /** Site of the warehouse; null clears it. */
+  site?: string | null;
   active?: boolean;
 };
 
@@ -293,6 +329,11 @@ type PostMovementAction = {
   quantity?: number;
   fromLocationId?: string;
   toLocationId?: string;
+  /**
+   * Only for a receipt: last place of an area («G10.2.1» to «G10.2.4»). The
+   * whole area is booked as one place with the full quantity.
+   */
+  toLocationEndId?: string;
   /** Present only for a reservation-backed issue; never accepted with line data. */
   reservationId?: string;
 };
@@ -344,6 +385,13 @@ type Action =
       locationId?: string;
       values?: LocationValues;
       clientRequestId: string;
+    }
+  | {
+      type: "manageWarehouse";
+      tenantId: string;
+      operation: ManageOperation;
+      warehouseId?: string;
+      values?: WarehouseValues;
     }
   | PostMovementAction
   | {
@@ -683,25 +731,118 @@ function parseItemValues(value: unknown): ItemValues | null {
 }
 
 function parseLocationValues(value: unknown): LocationValues | null {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["code", "name", "active"])) {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["code", "note", "active", "warehouseId"])
+  ) {
     return null;
   }
   const result: LocationValues = {};
   if (Object.hasOwn(value, "code")) {
-    const code = validText(value.code, 1, 63)?.toLowerCase();
-    if (!code || !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(code)) return null;
+    const label = validText(value.code, 1, 63);
+    const code = label?.toLowerCase();
+    // Punkte sind erlaubt (z. B. «WSICT.01.01»); der Code wird klein gespeichert,
+    // der Lagerort zeigt ihn so, wie er eingegeben wurde.
+    if (!label || !code || !/^[a-z0-9][a-z0-9._-]{0,62}$/.test(code)) {
+      return null;
+    }
     result.code = code;
+    result.label = label;
   }
+  if (Object.hasOwn(value, "note")) {
+    if (value.note === null || value.note === "") {
+      result.note = null;
+    } else {
+      const note = validText(value.note, 1, 500);
+      if (note === null || /\p{Cc}/u.test(note)) return null;
+      result.note = note;
+    }
+  }
+  if (Object.hasOwn(value, "active")) {
+    if (typeof value.active !== "boolean") return null;
+    result.active = value.active;
+  }
+  if (Object.hasOwn(value, "warehouseId")) {
+    if (value.warehouseId === null) {
+      result.warehouseId = null;
+    } else if (isUuid(value.warehouseId)) {
+      result.warehouseId = value.warehouseId.toLowerCase();
+    } else {
+      return null;
+    }
+  }
+  return result;
+}
+
+/** Values of a warehouse command; «site» may be empty or null to clear it. */
+function parseWarehouseValues(value: unknown): WarehouseValues | null {
+  if (!isRecord(value) || !hasOnlyKeys(value, ["name", "site", "active"])) {
+    return null;
+  }
+  const result: WarehouseValues = {};
   if (Object.hasOwn(value, "name")) {
     const name = validText(value.name, 1, 160);
-    if (name === null) return null;
+    if (name === null || /\p{Cc}/u.test(name)) return null;
     result.name = name;
+  }
+  if (Object.hasOwn(value, "site")) {
+    if (value.site === null || value.site === "") {
+      result.site = null;
+    } else {
+      const site = validText(value.site, 1, 200);
+      if (site === null || /\p{Cc}/u.test(site)) return null;
+      result.site = site;
+    }
   }
   if (Object.hasOwn(value, "active")) {
     if (typeof value.active !== "boolean") return null;
     result.active = value.active;
   }
   return result;
+}
+
+function parseWarehouseAction(
+  value: Row,
+): Extract<Action, { type: "manageWarehouse" }> | null {
+  const operation = value.operation;
+  if (
+    operation !== "create" &&
+    operation !== "update" &&
+    operation !== "archive"
+  ) {
+    return null;
+  }
+  const allowed = ["type", "tenantId", "operation", "clientRequestId"];
+  if (operation !== "create") allowed.push("warehouseId");
+  if (operation !== "archive") allowed.push("values");
+  if (!hasOnlyKeys(value, allowed)) return null;
+  if (value.clientRequestId !== undefined && !isUuid(value.clientRequestId)) {
+    return null;
+  }
+  const tenantId = value.tenantId as string;
+  if (operation === "archive") {
+    return isUuid(value.warehouseId)
+      ? {
+          type: "manageWarehouse",
+          tenantId,
+          operation,
+          warehouseId: value.warehouseId.toLowerCase(),
+        }
+      : null;
+  }
+  if (operation === "update" && !isUuid(value.warehouseId)) return null;
+  const values = parseWarehouseValues(value.values);
+  if (!values || Object.keys(values).length === 0) return null;
+  if (operation === "create" && !Object.hasOwn(values, "name")) return null;
+  return {
+    type: "manageWarehouse",
+    tenantId,
+    operation,
+    ...(operation === "update"
+      ? { warehouseId: (value.warehouseId as string).toLowerCase() }
+      : {}),
+    values,
+  };
 }
 
 function validItemCreate(values: ItemValues): boolean {
@@ -768,7 +909,7 @@ function parseManageAction(
     operation === "create" &&
     (type === "manageItem"
       ? !validItemCreate(values as ItemValues)
-      : !Object.hasOwn(values, "code") || !Object.hasOwn(values, "name"))
+      : !Object.hasOwn(values, "code"))
   ) {
     return null;
   }
@@ -913,6 +1054,9 @@ export function parseAction(value: unknown): Action | null {
   if (value.type === "manageItem" || value.type === "manageLocation") {
     return parseManageAction({ ...value, tenantId }, value.type);
   }
+  if (value.type === "manageWarehouse") {
+    return parseWarehouseAction({ ...value, tenantId });
+  }
   if (value.type === "postMovement") {
     const movementType = value.movementType;
     if (
@@ -962,16 +1106,19 @@ export function parseAction(value: unknown): Action | null {
       "clientRequestId",
       ...(requiresFrom ? ["fromLocationId"] : []),
       ...(requiresTo ? ["toLocationId"] : []),
+      ...(movementType === "receipt" ? ["toLocationEndId"] : []),
     ];
     // ticketId is intentionally not allowlisted: migration 0068 tracks a ticket
     // only on reservations, never on an arbitrary movement.
     if (!hasOnlyKeys(value, allowed)) return null;
     const fromLocationId = validOptionalUuid(value.fromLocationId);
     const toLocationId = validOptionalUuid(value.toLocationId);
+    const toLocationEndId = validOptionalUuid(value.toLocationEndId);
     if (
       quantity === null ||
       fromLocationId === null ||
       toLocationId === null ||
+      toLocationEndId === null ||
       (requiresFrom && fromLocationId === undefined) ||
       (requiresTo && toLocationId === undefined) ||
       (movementType === "transfer" && fromLocationId === toLocationId)
@@ -986,6 +1133,10 @@ export function parseAction(value: unknown): Action | null {
       quantity,
       ...(fromLocationId ? { fromLocationId } : {}),
       ...(toLocationId ? { toLocationId } : {}),
+      // The same place as start and end is a plain receipt on one place.
+      ...(toLocationEndId && toLocationEndId !== toLocationId
+        ? { toLocationEndId }
+        : {}),
       clientRequestId: value.clientRequestId.toLowerCase(),
     };
   }
@@ -1173,6 +1324,16 @@ function databaseFailure(error: { code?: unknown } | null): never {
   }
   if (code === "P0002") {
     throw new HttpError(404, "not_found", "Der Eintrag wurde nicht gefunden.");
+  }
+  if (code === "ND411") {
+    // post_inventory_range_receipt / balance guard (migration 0368): the place
+    // belongs to an area that still holds stock, or a place of the new area is
+    // occupied.
+    throw new HttpError(
+      409,
+      "inventory_location_occupied",
+      "Der Lagerplatz ist belegt. Ein Bereich bleibt belegt, bis sein Bestand ausgebucht ist; vorher kann dort nichts anderes gebucht werden.",
+    );
   }
   if (code === "ND410") {
     // cancel_inventory_count (migration 0346): the count is already closed.
@@ -1601,15 +1762,44 @@ function workspaceLocation(value: unknown): WorkspaceLocation | typeof INVALID {
   const id = requiredUuid(value.id);
   const name = requiredText(value.name, 1, 160);
   const code = requiredNullableText(value.code, 1, 63);
+  // Older rows and callers without the warehouse column read as «no warehouse».
+  const warehouseId =
+    value.warehouse_id === null || value.warehouse_id === undefined
+      ? null
+      : requiredUuid(value.warehouse_id);
+  const note =
+    value.note === null || value.note === undefined
+      ? null
+      : requiredText(value.note, 1, 500);
   if (
     id === INVALID ||
     name === INVALID ||
     code === INVALID ||
+    warehouseId === INVALID ||
+    note === INVALID ||
     typeof value.active !== "boolean"
   ) {
     return INVALID;
   }
-  return { id, name, code, active: value.active };
+  return { id, name, code, active: value.active, warehouseId, note };
+}
+
+function workspaceWarehouse(
+  value: unknown,
+): WorkspaceWarehouse | typeof INVALID {
+  if (!isRecord(value)) return INVALID;
+  const id = requiredUuid(value.id);
+  const name = requiredText(value.name, 1, 160);
+  const site = requiredNullableText(value.site, 1, 200);
+  if (
+    id === INVALID ||
+    name === INVALID ||
+    site === INVALID ||
+    typeof value.active !== "boolean"
+  ) {
+    return INVALID;
+  }
+  return { id, name, site, active: value.active };
 }
 
 function balanceSeed(value: unknown): BalanceSeed | typeof INVALID {
@@ -1873,6 +2063,11 @@ export function toWorkspaceContract(
     lookupNamedResource,
     MAX_LOCATIONS,
   );
+  const warehouses = safeArray(
+    value.warehouses ?? [],
+    workspaceWarehouse,
+    MAX_LOCATIONS,
+  );
   const recentEventsHasMore = value.recentEventsHasMore;
   const openReservationCount = sourceCount(value.openReservationCount);
   const activeCountSessionCount = sourceCount(value.activeCountSessionCount);
@@ -1884,6 +2079,13 @@ export function toWorkspaceContract(
     eventLines === INVALID ||
     primaryImages === INVALID ||
     departments === INVALID ||
+    warehouses === INVALID ||
+    // A place may only point to a warehouse of the same workspace.
+    locations.some(
+      (location) =>
+        location.warehouseId !== null &&
+        !warehouses.some((warehouse) => warehouse.id === location.warehouseId),
+    ) ||
     openReservationCount === INVALID ||
     activeCountSessionCount === INVALID ||
     typeof recentEventsHasMore !== "boolean"
@@ -1959,8 +2161,12 @@ export function toWorkspaceContract(
       departmentId: item.departmentId,
     };
   });
+  // Without a minimum (0; e.g. software or loan articles) an article is never low.
   const lowStockItems = publicItems.filter(
-    (item) => item.active && item.availableQuantity <= item.minQuantity,
+    (item) =>
+      item.active &&
+      item.minQuantity > 0 &&
+      item.availableQuantity <= item.minQuantity,
   );
 
   const eventById = new Map(events.map((event) => [event.id, event]));
@@ -1975,6 +2181,7 @@ export function toWorkspaceContract(
       id: line.id,
       type,
       occurredAt: event.occurredAt,
+      itemId: item.id,
       itemName: item.name,
       physicalDelta: line.physicalDelta,
       reservedDelta: line.reservedDelta,
@@ -2010,6 +2217,7 @@ export function toWorkspaceContract(
     recentEventsHasMore,
     lowStockItems,
     departments,
+    warehouses,
   };
 }
 
@@ -2223,6 +2431,7 @@ async function workspace(
     openReservationRows,
     activeCountSessionCount,
     departments,
+    warehouses,
   ] = await Promise.all([
     serviceRows(
       applyDepartmentScope(
@@ -2240,7 +2449,7 @@ async function workspace(
     serviceRows(
       admin
         .from("inventory_locations")
-        .select("id,name,code,active")
+        .select("id,name,code,active,warehouse_id,note")
         .eq("tenant_id", action.tenantId)
         .order("name", { ascending: true })
         .limit(MAX_LOCATIONS + 1),
@@ -2320,6 +2529,14 @@ async function workspace(
         .in("status", ["draft", "counting"]),
     ),
     scopeDepartmentOptions(admin, action.tenantId, scope),
+    serviceRows(
+      admin
+        .from("inventory_warehouses")
+        .select("id,name,site,active")
+        .eq("tenant_id", action.tenantId)
+        .order("name", { ascending: true })
+        .limit(MAX_LOCATIONS + 1),
+    ),
   ]);
   if (
     itemCount > MAX_ITEMS ||
@@ -2387,6 +2604,7 @@ async function workspace(
       openReservationCount: openReservationRows.filter(ofVisibleItem).length,
       activeCountSessionCount,
       departments,
+      warehouses: warehouses.slice(0, MAX_LOCATIONS),
     },
     permissions,
   );
@@ -3116,14 +3334,14 @@ function storedLocation(value: unknown): StoredLocation | null {
   if (!isRecord(value)) return null;
   const parsed = parseLocationValues({
     code: value.code,
-    name: value.name,
     active: value.active,
   });
+  const name = validText(value.name, 1, 160);
   return parsed &&
+    name !== null &&
     Object.hasOwn(parsed, "code") &&
-    Object.hasOwn(parsed, "name") &&
     Object.hasOwn(parsed, "active")
-    ? { code: parsed.code!, name: parsed.name!, active: parsed.active! }
+    ? { code: parsed.code!, name, active: parsed.active! }
     : null;
 }
 
@@ -3163,18 +3381,13 @@ function mergedLocation(
   values: LocationValues | undefined,
   archive: boolean,
 ): StoredLocation | null {
-  if (
-    !existing &&
-    (!values ||
-      !Object.hasOwn(values, "code") ||
-      !Object.hasOwn(values, "name"))
-  )
-    return null;
+  if (!existing && (!values || !Object.hasOwn(values, "code"))) return null;
   return {
     code:
       values && Object.hasOwn(values, "code") ? values.code! : existing!.code,
+    // The display name follows the code as typed.
     name:
-      values && Object.hasOwn(values, "name") ? values.name! : existing!.name,
+      values && Object.hasOwn(values, "code") ? values.label! : existing!.name,
     active: archive
       ? false
       : values && Object.hasOwn(values, "active")
@@ -3479,9 +3692,132 @@ async function manage(
       location,
     ),
   );
+  const receipt = mutationReceipt(raw);
+  // Remark and warehouse are not part of the upsert function: set them on the
+  // saved row (same tenant). A warehouse must exist and be active in this
+  // workspace.
+  const hasNote = Boolean(
+    action.values && Object.hasOwn(action.values, "note"),
+  );
+  const hasWarehouse = Boolean(
+    action.values && Object.hasOwn(action.values, "warehouseId"),
+  );
+  if (hasNote || hasWarehouse) {
+    const savedLocationId =
+      action.operation === "create" ? receipt.id : action.locationId;
+    const warehouseId = action.values?.warehouseId ?? null;
+    if (typeof savedLocationId === "string" && isUuid(savedLocationId)) {
+      if (hasWarehouse && warehouseId !== null) {
+        const warehouse = await admin
+          .from("inventory_warehouses")
+          .select("id")
+          .eq("tenant_id", action.tenantId)
+          .eq("id", warehouseId)
+          .eq("active", true)
+          .maybeSingle();
+        if (warehouse.error) databaseFailure(warehouse.error);
+        if (!warehouse.data) {
+          throw new HttpError(
+            422,
+            "warehouse_unavailable",
+            "Das Lager existiert nicht oder ist nicht aktiv.",
+          );
+        }
+      }
+      const assigned = await admin
+        .from("inventory_locations")
+        .update({
+          ...(hasWarehouse ? { warehouse_id: warehouseId } : {}),
+          ...(hasNote ? { note: action.values?.note ?? null } : {}),
+        })
+        .eq("tenant_id", action.tenantId)
+        .eq("id", savedLocationId);
+      if (assigned.error) databaseFailure(assigned.error);
+    }
+  }
   return json(
     request,
-    { data: mutationReceipt(raw) },
+    { data: receipt },
+    action.operation === "create" ? 201 : 200,
+  );
+}
+
+/**
+ * Warehouses (Lager mit Standort): create, change and archive. Archiving keeps
+ * the places and their stock; the warehouse only stops being offered.
+ */
+async function manageWarehouse(
+  request: Request,
+  admin: AdminClient,
+  actorId: string,
+  action: Extract<Action, { type: "manageWarehouse" }>,
+): Promise<Response> {
+  let warehouseId = action.warehouseId;
+  if (action.operation === "create") {
+    const result = await admin
+      .from("inventory_warehouses")
+      .insert({
+        tenant_id: action.tenantId,
+        name: action.values!.name!,
+        site: action.values!.site ?? null,
+        active: action.values!.active ?? true,
+      })
+      .select("id")
+      .single();
+    if (result.error) databaseFailure(result.error);
+    warehouseId = requiredUuid(result.data?.id) as string;
+  } else {
+    const patch: Record<string, string | boolean | null> =
+      action.operation === "archive"
+        ? { active: false }
+        : {
+            ...(action.values?.name !== undefined
+              ? { name: action.values.name }
+              : {}),
+            ...(action.values?.site !== undefined
+              ? { site: action.values.site }
+              : {}),
+            ...(action.values?.active !== undefined
+              ? { active: action.values.active }
+              : {}),
+          };
+    const result = await admin
+      .from("inventory_warehouses")
+      .update(patch)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", warehouseId!)
+      .select("id");
+    if (result.error) databaseFailure(result.error);
+    if (!Array.isArray(result.data) || result.data.length !== 1) {
+      throw new HttpError(
+        404,
+        "not_found",
+        "Der Eintrag wurde nicht gefunden.",
+      );
+    }
+  }
+  await admin.from("audit_logs").insert({
+    tenant_id: action.tenantId,
+    actor_id: actorId,
+    action: `inventory.warehouse.${
+      action.operation === "create"
+        ? "created"
+        : action.operation === "archive"
+          ? "archived"
+          : "updated"
+    }`,
+    entity_type: "inventory_warehouse",
+    entity_id: warehouseId,
+    severity: "info",
+    metadata: {
+      type: "warehouse_upsert",
+      count: 1,
+      reference_type: "inventory_warehouse",
+    },
+  });
+  return json(
+    request,
+    { data: { accepted: true, id: warehouseId } },
     action.operation === "create" ? 201 : 200,
   );
 }
@@ -3631,12 +3967,101 @@ export function movementRpcParameters(
   };
 }
 
+/** Loads the tenant's locations by name for resolving an area. */
+async function loadRangeLocations(
+  admin: AdminClient,
+  tenantId: string,
+): Promise<Array<{ id: string; name: string; active: boolean }>> {
+  const rows = await serviceRows(
+    admin
+      .from("inventory_locations")
+      .select("id,name,active")
+      .eq("tenant_id", tenantId)
+      .limit(MAX_LOCATIONS + 1),
+  );
+  if (rows.length > MAX_LOCATIONS) {
+    throw new HttpError(
+      503,
+      "inventory_contract_invalid",
+      "Die Lagerdaten konnten nicht sicher gelesen werden.",
+    );
+  }
+  const locations: Array<{ id: string; name: string; active: boolean }> = [];
+  for (const row of rows) {
+    if (
+      !isRecord(row) ||
+      !isUuid(row.id) ||
+      typeof row.name !== "string" ||
+      typeof row.active !== "boolean"
+    ) {
+      throw new HttpError(
+        503,
+        "inventory_contract_invalid",
+        "Die Lagerdaten konnten nicht sicher gelesen werden.",
+      );
+    }
+    locations.push({
+      id: row.id.toLowerCase(),
+      name: row.name,
+      active: row.active,
+    });
+  }
+  return locations;
+}
+
+/**
+ * Receipt on an area («G10.2.1» to «G10.2.4»): only the last number may differ,
+ * every place must exist and be active, and the full quantity is booked once.
+ * Occupancy is enforced by the database.
+ */
+async function postRangeReceipt(
+  request: Request,
+  admin: AdminClient,
+  actorId: string,
+  action: ResolvedPostMovementAction,
+): Promise<Response> {
+  const locations = await loadRangeLocations(admin, action.tenantId);
+  const range = resolveLocationRange(
+    locations,
+    action.toLocationId!,
+    action.toLocationEndId!,
+  );
+  if (!range.ok) {
+    throw new HttpError(422, range.code, range.message);
+  }
+  const raw = await serviceRpc(admin, INVENTORY_RPC_NAMES.postRangeReceipt, {
+    p_actor_id: actorId,
+    p_tenant_id: action.tenantId,
+    p_client_request_id: action.clientRequestId,
+    p_item_id: action.itemId,
+    p_location_ids: range.locationIds,
+    p_quantity: action.quantity,
+  });
+  return json(
+    request,
+    { data: { ...mutationReceipt(raw), area: range.label } },
+    201,
+  );
+}
+
 async function postMovement(
   request: Request,
   admin: AdminClient,
   actorId: string,
   action: Extract<Action, { type: "postMovement" }>,
 ): Promise<Response> {
+  if (
+    action.movementType === "receipt" &&
+    action.toLocationEndId &&
+    !action.reservationId
+  ) {
+    return await postRangeReceipt(
+      request,
+      admin,
+      actorId,
+      resolvedClientMovement(action),
+    );
+  }
   const resolved = action.reservationId
     ? await resolvedReservationIssue(admin, action)
     : resolvedClientMovement(action);
@@ -5083,6 +5508,19 @@ const securedHandler = withSupabase(
         return await deleteInventoryItem(
           request,
           context.supabaseAdmin,
+          action,
+        );
+      }
+      if (action.type === "manageWarehouse") {
+        await requirePermission(
+          context.supabase,
+          action.tenantId,
+          "inventory.manage",
+        );
+        return await manageWarehouse(
+          request,
+          context.supabaseAdmin,
+          actorId.toLowerCase(),
           action,
         );
       }
