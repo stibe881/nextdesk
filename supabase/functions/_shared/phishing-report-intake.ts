@@ -101,6 +101,14 @@ export function isMarkedPhishingReport(subject: string | null | undefined): bool
  * (alias) in To/Cc always counts; the shared support mailbox only counts
  * with a marked subject.
  */
+/**
+ * Outlook «Melden → Kein Junk»: «Not junk:<Kennung>|<Absender>|<Betreff>».
+ * The person released a mail from the junk folder (false alarm).
+ */
+export function isNotJunkReport(subject: string | null | undefined): boolean {
+  return /^\s*not\s+junk\s*:/i.test(subject ?? "");
+}
+
 export function isPhishingReportMail(
   settings: PhishingSettings | null,
   input: { mailboxAddress: string; recipients: readonly string[]; subject?: string | null },
@@ -108,7 +116,7 @@ export function isPhishingReportMail(
   if (!settings?.enabled || !settings.reportAddress) return false;
   const target = settings.reportAddress.toLowerCase();
   if (target === input.mailboxAddress.trim().toLowerCase()) {
-    return isMarkedPhishingReport(input.subject);
+    return isMarkedPhishingReport(input.subject) || isNotJunkReport(input.subject);
   }
   return isReportRecipient(settings, input.recipients);
 }
@@ -474,9 +482,10 @@ async function closeSimulationCase(
 ) {
   // Case and ticket closed in one step; the status rule «Neu only with an
   // assignee» allows this for simulations (migration 0378).
-  const closed = await admin.rpc("security_case_close_simulation", {
+  const closed = await admin.rpc("security_case_close_auto", {
     p_tenant_id: tenantId,
     p_ticket_id: ticketId,
+    p_verdict: "phishing",
   });
   if (closed.error || closed.data !== true) return;
   await admin.from("ticket_comments").insert({
@@ -493,6 +502,32 @@ async function closeSimulationCase(
   });
 }
 
+async function closeNotJunkCase(
+  admin: Admin,
+  tenantId: string,
+  ticketId: string,
+  noteAuthorId: string,
+) {
+  const closed = await admin.rpc("security_case_close_auto", {
+    p_tenant_id: tenantId,
+    p_ticket_id: ticketId,
+    p_verdict: "harmless",
+  });
+  if (closed.error || closed.data !== true) return;
+  await admin.from("ticket_comments").insert({
+    ticket_id: ticketId,
+    author_id: noteAuthorId,
+    visibility: "internal",
+    body: "«Kein Junk»-Meldung aus Outlook: Die Person hat diese Mail aus dem Junk-Ordner freigegeben. Automatisch als «Harmlos» abgelegt, ohne Alarmierung. Bei Zweifel das Urteil im Fall ändern.",
+  });
+  await admin.from("ticket_events").insert({
+    ticket_id: ticketId,
+    actor_id: null,
+    event_type: "ticket.security_verdict",
+    payload: { verdict: "harmless", label: "Harmlos", notJunk: true },
+  });
+}
+
 export async function finalizePhishingReport(
   admin: Admin,
   input: {
@@ -505,6 +540,8 @@ export async function finalizePhishingReport(
     channel: PhishingChannel;
     analysis: PhishingAnalysis;
     fingerprint: string;
+    /** Outlook «Kein Junk» (false alarm) instead of a phishing report. */
+    notJunk?: boolean;
     /** The reported mail itself, shown to the security team as received. */
     mail?: ParsedMail;
     /** Another report of a mail that already is an open case: no new alert. */
@@ -557,6 +594,13 @@ export async function finalizePhishingReport(
     analysis: storedAnalysis(input.analysis),
   });
   if (input.bundled) return { previousReports };
+  // «Kein Junk» from Outlook: a released mail. Unless the analysis rates it
+  // high, it is filed as «Harmlos» without alarm; with high risk the team
+  // looks at it as usual (somebody released a dangerous mail).
+  if (input.notJunk && input.analysis.level !== "high") {
+    await closeNotJunkCase(admin, input.tenantId, input.ticketId, input.noteAuthorId);
+    return { previousReports };
+  }
   // Agreed phishing simulation: no alarm, the case closes as «Phishing»
   // (the person reported it correctly; nothing to block or clean up).
   if (input.analysis.simulation) {

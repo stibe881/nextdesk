@@ -591,6 +591,14 @@ function SecurityCaseView({
                 >
                   {STATE_LABELS[detail.state]}
                 </span>
+                {analysis.notJunk ? (
+                  <span
+                    className="security-chip security-chip--line"
+                    title="Die Person hat die Mail in Outlook aus dem Junk-Ordner freigegeben (Fehlalarm-Meldung)"
+                  >
+                    Als «Kein Junk» gemeldet
+                  </span>
+                ) : null}
                 {analysis.simulation ? (
                   <span
                     className="security-chip security-chip--low"

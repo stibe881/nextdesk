@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { isMarkedPhishingReport } from "./phishing-report-intake.ts";
+import { isMarkedPhishingReport, isNotJunkReport } from "./phishing-report-intake.ts";
 
 Deno.test("marked phishing reports by subject", () => {
   assertEquals(isMarkedPhishingReport("WG: Phishing Mail"), true);
@@ -20,4 +20,12 @@ Deno.test("ordinary support mails and false-alarm reports are not reports", () =
   assertEquals(isMarkedPhishingReport("Not junk:abc|x@example.com|(Hallo)"), false);
   assertEquals(isMarkedPhishingReport("Junkfood Bestellung"), false);
   assertEquals(isMarkedPhishingReport(null), false);
+});
+
+Deno.test("Outlook «Kein Junk» reports are recognised in the support mailbox", () => {
+  if (!isNotJunkReport("Not junk:9233415f-efcf|j.penuela@utp.edu.co|(Open position.)")) {
+    throw new Error("not junk missed");
+  }
+  if (isNotJunkReport("Junk:abc|x@y.ch|(Gewinn)")) throw new Error("junk taken as not junk");
+  if (isNotJunkReport("Re: Not junk mail")) throw new Error("ordinary subject taken");
 });
