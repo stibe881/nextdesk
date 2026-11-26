@@ -111,11 +111,22 @@ export function isNotJunkReport(subject: string | null | undefined): boolean {
 
 export function isPhishingReportMail(
   settings: PhishingSettings | null,
-  input: { mailboxAddress: string; recipients: readonly string[]; subject?: string | null },
+  input: {
+    mailboxAddress: string;
+    recipients: readonly string[];
+    subject?: string | null;
+    /** All connected support mailboxes of the tenant (any channel). */
+    supportMailboxes?: readonly string[];
+  },
 ): boolean {
   if (!settings?.enabled || !settings.reportAddress) return false;
   const target = settings.reportAddress.toLowerCase();
-  if (target === input.mailboxAddress.trim().toLowerCase()) {
+  // The report address is a support mailbox itself (this one or another
+  // channel): only a marked subject counts, also when the mail was sent to
+  // several support addresses at once.
+  const isSupportMailbox = target === input.mailboxAddress.trim().toLowerCase() ||
+    (input.supportMailboxes ?? []).some((address) => address.trim().toLowerCase() === target);
+  if (isSupportMailbox) {
     return isMarkedPhishingReport(input.subject) || isNotJunkReport(input.subject);
   }
   return isReportRecipient(settings, input.recipients);

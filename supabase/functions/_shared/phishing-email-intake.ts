@@ -109,7 +109,13 @@ export async function phishingReportSettingsFor(
 ): Promise<PhishingSettings | null> {
   try {
     const settings = await loadPhishingSettings(admin, input.tenantId);
-    return isPhishingReportMail(settings, input) ? settings : null;
+    if (!settings?.enabled) return null;
+    const { data: channels } = await admin.from("exchange_mail_channels")
+      .select("mailbox_address").eq("tenant_id", input.tenantId).is("deleted_at", null).limit(50);
+    const supportMailboxes = ((channels ?? []) as Row[])
+      .map((row) => str(row.mailbox_address))
+      .filter((address): address is string => address !== null);
+    return isPhishingReportMail(settings, { ...input, supportMailboxes }) ? settings : null;
   } catch {
     return null;
   }
