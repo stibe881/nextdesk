@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-25
+updated: 2026-11-26
 ---
 
 # Installationsanleitung
@@ -474,8 +474,9 @@ _Einstellungen → E-Mail und Zusammenarbeit → Von Benutzern gemeldete
 Einstellungen_ die Meldeadresse als **Meldepostfach** ein (_Nur mein
 Berichtspostfach_). Die Meldeadresse muss beim verbundenen Postfach ankommen.
 
-Ist die Meldeadresse das Support-Postfach selbst, werden nur Mails als Meldung
-erkannt, deren Betreff «Phishing» oder «verdächtig» enthält oder mit «Junk:»
+Ist die Meldeadresse ein verbundenes Support-Postfach (dasselbe oder ein
+anderes, z. B. wenn eine Mail an mehrere Support-Adressen geht), werden nur
+Mails als Meldung erkannt, deren Betreff «Phishing» oder «verdächtig» enthält oder mit «Junk:»
 bzw. «Phish:» beginnt (so meldet Outlook mit **Melden**). Auch «Not junk:»
 (Outlook **Melden → Kein Junk**, eine aus dem Junk-Ordner freigegebene Mail)
 wird erkannt: Sie wird als Phishing-/Junk-Fall «Harmlos» abgelegt, ohne

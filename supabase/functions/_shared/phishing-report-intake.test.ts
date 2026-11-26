@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { isMarkedPhishingReport, isNotJunkReport } from "./phishing-report-intake.ts";
+import { isMarkedPhishingReport, isNotJunkReport, isPhishingReportMail } from "./phishing-report-intake.ts";
 
 Deno.test("marked phishing reports by subject", () => {
   assertEquals(isMarkedPhishingReport("WG: Phishing Mail"), true);
@@ -28,4 +28,22 @@ Deno.test("Outlook «Kein Junk» reports are recognised in the support mailbox",
   }
   if (isNotJunkReport("Junk:abc|x@y.ch|(Gewinn)")) throw new Error("junk taken as not junk");
   if (isNotJunkReport("Re: Not junk mail")) throw new Error("ordinary subject taken");
+});
+
+Deno.test("report address that is another support mailbox needs a marked subject", () => {
+  const settings = { enabled: true, reportAddress: "support-ict@example.ch" } as unknown as Parameters<
+    typeof isPhishingReportMail
+  >[0];
+  const base = {
+    mailboxAddress: "support@example.ch",
+    recipients: ["support@example.ch", "support-ict@example.ch"],
+    supportMailboxes: ["support@example.ch", "support-ict@example.ch"],
+  };
+  assertEquals(isPhishingReportMail(settings, { ...base, subject: "Laptop und Druckerkarte" }), false);
+  assertEquals(isPhishingReportMail(settings, { ...base, subject: "Junk:abc|x@y.ch|(Gewinn)" }), true);
+  // A pure alias (no support mailbox) still counts for every mail.
+  assertEquals(
+    isPhishingReportMail(settings, { ...base, supportMailboxes: ["support@example.ch"], subject: "WG: Rechnung" }),
+    true,
+  );
 });
